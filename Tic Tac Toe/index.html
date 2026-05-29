@@ -31,6 +31,34 @@
       color: #e94560;
     }
 
+    /* ── Mode toggle ── */
+    .mode-toggle {
+      display: flex;
+      align-items: center;
+      background: #16213e;
+      border-radius: 50px;
+      padding: 4px;
+      gap: 0;
+    }
+
+    .mode-toggle button {
+      margin: 0;
+      padding: 8px 22px;
+      background: transparent;
+      color: #888;
+      border: none;
+      border-radius: 50px;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, transform 0s;
+    }
+
+    .mode-toggle button:hover { background: transparent; transform: none; color: #ccc; }
+    .mode-toggle button.active { background: #e94560; color: #fff; }
+
+    /* ── Scoreboard ── */
     .scoreboard {
       display: flex;
       gap: 40px;
@@ -61,6 +89,7 @@
       font-weight: 700;
     }
 
+    /* ── Status ── */
     .status {
       font-size: 1.1rem;
       letter-spacing: 1px;
@@ -68,16 +97,12 @@
       color: #ccc;
     }
 
-    .status span {
-      font-weight: 700;
-    }
-
+    .status span { font-weight: 700; }
     .status .x { color: #e94560; }
     .status .o { color: #a8d8ea; }
 
-    .board-wrap {
-      position: relative;
-    }
+    /* ── Board ── */
+    .board-wrap { position: relative; }
 
     .board {
       display: grid;
@@ -102,9 +127,7 @@
       animation: draw-line 0.4s ease-out forwards;
     }
 
-    @keyframes draw-line {
-      to { stroke-dashoffset: 0; }
-    }
+    @keyframes draw-line { to { stroke-dashoffset: 0; } }
 
     .cell {
       background: #16213e;
@@ -119,13 +142,8 @@
       user-select: none;
     }
 
-    .cell:hover:not(.taken) {
-      background: #0f3460;
-      transform: scale(1.04);
-    }
-
+    .cell:hover:not(.taken) { background: #0f3460; transform: scale(1.04); }
     .cell.taken { cursor: default; }
-
     .cell.x { color: #e94560; }
     .cell.o { color: #a8d8ea; }
 
@@ -133,6 +151,9 @@
       background: #0f3460;
       box-shadow: 0 0 18px rgba(233, 69, 96, 0.5);
     }
+
+    /* ── Buttons ── */
+    .buttons { display: flex; gap: 12px; }
 
     button {
       margin-top: 4px;
@@ -148,19 +169,30 @@
       transition: background 0.15s, transform 0.1s;
     }
 
-    button:hover {
-      background: #c73652;
-      transform: scale(1.04);
+    button:hover { background: #c73652; transform: scale(1.04); }
+
+    #reset-scores {
+      background: #16213e;
+      color: #888;
+      font-size: 0.8rem;
+      padding: 12px 20px;
     }
+
+    #reset-scores:hover { background: #0f3460; color: #ccc; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Tic Tac Toe</h1>
 
+    <div class="mode-toggle">
+      <button id="btn-human" class="active">vs Human</button>
+      <button id="btn-cpu">vs Computer</button>
+    </div>
+
     <div class="scoreboard">
       <div class="score-box x">
-        <div class="label">Player X</div>
+        <div class="label" id="label-x">Player X</div>
         <div class="value" id="score-x">0</div>
       </div>
       <div class="score-box draw">
@@ -168,7 +200,7 @@
         <div class="value" id="score-draw">0</div>
       </div>
       <div class="score-box o">
-        <div class="label">Player O</div>
+        <div class="label" id="label-o">Player O</div>
         <div class="value" id="score-o">0</div>
       </div>
     </div>
@@ -176,21 +208,24 @@
     <div class="status" id="status"></div>
 
     <div class="board-wrap">
-    <div class="board" id="board">
-      <div class="cell" data-i="0"></div>
-      <div class="cell" data-i="1"></div>
-      <div class="cell" data-i="2"></div>
-      <div class="cell" data-i="3"></div>
-      <div class="cell" data-i="4"></div>
-      <div class="cell" data-i="5"></div>
-      <div class="cell" data-i="6"></div>
-      <div class="cell" data-i="7"></div>
-      <div class="cell" data-i="8"></div>
-    </div>
-    <svg class="win-svg" id="win-svg" viewBox="0 0 346 346"></svg>
+      <div class="board" id="board">
+        <div class="cell" data-i="0"></div>
+        <div class="cell" data-i="1"></div>
+        <div class="cell" data-i="2"></div>
+        <div class="cell" data-i="3"></div>
+        <div class="cell" data-i="4"></div>
+        <div class="cell" data-i="5"></div>
+        <div class="cell" data-i="6"></div>
+        <div class="cell" data-i="7"></div>
+        <div class="cell" data-i="8"></div>
+      </div>
+      <svg class="win-svg" id="win-svg" viewBox="0 0 346 346"></svg>
     </div>
 
-    <button id="restart">New Game</button>
+    <div class="buttons">
+      <button id="restart">New Game</button>
+      <button id="reset-scores">Reset Scores</button>
+    </div>
   </div>
 
   <script>
@@ -200,19 +235,148 @@
       [0,4,8],[2,4,6]
     ];
 
-    let board, current, gameOver;
-    const scores = { X: 0, O: 0, draw: 0 };
-
-    const cells = document.querySelectorAll('.cell');
-    const status = document.getElementById('status');
-    const winSvg = document.getElementById('win-svg');
-
-    // Cell centers within the 346x346 viewBox (110px cells, 8px gaps)
     const CENTERS = [
       [55,55],[173,55],[291,55],
       [55,173],[173,173],[291,173],
       [55,291],[173,291],[291,291]
     ];
+
+    let board, current, gameOver, vsComputer = false;
+    const scores = { X: 0, O: 0, draw: 0 };
+
+    const cells     = document.querySelectorAll('.cell');
+    const statusEl  = document.getElementById('status');
+    const winSvg    = document.getElementById('win-svg');
+    const labelX    = document.getElementById('label-x');
+    const labelO    = document.getElementById('label-o');
+    const btnHuman  = document.getElementById('btn-human');
+    const btnCpu    = document.getElementById('btn-cpu');
+
+    // ── Mode toggle ──────────────────────────────────────────
+    btnHuman.addEventListener('click', () => {
+      if (vsComputer) { vsComputer = false; syncModeUI(); resetScores(); newGame(); }
+    });
+    btnCpu.addEventListener('click', () => {
+      if (!vsComputer) { vsComputer = true; syncModeUI(); resetScores(); newGame(); }
+    });
+
+    function syncModeUI() {
+      btnHuman.classList.toggle('active', !vsComputer);
+      btnCpu.classList.toggle('active', vsComputer);
+      labelX.textContent = 'You (X)';
+      labelO.textContent = vsComputer ? 'Computer' : 'Player O';
+      if (!vsComputer) labelX.textContent = 'Player X';
+    }
+
+    // ── AI ───────────────────────────────────────────────────
+    function findWinningMove(b, player) {
+      for (const [a, m, c] of WINS) {
+        const vals = [b[a], b[m], b[c]];
+        const empties = [a, m, c].filter(i => !b[i]);
+        if (vals.filter(v => v === player).length === 2 && empties.length === 1) {
+          return empties[0];
+        }
+      }
+      return -1;
+    }
+
+    function cpuMove(b) {
+      // 1. Win if possible
+      const win = findWinningMove(b, 'O');
+      if (win !== -1) return win;
+
+      // 2. Block human from winning
+      const block = findWinningMove(b, 'X');
+      if (block !== -1) return block;
+
+      // 3. Center
+      if (!b[4]) return 4;
+
+      // 4. Opposite corner from human
+      const corners = [[0,8],[2,6],[6,2],[8,0]];
+      for (const [opp, me] of corners) {
+        if (b[opp] === 'X' && !b[me]) return me;
+      }
+
+      // 5. Any free corner
+      for (const i of [0, 2, 6, 8]) {
+        if (!b[i]) return i;
+      }
+
+      // 6. Any free edge
+      for (const i of [1, 3, 5, 7]) {
+        if (!b[i]) return i;
+      }
+
+      return -1;
+    }
+
+    // ── Core game ────────────────────────────────────────────
+    function setStatus(msg) { statusEl.innerHTML = msg; }
+
+    function checkWinner(b) {
+      for (const [a, m, c] of WINS) {
+        if (b[a] && b[a] === b[m] && b[a] === b[c]) {
+          return { winner: b[a], combo: [a, m, c] };
+        }
+      }
+      if (b.every(v => v)) return { winner: null, combo: [] };
+      return null;
+    }
+
+    function placeMarker(i) {
+      board[i] = current;
+      cells[i].textContent = current;
+      cells[i].classList.add('taken', current.toLowerCase());
+    }
+
+    function endGame(result) {
+      gameOver = true;
+      if (result.winner) {
+        scores[result.winner]++;
+        result.combo.forEach(i => cells[i].classList.add('winner'));
+        drawWinLine(result.combo, result.winner);
+        const name = vsComputer && result.winner === 'O' ? 'Computer' : `Player ${result.winner}`;
+        setStatus(`<span class="${result.winner.toLowerCase()}">${name}</span> wins!`);
+      } else {
+        scores.draw++;
+        setStatus('Draw!');
+      }
+      document.getElementById('score-x').textContent = scores.X;
+      document.getElementById('score-o').textContent = scores.O;
+      document.getElementById('score-draw').textContent = scores.draw;
+    }
+
+    function handleClick(e) {
+      const i = parseInt(e.target.dataset.i);
+      if (gameOver || board[i]) return;
+      if (vsComputer && current === 'O') return; // block clicks during CPU turn
+
+      placeMarker(i);
+      const result = checkWinner(board);
+      if (result) { endGame(result); return; }
+
+      current = current === 'X' ? 'O' : 'X';
+
+      if (vsComputer && current === 'O') {
+        // Disable board briefly while CPU "thinks"
+        setStatus(`<span class="o">Computer</span> is thinking…`);
+        cells.forEach(c => c.style.pointerEvents = 'none');
+        setTimeout(() => {
+          const move = cpuMove(board);
+          placeMarker(move);
+          const r2 = checkWinner(board);
+          if (r2) { endGame(r2); }
+          else {
+            current = 'X';
+            setStatus(`Your turn — <span class="x">X</span>`);
+          }
+          cells.forEach(c => c.style.pointerEvents = '');
+        }, 400);
+      } else {
+        setStatus(`Player <span class="${current.toLowerCase()}">${current}</span>'s turn`);
+      }
+    }
 
     function drawWinLine(combo, winner) {
       const [x1, y1] = CENTERS[combo[0]];
@@ -226,66 +390,30 @@
       winSvg.appendChild(line);
     }
 
-    function setStatus(msg) {
-      status.innerHTML = msg;
-    }
-
-    function checkWinner() {
-      for (const [a, b, c] of WINS) {
-        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-          return { winner: board[a], combo: [a, b, c] };
-        }
-      }
-      if (board.every(v => v)) return { winner: null, combo: [] };
-      return null;
-    }
-
-    function handleClick(e) {
-      const i = parseInt(e.target.dataset.i);
-      if (gameOver || board[i]) return;
-
-      board[i] = current;
-      const cell = e.target;
-      cell.textContent = current;
-      cell.classList.add('taken', current.toLowerCase());
-
-      const result = checkWinner();
-      if (result) {
-        gameOver = true;
-        if (result.winner) {
-          scores[result.winner]++;
-          result.combo.forEach(idx => cells[idx].classList.add('winner'));
-          drawWinLine(result.combo, result.winner);
-          setStatus(`Player <span class="${result.winner.toLowerCase()}">${result.winner}</span> wins!`);
-        } else {
-          scores.draw++;
-          setStatus('Draw!');
-        }
-        document.getElementById('score-x').textContent = scores.X;
-        document.getElementById('score-o').textContent = scores.O;
-        document.getElementById('score-draw').textContent = scores.draw;
-        return;
-      }
-
-      current = current === 'X' ? 'O' : 'X';
-      setStatus(`Player <span class="${current.toLowerCase()}">${current}</span>'s turn`);
-    }
-
     function newGame() {
       board = Array(9).fill('');
       current = 'X';
       gameOver = false;
-      cells.forEach(c => {
-        c.textContent = '';
-        c.className = 'cell';
-      });
+      cells.forEach(c => { c.textContent = ''; c.className = 'cell'; c.style.pointerEvents = ''; });
       winSvg.innerHTML = '';
-      setStatus(`Player <span class="x">X</span>'s turn`);
+      const msg = vsComputer
+        ? `Your turn — <span class="x">X</span>`
+        : `Player <span class="x">X</span>'s turn`;
+      setStatus(msg);
+    }
+
+    function resetScores() {
+      scores.X = 0; scores.O = 0; scores.draw = 0;
+      document.getElementById('score-x').textContent = 0;
+      document.getElementById('score-o').textContent = 0;
+      document.getElementById('score-draw').textContent = 0;
     }
 
     cells.forEach(c => c.addEventListener('click', handleClick));
     document.getElementById('restart').addEventListener('click', newGame);
+    document.getElementById('reset-scores').addEventListener('click', resetScores);
 
+    syncModeUI();
     newGame();
   </script>
 </body>
