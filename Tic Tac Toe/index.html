@@ -268,47 +268,55 @@
       if (!vsComputer) labelX.textContent = 'Player X';
     }
 
-    // ── AI ───────────────────────────────────────────────────
-    function findWinningMove(b, player) {
+    // ── AI (minimax — unbeatable) ─────────────────────────────
+    function score(b) {
       for (const [a, m, c] of WINS) {
-        const vals = [b[a], b[m], b[c]];
-        const empties = [a, m, c].filter(i => !b[i]);
-        if (vals.filter(v => v === player).length === 2 && empties.length === 1) {
-          return empties[0];
+        if (b[a] && b[a] === b[m] && b[a] === b[c]) {
+          return b[a] === 'O' ? 10 : -10;
         }
       }
-      return -1;
+      return 0;
+    }
+
+    function minimax(b, isMaximizing) {
+      const s = score(b);
+      if (s !== 0) return s;
+      if (b.every(v => v)) return 0;
+
+      if (isMaximizing) {
+        let best = -Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (!b[i]) {
+            b[i] = 'O';
+            best = Math.max(best, minimax(b, false));
+            b[i] = '';
+          }
+        }
+        return best;
+      } else {
+        let best = Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (!b[i]) {
+            b[i] = 'X';
+            best = Math.min(best, minimax(b, true));
+            b[i] = '';
+          }
+        }
+        return best;
+      }
     }
 
     function cpuMove(b) {
-      // 1. Win if possible
-      const win = findWinningMove(b, 'O');
-      if (win !== -1) return win;
-
-      // 2. Block human from winning
-      const block = findWinningMove(b, 'X');
-      if (block !== -1) return block;
-
-      // 3. Center
-      if (!b[4]) return 4;
-
-      // 4. Opposite corner from human
-      const corners = [[0,8],[2,6],[6,2],[8,0]];
-      for (const [opp, me] of corners) {
-        if (b[opp] === 'X' && !b[me]) return me;
+      let bestVal = -Infinity, bestMove = -1;
+      for (let i = 0; i < 9; i++) {
+        if (!b[i]) {
+          b[i] = 'O';
+          const val = minimax(b, false);
+          b[i] = '';
+          if (val > bestVal) { bestVal = val; bestMove = i; }
+        }
       }
-
-      // 5. Any free corner
-      for (const i of [0, 2, 6, 8]) {
-        if (!b[i]) return i;
-      }
-
-      // 6. Any free edge
-      for (const i of [1, 3, 5, 7]) {
-        if (!b[i]) return i;
-      }
-
-      return -1;
+      return bestMove;
     }
 
     // ── Core game ────────────────────────────────────────────
