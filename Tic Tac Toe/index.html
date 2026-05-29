@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tic Tac Toe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1a1a2e;
+      font-family: 'Segoe UI', sans-serif;
+      color: #eee;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #e94560;
+    }
+
+    .scoreboard {
+      display: flex;
+      gap: 40px;
+    }
+
+    .score-box {
+      text-align: center;
+      background: #16213e;
+      border-radius: 12px;
+      padding: 12px 28px;
+      min-width: 90px;
+    }
+
+    .score-box .label {
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .score-box.x .value { color: #e94560; }
+    .score-box.o .value { color: #0f3460; background: #e2e2e2; border-radius: 6px; }
+    .score-box.draw .value { color: #aaa; }
+
+    .score-box .value {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .status {
+      font-size: 1.1rem;
+      letter-spacing: 1px;
+      height: 28px;
+      color: #ccc;
+    }
+
+    .status span {
+      font-weight: 700;
+    }
+
+    .status .x { color: #e94560; }
+    .status .o { color: #a8d8ea; }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 110px);
+      grid-template-rows: repeat(3, 110px);
+      gap: 8px;
+    }
+
+    .cell {
+      background: #16213e;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      user-select: none;
+    }
+
+    .cell:hover:not(.taken) {
+      background: #0f3460;
+      transform: scale(1.04);
+    }
+
+    .cell.taken { cursor: default; }
+
+    .cell.x { color: #e94560; }
+    .cell.o { color: #a8d8ea; }
+
+    .cell.winner {
+      background: #0f3460;
+      box-shadow: 0 0 18px rgba(233, 69, 96, 0.5);
+    }
+
+    button {
+      margin-top: 4px;
+      padding: 12px 36px;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    button:hover {
+      background: #c73652;
+      transform: scale(1.04);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Tic Tac Toe</h1>
+
+    <div class="scoreboard">
+      <div class="score-box x">
+        <div class="label">Player X</div>
+        <div class="value" id="score-x">0</div>
+      </div>
+      <div class="score-box draw">
+        <div class="label">Draws</div>
+        <div class="value" id="score-draw">0</div>
+      </div>
+      <div class="score-box o">
+        <div class="label">Player O</div>
+        <div class="value" id="score-o">0</div>
+      </div>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div class="board" id="board">
+      <div class="cell" data-i="0"></div>
+      <div class="cell" data-i="1"></div>
+      <div class="cell" data-i="2"></div>
+      <div class="cell" data-i="3"></div>
+      <div class="cell" data-i="4"></div>
+      <div class="cell" data-i="5"></div>
+      <div class="cell" data-i="6"></div>
+      <div class="cell" data-i="7"></div>
+      <div class="cell" data-i="8"></div>
+    </div>
+
+    <button id="restart">New Game</button>
+  </div>
+
+  <script>
+    const WINS = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+
+    let board, current, gameOver;
+    const scores = { X: 0, O: 0, draw: 0 };
+
+    const cells = document.querySelectorAll('.cell');
+    const status = document.getElementById('status');
+
+    function setStatus(msg) {
+      status.innerHTML = msg;
+    }
+
+    function checkWinner() {
+      for (const [a, b, c] of WINS) {
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+          return { winner: board[a], combo: [a, b, c] };
+        }
+      }
+      if (board.every(v => v)) return { winner: null, combo: [] };
+      return null;
+    }
+
+    function handleClick(e) {
+      const i = parseInt(e.target.dataset.i);
+      if (gameOver || board[i]) return;
+
+      board[i] = current;
+      const cell = e.target;
+      cell.textContent = current;
+      cell.classList.add('taken', current.toLowerCase());
+
+      const result = checkWinner();
+      if (result) {
+        gameOver = true;
+        if (result.winner) {
+          scores[result.winner]++;
+          result.combo.forEach(idx => cells[idx].classList.add('winner'));
+          setStatus(`Player <span class="${result.winner.toLowerCase()}">${result.winner}</span> wins!`);
+        } else {
+          scores.draw++;
+          setStatus('Draw!');
+        }
+        document.getElementById('score-x').textContent = scores.X;
+        document.getElementById('score-o').textContent = scores.O;
+        document.getElementById('score-draw').textContent = scores.draw;
+        return;
+      }
+
+      current = current === 'X' ? 'O' : 'X';
+      setStatus(`Player <span class="${current.toLowerCase()}">${current}</span>'s turn`);
+    }
+
+    function newGame() {
+      board = Array(9).fill('');
+      current = 'X';
+      gameOver = false;
+      cells.forEach(c => {
+        c.textContent = '';
+        c.className = 'cell';
+      });
+      setStatus(`Player <span class="x">X</span>'s turn`);
+    }
+
+    cells.forEach(c => c.addEventListener('click', handleClick));
+    document.getElementById('restart').addEventListener('click', newGame);
+
+    newGame();
+  </script>
+</body>
+</html>
