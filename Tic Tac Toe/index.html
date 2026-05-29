@@ -75,11 +75,35 @@
     .status .x { color: #e94560; }
     .status .o { color: #a8d8ea; }
 
+    .board-wrap {
+      position: relative;
+    }
+
     .board {
       display: grid;
       grid-template-columns: repeat(3, 110px);
       grid-template-rows: repeat(3, 110px);
       gap: 8px;
+    }
+
+    .win-svg {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+
+    .win-line {
+      stroke-width: 6;
+      stroke-linecap: round;
+      fill: none;
+      stroke-dasharray: 400;
+      stroke-dashoffset: 400;
+      animation: draw-line 0.4s ease-out forwards;
+    }
+
+    @keyframes draw-line {
+      to { stroke-dashoffset: 0; }
     }
 
     .cell {
@@ -151,6 +175,7 @@
 
     <div class="status" id="status"></div>
 
+    <div class="board-wrap">
     <div class="board" id="board">
       <div class="cell" data-i="0"></div>
       <div class="cell" data-i="1"></div>
@@ -161,6 +186,8 @@
       <div class="cell" data-i="6"></div>
       <div class="cell" data-i="7"></div>
       <div class="cell" data-i="8"></div>
+    </div>
+    <svg class="win-svg" id="win-svg" viewBox="0 0 346 346"></svg>
     </div>
 
     <button id="restart">New Game</button>
@@ -178,6 +205,26 @@
 
     const cells = document.querySelectorAll('.cell');
     const status = document.getElementById('status');
+    const winSvg = document.getElementById('win-svg');
+
+    // Cell centers within the 346x346 viewBox (110px cells, 8px gaps)
+    const CENTERS = [
+      [55,55],[173,55],[291,55],
+      [55,173],[173,173],[291,173],
+      [55,291],[173,291],[291,291]
+    ];
+
+    function drawWinLine(combo, winner) {
+      const [x1, y1] = CENTERS[combo[0]];
+      const [x2, y2] = CENTERS[combo[2]];
+      const color = winner === 'X' ? '#e94560' : '#a8d8ea';
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+      line.setAttribute('stroke', color);
+      line.classList.add('win-line');
+      winSvg.appendChild(line);
+    }
 
     function setStatus(msg) {
       status.innerHTML = msg;
@@ -208,6 +255,7 @@
         if (result.winner) {
           scores[result.winner]++;
           result.combo.forEach(idx => cells[idx].classList.add('winner'));
+          drawWinLine(result.combo, result.winner);
           setStatus(`Player <span class="${result.winner.toLowerCase()}">${result.winner}</span> wins!`);
         } else {
           scores.draw++;
@@ -231,6 +279,7 @@
         c.textContent = '';
         c.className = 'cell';
       });
+      winSvg.innerHTML = '';
       setStatus(`Player <span class="x">X</span>'s turn`);
     }
 
