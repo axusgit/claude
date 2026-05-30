@@ -302,6 +302,44 @@
       labelO.textContent = vsComputer ? 'Computer' : 'Player O';
     }
 
+    // ── Sounds ───────────────────────────────────────────────
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playTone(freq, startTime, duration, gainVal, type = 'sine') {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(gainVal, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    }
+
+    function playVictory() {
+      // Ascending triumphant jingle
+      const t = audioCtx.currentTime;
+      const notes = [523, 659, 784, 1047];
+      notes.forEach((freq, i) => playTone(freq, t + i * 0.12, 0.25, 0.3, 'triangle'));
+      // Final chord shimmer
+      [1047, 1319, 1568].forEach(freq => playTone(freq, t + 0.55, 0.6, 0.15, 'sine'));
+    }
+
+    function playLoss() {
+      // Descending sad wah-wah
+      const t = audioCtx.currentTime;
+      const notes = [392, 349, 311, 261];
+      notes.forEach((freq, i) => playTone(freq, t + i * 0.18, 0.3, 0.3, 'sawtooth'));
+    }
+
+    function playDraw() {
+      const t = audioCtx.currentTime;
+      playTone(440, t,        0.15, 0.2, 'sine');
+      playTone(440, t + 0.2,  0.15, 0.15, 'sine');
+    }
+
     // ── AI: Easy — random ────────────────────────────────────
     function cpuEasy(b) {
       const empty = b.map((v, i) => v ? null : i).filter(i => i !== null);
@@ -400,9 +438,13 @@
         drawWinLine(result.combo, result.winner);
         const name = vsComputer && result.winner === 'O' ? 'Computer' : `Player ${result.winner}`;
         setStatus(`<span class="${result.winner.toLowerCase()}">${name}</span> wins!`);
+        // In vs Computer: X = human win, O = computer win
+        const humanWon = !vsComputer || result.winner === 'X';
+        humanWon ? playVictory() : playLoss();
       } else {
         scores.draw++;
         setStatus('Draw!');
+        playDraw();
       }
       document.getElementById('score-x').textContent    = scores.X;
       document.getElementById('score-o').textContent    = scores.O;
