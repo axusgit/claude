@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hangman</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #1a1a2e;
+      font-family: 'Segoe UI', sans-serif;
+      color: #eee;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 22px;
+      width: 100%;
+      max-width: 680px;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      color: #e94560;
+    }
+
+    /* ── Pill toggles ── */
+    .controls { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+
+    .pill {
+      display: flex;
+      background: #16213e;
+      border-radius: 50px;
+      padding: 4px;
+    }
+
+    .pill button {
+      margin: 0;
+      padding: 8px 20px;
+      background: transparent;
+      color: #888;
+      border: none;
+      border-radius: 50px;
+      font-size: 0.82rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .pill button:hover { color: #ccc; }
+    .pill button.active            { background: #e94560; color: #fff; }
+    .pill button.active.easy       { background: #27ae60; }
+    .pill button.active.normal     { background: #e67e22; }
+    .pill button.active.hard       { background: #e94560; }
+
+    /* ── Game area ── */
+    .game-area {
+      display: flex;
+      gap: 36px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* ── Hangman SVG ── */
+    #hangman-svg {
+      width: 200px;
+      height: 260px;
+      flex-shrink: 0;
+    }
+
+    #hangman-svg line, #hangman-svg circle {
+      stroke-width: 5;
+      stroke-linecap: round;
+      fill: none;
+    }
+
+    .gallows  { stroke: #334; }
+    .body-part {
+      stroke: #a8d8ea;
+      animation: pop-in 0.25s ease-out;
+    }
+
+    @keyframes pop-in {
+      from { opacity: 0; stroke-dashoffset: 60; }
+      to   { opacity: 1; stroke-dashoffset: 0; }
+    }
+
+    /* ── Right panel ── */
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      padding-top: 12px;
+    }
+
+    .word-display {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 360px;
+    }
+
+    .letter-slot {
+      width: 32px;
+      height: 48px;
+      border-bottom: 3px solid #445;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      font-size: 1.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding-bottom: 2px;
+      transition: color 0.2s;
+    }
+
+    .letter-slot.revealed { color: #a8d8ea; }
+    .letter-slot.missed   { color: #e94560; }
+
+    .wrong-info { text-align: center; }
+
+    .wrong-info .counter {
+      font-size: 0.9rem;
+      color: #888;
+      margin-bottom: 6px;
+    }
+
+    .wrong-info .counter span { color: #e94560; font-weight: 700; font-size: 1.1rem; }
+
+    .wrong-letters {
+      letter-spacing: 3px;
+      font-size: 1rem;
+      color: #e94560;
+      text-transform: uppercase;
+      min-height: 22px;
+    }
+
+    /* ── Keyboard ── */
+    .keyboard { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+    .key-row  { display: flex; gap: 7px; }
+
+    .key {
+      width: 42px;
+      height: 42px;
+      background: #16213e;
+      color: #eee;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.12s, transform 0.1s;
+    }
+
+    .key:hover:not(:disabled) { background: #0f3460; transform: scale(1.08); }
+    .key:disabled  { cursor: default; }
+    .key.correct   { background: #27ae60; color: #fff; opacity: 1; }
+    .key.wrong     { background: #c0392b; color: #fff; opacity: 0.6; }
+
+    /* ── New game button ── */
+    .btn {
+      padding: 12px 36px;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn:hover { background: #c73652; transform: scale(1.04); }
+    .btn.secondary { background: #16213e; color: #888; font-size: 0.85rem; padding: 10px 24px; }
+    .btn.secondary:hover { background: #0f3460; color: #ccc; }
+
+    /* ── Overlays ── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 20;
+      animation: fade-in 0.2s ease;
+    }
+
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+    .overlay.hidden { display: none; }
+
+    .overlay-box {
+      background: #16213e;
+      border-radius: 20px;
+      padding: 40px 48px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      max-width: 420px;
+      width: 90%;
+    }
+
+    .overlay-box h2 { font-size: 1.9rem; }
+    .overlay-box p  { color: #888; font-size: 0.95rem; line-height: 1.5; }
+    .overlay-box .win  { color: #27ae60; }
+    .overlay-box .lose { color: #e94560; }
+    .overlay-box .the-word {
+      font-size: 1.4rem;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+      color: #a8d8ea;
+      background: #0f3460;
+      padding: 10px 24px;
+      border-radius: 8px;
+    }
+
+    /* Word entry overlay */
+    .overlay-box input {
+      padding: 12px 20px;
+      background: #0f3460;
+      border: 2px solid #e94560;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1.4rem;
+      letter-spacing: 5px;
+      text-align: center;
+      outline: none;
+      width: 100%;
+      text-transform: uppercase;
+    }
+
+    .overlay-box input::placeholder { letter-spacing: 2px; color: #445; font-size: 1rem; }
+    .overlay-box .error { color: #e94560; font-size: 0.85rem; min-height: 18px; }
+
+    /* Countdown */
+    .countdown-num {
+      font-size: 5rem;
+      font-weight: 700;
+      color: #e94560;
+      line-height: 1;
+    }
+
+    /* Progress bar */
+    .progress-bar-wrap {
+      width: 100%;
+      background: #0f3460;
+      border-radius: 6px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: #27ae60;
+      border-radius: 6px;
+      transition: width 0.3s, background 0.3s;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Hangman</h1>
+
+  <!-- Toggles -->
+  <div class="controls">
+    <div class="pill" id="mode-pill">
+      <button id="btn-human">vs Human</button>
+      <button id="btn-cpu" class="active">vs Computer</button>
+    </div>
+    <div class="pill" id="diff-pill">
+      <button id="btn-easy" class="easy">Easy</button>
+      <button id="btn-normal" class="active normal">Normal</button>
+      <button id="btn-hard" class="hard">Hard</button>
+    </div>
+  </div>
+
+  <!-- Main game area -->
+  <div class="game-area">
+
+    <!-- Hangman SVG -->
+    <svg id="hangman-svg" viewBox="0 0 200 260">
+      <!-- Gallows -->
+      <line class="gallows" x1="20"  y1="250" x2="180" y2="250"/>
+      <line class="gallows" x1="60"  y1="250" x2="60"  y2="20"/>
+      <line class="gallows" x1="60"  y1="20"  x2="140" y2="20"/>
+      <line class="gallows" x1="140" y1="20"  x2="140" y2="45"/>
+      <!-- Body parts injected by JS -->
+    </svg>
+
+    <!-- Right panel -->
+    <div class="right-panel">
+      <div class="word-display" id="word-display"></div>
+
+      <!-- Progress bar -->
+      <div class="progress-bar-wrap" style="width:220px">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+
+      <div class="wrong-info">
+        <div class="counter">
+          Wrong: <span id="wrong-count">0</span> / <span id="max-wrong">6</span>
+        </div>
+        <div class="wrong-letters" id="wrong-letters"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard -->
+  <div class="keyboard">
+    <div class="key-row">
+      <button class="key" data-l="Q">Q</button><button class="key" data-l="W">W</button>
+      <button class="key" data-l="E">E</button><button class="key" data-l="R">R</button>
+      <button class="key" data-l="T">T</button><button class="key" data-l="Y">Y</button>
+      <button class="key" data-l="U">U</button><button class="key" data-l="I">I</button>
+      <button class="key" data-l="O">O</button><button class="key" data-l="P">P</button>
+    </div>
+    <div class="key-row">
+      <button class="key" data-l="A">A</button><button class="key" data-l="S">S</button>
+      <button class="key" data-l="D">D</button><button class="key" data-l="F">F</button>
+      <button class="key" data-l="G">G</button><button class="key" data-l="H">H</button>
+      <button class="key" data-l="J">J</button><button class="key" data-l="K">K</button>
+      <button class="key" data-l="L">L</button>
+    </div>
+    <div class="key-row">
+      <button class="key" data-l="Z">Z</button><button class="key" data-l="X">X</button>
+      <button class="key" data-l="C">C</button><button class="key" data-l="V">V</button>
+      <button class="key" data-l="B">B</button><button class="key" data-l="N">N</button>
+      <button class="key" data-l="M">M</button>
+    </div>
+  </div>
+
+  <button class="btn" id="new-game-btn">New Game</button>
+</div>
+
+<!-- ── Word entry overlay (human vs human) ── -->
+<div class="overlay hidden" id="word-overlay">
+  <div class="overlay-box">
+    <h2 style="color:#e94560">🤫 Player 1</h2>
+    <p>Type your secret word.<br>Player 2 will try to guess it.</p>
+    <input type="password" id="word-input" placeholder="Enter word…" maxlength="20" autocomplete="off" />
+    <div class="error" id="word-error"></div>
+    <button class="btn" id="word-submit">Start Game</button>
+  </div>
+</div>
+
+<!-- ── Pass screen overlay ── -->
+<div class="overlay hidden" id="pass-overlay">
+  <div class="overlay-box">
+    <h2 style="color:#e94560">🙈 Pass to Player 2!</h2>
+    <p>Player 1, look away — starting in:</p>
+    <div class="countdown-num" id="countdown">3</div>
+  </div>
+</div>
+
+<!-- ── Result overlay ── -->
+<div class="overlay hidden" id="result-overlay">
+  <div class="overlay-box">
+    <h2 id="result-title"></h2>
+    <p id="result-msg"></p>
+    <div class="the-word" id="result-word"></div>
+    <button class="btn" id="play-again-btn">Play Again</button>
+  </div>
+</div>
+
+<script>
+  // ── Word lists ─────────────────────────────────────────────
+  const WORDS = {
+    easy: [
+      'cat','dog','sun','hat','pen','cup','car','map','big','hot','red','box',
+      'key','bed','ant','bat','egg','fan','gem','ham','jam','jet','lip','mud',
+      'net','oak','pan','pie','pig','pot','rat','sea','sky','tea','tin','toe',
+      'war','web','win','zoo','frog','bear','fish','bird','tree','leaf','rain',
+      'snow','fire','rock','sand','gold','blue','pink','gray','boat','cake'
+    ],
+    normal: [
+      'apple','beach','cloud','dance','eagle','flash','grape','happy','juice',
+      'knife','lemon','music','night','ocean','piano','queen','river','sugar',
+      'tiger','voice','water','youth','zebra','anchor','bridge','castle','dollar',
+      'engine','finger','garden','hunter','jacket','kettle','market','orange',
+      'parrot','rabbit','silver','tunnel','wallet','banana','butter','camera',
+      'desert','family','forest','planet','school','winter','summer','spring',
+      'basket','candle','figure','gentle','handle','insect','junior','keeper'
+    ],
+    hard: [
+      'absolute','boundary','champion','crescent','dissolve','elephant','fragment',
+      'gradient','illusion','jealousy','keyboard','labyrinth','obstacle','paradise',
+      'quantity','research','stranger','thousand','universe','vacation','wanderer',
+      'yearbook','backbone','calendar','diameter','farewell','geometry','junction',
+      'knapsack','language','mountain','operator','prophecy','shoulder','template',
+      'umbrella','volunteer','yourself','zeppelin','abstract','alchemy','alchemy',
+      'beginning','challenge','chemistry','classical','colleague','companion'
+    ]
+  };
+
+  // Wrong guesses allowed per difficulty
+  const MAX_WRONG = { easy: 8, normal: 6, hard: 5 };
+
+  // SVG body parts per difficulty
+  // Easy: 8 parts (+ feet), Normal: 6 parts, Hard: 5 parts (arms drawn together)
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
+  function ln(x1,y1,x2,y2) {
+    const l = document.createElementNS(SVG_NS,'line');
+    l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+    l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+    l.classList.add('body-part');
+    return [l];
+  }
+
+  function circle() {
+    const c = document.createElementNS(SVG_NS,'circle');
+    c.setAttribute('cx',140); c.setAttribute('cy',63); c.setAttribute('r',18);
+    c.classList.add('body-part');
+    return [c];
+  }
+
+  const PARTS = {
+    easy: [
+      circle,                                          // 1. Head
+      ()=>ln(140,81,140,155),                          // 2. Body
+      ()=>ln(140,100,105,130),                         // 3. Left arm
+      ()=>ln(140,100,175,130),                         // 4. Right arm
+      ()=>ln(140,155,110,200),                         // 5. Left leg
+      ()=>ln(140,155,170,200),                         // 6. Right leg
+      ()=>ln(110,200,88,212),                          // 7. Left foot
+      ()=>ln(170,200,192,212),                         // 8. Right foot
+    ],
+    normal: [
+      circle,
+      ()=>ln(140,81,140,155),
+      ()=>ln(140,100,105,130),
+      ()=>ln(140,100,175,130),
+      ()=>ln(140,155,110,200),
+      ()=>ln(140,155,170,200),
+    ],
+    hard: [
+      circle,
+      ()=>ln(140,81,140,155),
+      ()=>[...ln(140,100,105,130),...ln(140,100,175,130)], // both arms at once!
+      ()=>ln(140,155,110,200),
+      ()=>ln(140,155,170,200),
+    ]
+  };
+
+  // ── State ──────────────────────────────────────────────────
+  let mode = 'cpu', difficulty = 'normal';
+  let secretWord = '', guessed = new Set(), wrongCount = 0, gameOver = false;
+
+  // ── Audio ──────────────────────────────────────────────────
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+
+  function tone(freq, start, dur, vol, type='sine') {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.type = type;
+    o.frequency.setValueAtTime(freq, start);
+    g.gain.setValueAtTime(vol, start);
+    g.gain.exponentialRampToValueAtTime(0.001, start+dur);
+    o.start(start); o.stop(start+dur);
+  }
+
+  const snd = {
+    correct() { tone(880, ac.currentTime, 0.12, 0.2); },
+    wrong()   { tone(140, ac.currentTime, 0.18, 0.3, 'sawtooth'); },
+    win()  {
+      const t = ac.currentTime;
+      [523,659,784,1047].forEach((f,i) => tone(f, t+i*0.12, 0.25, 0.3, 'triangle'));
+      [1047,1319,1568].forEach(f => tone(f, t+0.56, 0.55, 0.15));
+    },
+    lose() {
+      const t = ac.currentTime;
+      [392,349,311,261].forEach((f,i) => tone(f, t+i*0.18, 0.28, 0.3, 'sawtooth'));
+    }
+  };
+
+  // ── Toggle sync ────────────────────────────────────────────
+  function syncUI() {
+    ['human','cpu'].forEach(m =>
+      document.getElementById(`btn-${m}`).classList.toggle('active', mode===m));
+    ['easy','normal','hard'].forEach(d => {
+      const b = document.getElementById(`btn-${d}`);
+      b.classList.toggle('active', difficulty===d);
+    });
+    document.getElementById('max-wrong').textContent = MAX_WRONG[difficulty];
+  }
+
+  document.getElementById('btn-human').addEventListener('click', () => {
+    mode='human'; syncUI(); startGame();
+  });
+  document.getElementById('btn-cpu').addEventListener('click', () => {
+    mode='cpu'; syncUI(); startGame();
+  });
+  ['easy','normal','hard'].forEach(d => {
+    document.getElementById(`btn-${d}`).addEventListener('click', () => {
+      difficulty=d; syncUI(); startGame();
+    });
+  });
+
+  // ── Start flow ─────────────────────────────────────────────
+  function startGame() {
+    hideAll();
+    if (mode === 'human') {
+      document.getElementById('word-input').value = '';
+      document.getElementById('word-error').textContent = '';
+      show('word-overlay');
+    } else {
+      const list = WORDS[difficulty];
+      secretWord = list[Math.floor(Math.random()*list.length)].toUpperCase();
+      initBoard();
+    }
+  }
+
+  // Word entry submit
+  document.getElementById('word-submit').addEventListener('click', submitWord);
+  document.getElementById('word-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitWord();
+  });
+
+  function submitWord() {
+    const val = document.getElementById('word-input').value.trim().toUpperCase();
+    const err = document.getElementById('word-error');
+    if (!val)                   { err.textContent = 'Please enter a word.'; return; }
+    if (!/^[A-Z]+$/.test(val)) { err.textContent = 'Letters only — no spaces or numbers.'; return; }
+    if (val.length < 2)         { err.textContent = 'Word must be at least 2 letters.'; return; }
+    secretWord = val;
+    show('pass-overlay');
+    let n = 3;
+    document.getElementById('countdown').textContent = n;
+    const t = setInterval(() => {
+      n--;
+      if (n > 0) { document.getElementById('countdown').textContent = n; }
+      else { clearInterval(t); hide('pass-overlay'); initBoard(); }
+    }, 1000);
+  }
+
+  // ── Init board ─────────────────────────────────────────────
+  function initBoard() {
+    guessed = new Set(); wrongCount = 0; gameOver = false;
+
+    // Clear body parts
+    document.querySelectorAll('.body-part').forEach(e => e.remove());
+
+    // Word slots
+    const display = document.getElementById('word-display');
+    display.innerHTML = '';
+    [...secretWord].forEach(l => {
+      const s = document.createElement('div');
+      s.className = 'letter-slot';
+      s.dataset.l = l;
+      display.appendChild(s);
+    });
+
+    // Reset keyboard
+    document.querySelectorAll('.key').forEach(k => {
+      k.disabled = false; k.className = 'key';
+    });
+
+    document.getElementById('wrong-count').textContent  = 0;
+    document.getElementById('max-wrong').textContent    = MAX_WRONG[difficulty];
+    document.getElementById('wrong-letters').textContent = '';
+    updateProgress();
+  }
+
+  // ── Guess logic ────────────────────────────────────────────
+  document.querySelectorAll('.key').forEach(k =>
+    k.addEventListener('click', () => guess(k.dataset.l, k)));
+
+  document.addEventListener('keydown', e => {
+    if (gameOver) return;
+    const l = e.key.toUpperCase();
+    if (/^[A-Z]$/.test(l) && !guessed.has(l)) {
+      const k = document.querySelector(`.key[data-l="${l}"]`);
+      if (k && !k.disabled) guess(l, k);
+    }
+  });
+
+  function guess(letter, btn) {
+    if (gameOver || guessed.has(letter)) return;
+    guessed.add(letter);
+    btn.disabled = true;
+
+    if (secretWord.includes(letter)) {
+      btn.classList.add('correct');
+      snd.correct();
+      document.querySelectorAll(`.letter-slot[data-l="${letter}"]`).forEach(s => {
+        s.textContent = letter;
+        s.classList.add('revealed');
+      });
+      if ([...document.querySelectorAll('.letter-slot')].every(s => s.textContent)) {
+        gameOver = true;
+        snd.win();
+        setTimeout(() => showResult(true), 500);
+      }
+    } else {
+      btn.classList.add('wrong');
+      snd.wrong();
+      wrongCount++;
+      document.getElementById('wrong-count').textContent = wrongCount;
+
+      // Wrong letters list
+      const wrongs = [...guessed].filter(l => !secretWord.includes(l));
+      document.getElementById('wrong-letters').textContent = wrongs.join(' ');
+
+      // Draw next body part
+      const parts = PARTS[difficulty];
+      if (wrongCount <= parts.length) {
+        parts[wrongCount-1]().forEach(el =>
+          document.getElementById('hangman-svg').appendChild(el));
+      }
+
+      updateProgress();
+
+      if (wrongCount >= MAX_WRONG[difficulty]) {
+        gameOver = true;
+        // Reveal missing letters in red
+        document.querySelectorAll('.letter-slot').forEach(s => {
+          if (!s.textContent) { s.textContent = s.dataset.l; s.classList.add('missed'); }
+        });
+        snd.lose();
+        setTimeout(() => showResult(false), 600);
+      }
+    }
+  }
+
+  function updateProgress() {
+    const pct = Math.max(0, 100 - (wrongCount / MAX_WRONG[difficulty]) * 100);
+    const bar = document.getElementById('progress-bar');
+    bar.style.width = pct + '%';
+    bar.style.background = pct > 60 ? '#27ae60' : pct > 30 ? '#e67e22' : '#e94560';
+  }
+
+  // ── Result overlay ─────────────────────────────────────────
+  function showResult(won) {
+    const title = document.getElementById('result-title');
+    const msg   = document.getElementById('result-msg');
+    title.className = won ? 'win' : 'lose';
+    title.textContent = won ? '🎉 You Win!' : '💀 Game Over';
+    const guesser = mode === 'human' ? 'Player 2' : 'You';
+    msg.textContent = won
+      ? `${guesser} guessed it!`
+      : `The word was:`;
+    document.getElementById('result-word').textContent = secretWord;
+    show('result-overlay');
+  }
+
+  // ── Buttons ────────────────────────────────────────────────
+  document.getElementById('new-game-btn').addEventListener('click', startGame);
+  document.getElementById('play-again-btn').addEventListener('click', startGame);
+
+  // ── Overlay helpers ────────────────────────────────────────
+  function show(id) { document.getElementById(id).classList.remove('hidden'); }
+  function hide(id) { document.getElementById(id).classList.add('hidden'); }
+  function hideAll() {
+    ['word-overlay','pass-overlay','result-overlay'].forEach(hide);
+  }
+
+  // ── Boot ───────────────────────────────────────────────────
+  syncUI();
+  startGame();
+</script>
+</body>
+</html>
