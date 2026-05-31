@@ -211,6 +211,27 @@
     .overlay-box .win  { color: #27ae60; }
     .overlay-box .draw { color: #e67e22; }
     .overlay-box .lose { color: #e94560; }
+
+    /* ── Move log ── */
+    .move-log {
+      background: #16213e;
+      border-radius: 10px;
+      padding: 10px 12px;
+      width: 100%;
+      max-width: 530px;
+      max-height: 100px;
+      overflow-y: auto;
+      font-size: 0.82rem;
+      color: #888;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      align-items: flex-start;
+    }
+
+    .move-log .mv-w { color: #f0d9b5; }
+    .move-log .mv-b { color: #b58863; }
+    .move-log .mv-num { color: #555; }
   </style>
 </head>
 <body>
@@ -247,6 +268,7 @@
   </div>
 
   <button class="btn" id="new-btn">New Game</button>
+  <div class="move-log" id="move-log"></div>
 </div>
 
 <div class="overlay hidden" id="overlay">
@@ -522,10 +544,38 @@ function cpuMove(b, diff, ep, cas) {
   return bestM;
 }
 
+// ── Move notation helpers ─────────────────────────────────────
+const FILES = 'abcdefgh';
+
+function toAN(r, c) { return FILES[c] + (8 - r); }
+
+function moveLabel(b, m) {
+  const pc = b[m.fr][m.fc];
+  if (!pc) return '??';
+  const type = pc[1];
+  const capture = b[m.tr][m.tc] || m.ep ? 'x' : '';
+  const prefix = type === 'P' ? (capture ? FILES[m.fc] : '') : type;
+  const suffix = m.promo ? '=Q' : m.cRook ? (m.tc > m.fc ? 'O-O' : 'O-O-O') : '';
+  if (m.cRook) return m.tc > m.fc ? 'O-O' : 'O-O-O';
+  return prefix + capture + toAN(m.tr, m.tc) + suffix;
+}
+
+// ── Move validator (safety net) ───────────────────────────────
+function assertLegal(m) {
+  const legal = legalMoves(board, m.fr, m.fc, ep, cas);
+  const ok = legal.some(l => l.tr === m.tr && l.tc === m.tc);
+  if (!ok) {
+    const pc = board[m.fr] && board[m.fr][m.fc];
+    console.error(`ILLEGAL MOVE blocked: ${pc} ${toAN(m.fr,m.fc)}→${toAN(m.tr,m.tc)}`);
+  }
+  return ok;
+}
+
 // ── Game state ─────────────────────────────────────────────────
 let board, curPlayer, sel, validMs, ep, cas, lastM, gameOver, thinking;
 let vsComp=false, diff='normal';
 let caps={w:[],b:[]};
+let moveHistory=[], moveCount=1;
 
 // ── New game ──────────────────────────────────────────────────
 function newGame(){
@@ -534,8 +584,10 @@ function newGame(){
   cas={wK:true,wQ:true,bK:true,bQ:true};
   lastM=null; gameOver=false; thinking=false;
   caps={w:[],b:[]};
+  moveHistory=[]; moveCount=1;
   document.getElementById('cap-w').textContent='';
   document.getElementById('cap-b').textContent='';
+  document.getElementById('move-log').innerHTML='';
   document.getElementById('overlay').classList.add('hidden');
   render(); updateStatus();
 }
@@ -619,6 +671,24 @@ function handleClick(r, c){
 
 // ── Execute move ──────────────────────────────────────────────
 function doMove(m){
+  // Safety: block any move that isn't in the legal list
+  if (!assertLegal(m)) return;
+
+  // Log the move
+  const label = moveLabel(board, m);
+  const log = document.getElementById('move-log');
+  if (curPlayer === 'w') {
+    const num = document.createElement('span');
+    num.className = 'mv-num'; num.textContent = moveCount + '.';
+    log.appendChild(num);
+    moveCount++;
+  }
+  const entry = document.createElement('span');
+  entry.className = curPlayer === 'w' ? 'mv-w' : 'mv-b';
+  entry.textContent = label;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+
   // Track captures
   const tgt=board[m.tr][m.tc];
   if(tgt) caps[curPlayer].push(tgt);
