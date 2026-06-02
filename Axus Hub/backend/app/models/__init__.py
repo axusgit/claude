@@ -6,3 +6,4 @@ from app.models.ticket import (
     TicketStatus, TicketPriority, TicketType,
 )
 from app.models.attachment import Attachment
+from app.models.contact import Contact

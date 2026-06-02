@@ -102,7 +102,7 @@ const App = (() => {
       return;
     }
     empty.classList.add("hidden"); list.classList.remove("hidden");
-    const open = tickets.filter(t => !["resolved", "closed"].includes(t.status)).length;
+    const open = tickets.filter(t => t.status !== "closed").length;
     $("list-summary").textContent = `${tickets.length} total · ${open} open`;
     for (const t of tickets) {
       const el = document.createElement("div");

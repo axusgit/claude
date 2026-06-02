@@ -6,9 +6,12 @@ const Staff = (() => {
   let me = null;
   let tickets = [];                 // full set
   let clientMap = {}, userMap = {}; // id -> name
+  let clientsData = [];             // full customer records
+  let usersData = [];               // full user records
   let staffUsers = [];              // assignable
   let filter = "open";
   let current = null;               // open ticket object
+  let currentCustomer = null;       // open customer object
 
   /* ---------- Theme ---------- */
   function applyTheme(t) {
@@ -49,8 +52,13 @@ const Staff = (() => {
   /* ---------- Views ---------- */
   const showLogin = () => { $("login-view").classList.remove("hidden"); $("app-view").classList.add("hidden"); };
   const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); };
-  const showQueue = () => { $("queue-view").classList.remove("hidden"); $("detail-view").classList.add("hidden"); };
-  const showDetail = () => { $("queue-view").classList.add("hidden"); $("detail-view").classList.remove("hidden"); };
+  const VIEWS = ["queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view"];
+  const hideViews = () => VIEWS.forEach(id => $(id).classList.add("hidden"));
+  const showQueue = () => { hideViews(); $("queue-view").classList.remove("hidden"); };
+  const showDetail = () => { hideViews(); $("detail-view").classList.remove("hidden"); };
+  const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); };
+  const showCustomerDetail = () => { hideViews(); $("customer-detail-view").classList.remove("hidden"); };
+  const showUsers = () => { hideViews(); $("users-view").classList.remove("hidden"); };
 
   /* ---------- Auth ---------- */
   async function login(email, password) {
@@ -70,14 +78,18 @@ const Staff = (() => {
     $("who-name").textContent = me.full_name;
     $("who-role").textContent = cap(me.role);
     const [cl, us] = await Promise.all([api("/api/clients/"), api("/api/users/")]);
+    clientsData = cl; usersData = us;
     clientMap = {}; cl.forEach(c => clientMap[c.id] = c.company_name);
     userMap = {}; us.forEach(u => userMap[u.id] = u.full_name);
     staffUsers = us.filter(u => u.role !== "client");
+    $("c-customers").textContent = cl.length;
+    $("c-users").textContent = us.length;
     // populate company + assignee selects
     fillSelect($("f-client"), cl.map(c => [c.id, c.company_name]), "All companies");
     fillSelect($("nt-client"), cl.map(c => [c.id, c.company_name]), null);
     fillSelect($("nt-assignee"), staffUsers.map(u => [u.id, u.full_name]), "Unassigned");
     fillSelect($("d-assignee"), staffUsers.map(u => [u.id, u.full_name]), "Unassigned");
+    fillSelect($("uf-client"), cl.map(c => [c.id, c.company_name]), "— None —");
     await loadTickets();
   }
   function fillSelect(sel, pairs, placeholder) {
@@ -95,7 +107,7 @@ const Staff = (() => {
       case "mine": return ACTIVE.includes(t.status) && t.assigned_to_id === me.id;
       case "waiting": return t.status === "waiting";
       case "in_progress": return t.status === "in_progress";
-      case "resolved": return t.status === "resolved";
+      case "closed": return t.status === "closed";
       default: return true; // all
     }
   }
@@ -105,19 +117,19 @@ const Staff = (() => {
     }).length;
     $("c-open").textContent = c("open"); $("c-unassigned").textContent = c("unassigned");
     $("c-mine").textContent = c("mine"); $("c-waiting").textContent = c("waiting");
-    $("c-inprogress").textContent = c("in_progress"); $("c-resolved").textContent = c("resolved");
+    $("c-inprogress").textContent = c("in_progress"); $("c-closed").textContent = c("closed");
     $("c-all").textContent = tickets.length;
   }
   function renderStats() {
     const open = tickets.filter(t => ACTIVE.includes(t.status)).length;
     const unassigned = tickets.filter(t => ACTIVE.includes(t.status) && !t.assigned_to_id).length;
     const inprog = tickets.filter(t => t.status === "in_progress").length;
-    const resolved = tickets.filter(t => t.status === "resolved").length;
+    const closed = tickets.filter(t => t.status === "closed").length;
     $("stats-row").innerHTML = `
       ${statCard(open, "Open tickets", "accent")}
       ${statCard(unassigned, "Unassigned", unassigned ? "danger" : "")}
       ${statCard(inprog, "In progress", "")}
-      ${statCard(resolved, "Resolved", "good")}`;
+      ${statCard(closed, "Closed", "good")}`;
   }
   const statCard = (n, label, cls) => `<div class="stat-card ${cls}"><div class="stat-num">${n}</div><div class="stat-label">${label}</div></div>`;
 
@@ -169,6 +181,11 @@ const Staff = (() => {
     $("p-type").textContent = current.ticket_type === "sow" ? "SOW / Project" : "Standard";
     $("p-hours").textContent = (current.total_hours || 0) + " h";
     $("p-created").textContent = fmtDate(current.created_at);
+    // resolve reporting contact name
+    if (current.contact_id) {
+      try { const cs = await api(`/api/clients/${current.client_id}/contacts`); const ct = cs.find(x => x.id === current.contact_id); $("p-contact").textContent = ct ? ct.full_name : "—"; }
+      catch (e) { $("p-contact").textContent = "—"; }
+    } else { $("p-contact").textContent = "—"; }
     showDetail();
     await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id)]);
   }
@@ -261,9 +278,262 @@ const Staff = (() => {
     toast((t.reference || "Ticket") + " created");
   }
 
+  /* ---------- Customers ---------- */
+  let custEditId = null;
+
+  async function refreshClients() {
+    clientsData = await api("/api/clients/");
+    clientMap = {}; clientsData.forEach(c => clientMap[c.id] = c.company_name);
+    $("c-customers").textContent = clientsData.length;
+  }
+
+  function renderCustomers() {
+    const q = ($("cust-search").value || "").toLowerCase();
+    const rows = clientsData
+      .filter(c => !q || `${c.company_name} ${c.contact_name} ${c.email}`.toLowerCase().includes(q))
+      .sort((a, b) => a.company_name.localeCompare(b.company_name));
+    $("cust-summary").textContent = `${clientsData.length} customer${clientsData.length === 1 ? "" : "s"}`;
+    const tbody = $("customer-rows"); tbody.innerHTML = "";
+    $("customers-empty").classList.toggle("hidden", rows.length > 0);
+    for (const c of rows) {
+      const tcount = tickets.filter(t => t.client_id === c.id).length;
+      const tr = document.createElement("tr");
+      tr.onclick = () => openCustomer(c.id);
+      tr.innerHTML = `
+        <td class="cell-subject">${esc(c.company_name)}</td>
+        <td>${esc(c.contact_name)}</td>
+        <td class="cell-muted">${esc(c.email)}</td>
+        <td class="cell-muted">${esc(c.phone || "—")}</td>
+        <td>${tcount}</td>
+        <td><span class="badge ${c.is_active ? "resolved" : "closed"}">${c.is_active ? "Active" : "Inactive"}</span></td>
+        <td class="cell-muted">${c.created_at ? fmtDate(c.created_at) : "—"}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function openCustomer(id) {
+    currentCustomer = await api(`/api/clients/${id}`);
+    const c = currentCustomer;
+    $("cd-name").textContent = c.company_name;
+    $("cd-status").className = "badge " + (c.is_active ? "resolved" : "closed");
+    $("cd-status").textContent = c.is_active ? "Active" : "Inactive";
+    $("cd-contact").textContent = c.contact_name;
+    $("cd-email").textContent = c.email;
+    $("cd-phone").textContent = c.phone || "—";
+    if (c.website) {
+      const url = /^https?:\/\//i.test(c.website) ? c.website : "https://" + c.website;
+      $("cd-website").innerHTML = `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--orange)">${esc(c.website)}</a>`;
+    } else { $("cd-website").textContent = "—"; }
+    $("cd-address").textContent = c.address || "—";
+    $("cd-since").textContent = c.created_at ? fmtDate(c.created_at) : "—";
+    // recent tickets for this customer (from already-loaded set)
+    const theirs = tickets.filter(t => t.client_id === id)
+      .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)).slice(0, 8);
+    const box = $("cd-tickets"); box.innerHTML = "";
+    if (!theirs.length) box.innerHTML = `<div class="muted">No tickets yet.</div>`;
+    theirs.forEach(t => {
+      const row = document.createElement("div");
+      row.className = "time-item"; row.style.cursor = "pointer";
+      row.innerHTML = `<span><span class="time-hours">${esc(t.reference || "")}</span> ${esc(t.title)}</span><span class="badge ${t.status}">${cap(t.status)}</span>`;
+      row.onclick = () => openTicket(t.id);
+      box.appendChild(row);
+    });
+    showCustomerDetail();
+    const [users, contacts] = await Promise.all([
+      api(`/api/clients/${id}/portal-users`),
+      api(`/api/clients/${id}/contacts`),
+    ]);
+    $("cd-users").innerHTML = users.length
+      ? users.map(u => `<div class="time-item"><span>${esc(u.full_name)}<br><span class="cell-muted">${esc(u.email)}</span></span></div>`).join("")
+      : `<div class="muted">No portal logins yet.</div>`;
+    renderContacts(contacts);
+  }
+
+  let contactEditId = null;
+  function renderContacts(contacts) {
+    const box = $("cd-contacts"); box.innerHTML = "";
+    if (!contacts.length) { box.innerHTML = `<div class="muted">No contacts yet.</div>`; return; }
+    contacts.forEach(c => {
+      const row = document.createElement("div");
+      row.className = "contact-item";
+      row.innerHTML = `<div class="contact-av">${initials(c.full_name)}</div>
+        <div class="contact-info">
+          <div class="contact-name">${esc(c.full_name)}${c.title ? ` · <span class="cell-muted" style="font-weight:500">${esc(c.title)}</span>` : ""}</div>
+          <div class="contact-meta">${esc(c.email || "")}${c.email && c.phone ? " · " : ""}${esc(c.phone || "")}</div>
+        </div>`;
+      row.onclick = () => showContactModal(c);
+      box.appendChild(row);
+    });
+  }
+  function showContactModal(c) {
+    $("co-error").textContent = "";
+    if (c) {
+      $("contact-modal-title").textContent = "Edit Contact";
+      $("co-name").value = c.full_name; $("co-title").value = c.title || "";
+      $("co-email").value = c.email || ""; $("co-phone").value = c.phone || "";
+      contactEditId = c.id; $("co-delete").style.display = "";
+    } else {
+      $("contact-modal-title").textContent = "Add Contact";
+      $("contact-form").reset(); contactEditId = null; $("co-delete").style.display = "none";
+    }
+    $("contact-modal").classList.remove("hidden");
+  }
+  const closeContactModal = () => $("contact-modal").classList.add("hidden");
+  async function saveContact() {
+    const payload = {
+      full_name: $("co-name").value.trim(),
+      title: $("co-title").value.trim() || null,
+      email: $("co-email").value.trim() || null,
+      phone: $("co-phone").value.trim() || null,
+    };
+    const cid = currentCustomer.id;
+    if (contactEditId) await api(`/api/clients/${cid}/contacts/${contactEditId}`, { method: "PUT", body: payload });
+    else await api(`/api/clients/${cid}/contacts`, { method: "POST", body: payload });
+    closeContactModal(); await openCustomer(cid); toast("Contact saved");
+  }
+  async function deleteContact() {
+    if (!contactEditId) return;
+    await api(`/api/clients/${currentCustomer.id}/contacts/${contactEditId}`, { method: "DELETE" });
+    closeContactModal(); await openCustomer(currentCustomer.id); toast("Contact removed");
+  }
+
+  function showCustModal(c) {
+    $("cf-error").textContent = "";
+    if (c) {
+      $("cust-modal-title").textContent = "Edit Customer";
+      $("cf-company").value = c.company_name; $("cf-contact").value = c.contact_name;
+      $("cf-email").value = c.email; $("cf-phone").value = c.phone || "";
+      $("cf-website").value = c.website || "";
+      $("cf-address").value = c.address || ""; $("cf-active").value = String(c.is_active);
+      custEditId = c.id;
+    } else {
+      $("cust-modal-title").textContent = "New Customer";
+      $("cust-form").reset(); custEditId = null;
+    }
+    $("cust-modal").classList.remove("hidden");
+  }
+  const closeCustModal = () => $("cust-modal").classList.add("hidden");
+
+  async function saveCustomer() {
+    const payload = {
+      company_name: $("cf-company").value.trim(),
+      contact_name: $("cf-contact").value.trim(),
+      email: $("cf-email").value.trim(),
+      phone: $("cf-phone").value.trim() || null,
+      website: $("cf-website").value.trim() || null,
+      address: $("cf-address").value.trim() || null,
+      is_active: $("cf-active").value === "true",
+    };
+    if (custEditId) await api(`/api/clients/${custEditId}`, { method: "PUT", body: payload });
+    else await api("/api/clients/", { method: "POST", body: payload });
+    closeCustModal();
+    await refreshClients();
+    renderCustomers();
+    if (custEditId && currentCustomer && currentCustomer.id === custEditId) await openCustomer(custEditId);
+    toast("Customer saved");
+  }
+
+  async function addPortalUser() {
+    await api(`/api/clients/${currentCustomer.id}/portal-users`, {
+      method: "POST",
+      body: { full_name: $("pu-name").value.trim(), email: $("pu-email").value.trim(), password: $("pu-password").value },
+    });
+    $("puser-modal").classList.add("hidden"); $("pu-form").reset();
+    await openCustomer(currentCustomer.id);
+    toast("Portal login created");
+  }
+
+  /* ---------- Users ---------- */
+  let userEditId = null;
+  const roleBadge = { admin: "waiting", technician: "open", client: "in_progress" };
+
+  async function refreshUsers() {
+    usersData = await api("/api/users/");
+    userMap = {}; usersData.forEach(u => userMap[u.id] = u.full_name);
+    staffUsers = usersData.filter(u => u.role !== "client");
+    $("c-users").textContent = usersData.length;
+  }
+
+  function renderUsers() {
+    const q = ($("user-search").value || "").toLowerCase();
+    const fr = $("uf-role").value;
+    const rows = usersData
+      .filter(u => !fr || u.role === fr)
+      .filter(u => !q || `${u.full_name} ${u.email}`.toLowerCase().includes(q))
+      .sort((a, b) => a.full_name.localeCompare(b.full_name));
+    $("users-summary").textContent = `${usersData.length} user${usersData.length === 1 ? "" : "s"}`;
+    const tbody = $("user-rows"); tbody.innerHTML = "";
+    $("users-empty").classList.toggle("hidden", rows.length > 0);
+    for (const u of rows) {
+      const tr = document.createElement("tr");
+      tr.onclick = () => showUserModal(u);
+      tr.innerHTML = `
+        <td class="cell-subject">${esc(u.full_name)}</td>
+        <td class="cell-muted">${esc(u.email)}</td>
+        <td class="cell-muted">${esc(u.phone || "—")}</td>
+        <td><span class="badge ${roleBadge[u.role] || "closed"}">${cap(u.role)}</span></td>
+        <td class="cell-muted">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
+        <td><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function showUserModal(u) {
+    $("uf-error").textContent = "";
+    if (u) {
+      $("user-modal-title").textContent = "Edit User";
+      $("uf-name").value = u.full_name; $("uf-email").value = u.email;
+      $("uf-phone").value = u.phone || ""; $("uf-roleSel").value = u.role;
+      $("uf-active").value = String(u.is_active); $("uf-client").value = u.client_id || "";
+      userEditId = u.id;
+      $("uf-pw-wrap").style.display = "none";   // no password change on edit
+    } else {
+      $("user-modal-title").textContent = "New User";
+      $("user-form").reset(); userEditId = null;
+      $("uf-pw-wrap").style.display = "";
+    }
+    $("user-modal").classList.remove("hidden");
+  }
+  const closeUserModal = () => $("user-modal").classList.add("hidden");
+
+  async function saveUser() {
+    const clientVal = $("uf-client").value;
+    const base = {
+      full_name: $("uf-name").value.trim(),
+      email: $("uf-email").value.trim(),
+      phone: $("uf-phone").value.trim() || null,
+      role: $("uf-roleSel").value,
+      client_id: clientVal ? parseInt(clientVal) : null,
+    };
+    if (userEditId) {
+      await api(`/api/users/${userEditId}`, { method: "PUT", body: { ...base, is_active: $("uf-active").value === "true" } });
+    } else {
+      const pw = $("uf-password").value;
+      if (!pw) { $("uf-error").textContent = "Password is required for a new user"; return; }
+      await api("/api/users/", { method: "POST", body: { ...base, password: pw } });
+    }
+    closeUserModal();
+    await Promise.all([refreshUsers(), refreshClients()]);
+    renderUsers();
+    toast("User saved");
+  }
+
   /* ---------- Modal ---------- */
-  const showNew = () => { $("new-modal").classList.remove("hidden"); $("nt-title").focus(); };
+  const showNew = () => { $("new-modal").classList.remove("hidden"); $("nt-contact").innerHTML = `<option value="">— None —</option>`; $("nt-title").focus(); };
   const closeNew = () => { $("new-modal").classList.add("hidden"); $("new-form").reset(); $("nt-error").textContent = ""; };
+
+  async function loadContactsInto(selectEl, clientId) {
+    selectEl.innerHTML = `<option value="">— None —</option>`;
+    if (!clientId) return;
+    try {
+      const contacts = await api(`/api/clients/${clientId}/contacts`);
+      contacts.forEach(c => {
+        const o = document.createElement("option");
+        o.value = c.id; o.textContent = c.full_name + (c.title ? ` (${c.title})` : "");
+        selectEl.appendChild(o);
+      });
+    } catch (e) { /* ignore */ }
+  }
 
   /* ---------- Wiring ---------- */
   async function start() {
@@ -283,13 +553,42 @@ const Staff = (() => {
     $("modal-close").onclick = closeNew; $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showQueue(); };
 
-    // sidebar nav
+    // customers
+    $("cust-search").oninput = renderCustomers;
+    $("new-customer-btn").onclick = () => showCustModal(null);
+    $("cust-modal-close").onclick = closeCustModal; $("cf-cancel").onclick = closeCustModal;
+    $("cust-back-btn").onclick = () => { showCustomers(); renderCustomers(); };
+    $("cd-edit-btn").onclick = () => showCustModal(currentCustomer);
+    $("cust-form").onsubmit = async e => { e.preventDefault(); $("cf-error").textContent = ""; try { await saveCustomer(); } catch (err) { $("cf-error").textContent = err.message; } };
+    $("cd-adduser-btn").onclick = () => { $("pu-error").textContent = ""; $("pu-form").reset(); $("puser-modal").classList.remove("hidden"); };
+    $("pu-close").onclick = () => $("puser-modal").classList.add("hidden");
+    $("pu-cancel").onclick = () => $("puser-modal").classList.add("hidden");
+    $("pu-form").onsubmit = async e => { e.preventDefault(); $("pu-error").textContent = ""; try { await addPortalUser(); } catch (err) { $("pu-error").textContent = err.message; } };
+
+    // contacts
+    $("cd-addcontact-btn").onclick = () => showContactModal(null);
+    $("co-close").onclick = closeContactModal; $("co-cancel").onclick = closeContactModal;
+    $("contact-form").onsubmit = async e => { e.preventDefault(); $("co-error").textContent = ""; try { await saveContact(); } catch (err) { $("co-error").textContent = err.message; } };
+    $("co-delete").onclick = async () => { try { await deleteContact(); } catch (err) { $("co-error").textContent = err.message; } };
+
+    // ticket form: load contacts when company changes
+    $("nt-client").onchange = () => loadContactsInto($("nt-contact"), $("nt-client").value);
+
+    // users
+    $("user-search").oninput = renderUsers;
+    $("uf-role").onchange = renderUsers;
+    $("new-user-btn").onclick = () => showUserModal(null);
+    $("um-close").onclick = closeUserModal; $("uf-cancel").onclick = closeUserModal;
+    $("user-form").onsubmit = async e => { e.preventDefault(); $("uf-error").textContent = ""; try { await saveUser(); } catch (err) { $("uf-error").textContent = err.message; } };
+
+    // sidebar nav (ticket queues + manage sections)
     document.querySelectorAll(".nav-item").forEach(item => {
       item.onclick = () => {
         document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
         item.classList.add("active");
-        filter = item.dataset.filter;
-        showQueue(); renderQueue();
+        if (item.dataset.section === "customers") { showCustomers(); renderCustomers(); }
+        else if (item.dataset.section === "users") { showUsers(); renderUsers(); }
+        else { filter = item.dataset.filter; showQueue(); renderQueue(); }
       };
     });
     // toolbar
@@ -331,6 +630,7 @@ const Staff = (() => {
         client_id: parseInt(clientId),
       };
       const a = $("nt-assignee").value; if (a) payload.assigned_to_id = parseInt(a);
+      const ct = $("nt-contact").value; if (ct) payload.contact_id = parseInt(ct);
       try { await createTicket(payload); } catch (err) { $("nt-error").textContent = err.message; }
     };
 

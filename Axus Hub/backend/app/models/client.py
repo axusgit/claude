@@ -11,6 +11,7 @@ class Client(Base):
     contact_name = Column(String, nullable=False)
     email = Column(String, nullable=False)
     phone = Column(String)
+    website = Column(String)
     address = Column(Text)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

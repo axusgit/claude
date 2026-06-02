@@ -101,6 +101,17 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(247,148,29,
   border-radius: 8px; display: flex; justify-content: space-between; gap: 8px; }
 .time-hours { font-weight: 700; color: var(--orange); }
 
+/* ---------- Contacts ---------- */
+.contact-list { display: flex; flex-direction: column; gap: 8px; }
+.contact-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; cursor: pointer; transition: border-color .15s; }
+.contact-item:hover { border-color: var(--orange); }
+.contact-av { width: 30px; height: 30px; border-radius: 50%; background: var(--grad); color: #fff;
+  font-size: 11px; font-weight: 700; display: grid; place-items: center; flex-shrink: 0; }
+.contact-info { min-width: 0; flex: 1; }
+.contact-name { font-size: 13px; font-weight: 600; }
+.contact-meta { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ---------- Activity timeline ---------- */
 .activity { display: flex; flex-direction: column; gap: 0; }
 .act-item { display: flex; gap: 12px; padding-bottom: 14px; position: relative; }

@@ -18,6 +18,7 @@ class User(Base):
     full_name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
     role = Column(Enum(UserRole), default=UserRole.technician, nullable=False)
+    phone = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     # Set for client-portal users: ties the login to the company they belong to,
     # so the portal can scope them to their own tickets only.

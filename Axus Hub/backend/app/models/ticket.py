@@ -9,7 +9,6 @@ class TicketStatus(str, enum.Enum):
     open = "open"
     in_progress = "in_progress"
     waiting = "waiting"
-    resolved = "resolved"
     closed = "closed"
 
 
@@ -39,6 +38,7 @@ class Ticket(Base):
     ticket_type = Column(Enum(TicketType), default=TicketType.standard, nullable=False)
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)  # who reported it
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 

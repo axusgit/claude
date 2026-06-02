@@ -29,6 +29,7 @@ class TicketIn(BaseModel):
     category: Optional[str] = None
     priority: str = "medium"
     client_id: int
+    contact_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
 
 
@@ -129,6 +130,7 @@ class TicketOut(BaseModel):
     priority: str
     ticket_type: str
     client_id: int
+    contact_id: Optional[int]
     assigned_to_id: Optional[int]
     created_by_id: int
     total_hours: float
@@ -194,7 +196,7 @@ def update_ticket(ticket_id: int, data: TicketUpdate, db: Session = Depends(get_
         setattr(ticket, key, value)
 
     # Auto-close timestamp
-    if data.status in (TicketStatus.closed, TicketStatus.resolved) and not ticket.closed_at:
+    if data.status == TicketStatus.closed and not ticket.closed_at:
         ticket.closed_at = datetime.utcnow()
 
     for field, label in AUDITED_FIELDS.items():

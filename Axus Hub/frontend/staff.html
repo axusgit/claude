@@ -56,8 +56,11 @@
           <a data-filter="waiting" class="nav-item">Waiting on Client <span class="nav-count" id="c-waiting"></span></a>
           <div class="side-label">Status</div>
           <a data-filter="in_progress" class="nav-item">In Progress <span class="nav-count" id="c-inprogress"></span></a>
-          <a data-filter="resolved" class="nav-item">Resolved <span class="nav-count" id="c-resolved"></span></a>
+          <a data-filter="closed" class="nav-item">Closed <span class="nav-count" id="c-closed"></span></a>
           <a data-filter="all" class="nav-item">All Tickets <span class="nav-count" id="c-all"></span></a>
+          <div class="side-label">Manage</div>
+          <a data-section="customers" class="nav-item">Customers <span class="nav-count" id="c-customers"></span></a>
+          <a data-section="users" class="nav-item">Users <span class="nav-count" id="c-users"></span></a>
         </nav>
       </aside>
 
@@ -95,7 +98,7 @@
               <label class="ctl">Status
                 <select id="d-status">
                   <option value="open">Open</option><option value="in_progress">In Progress</option>
-                  <option value="waiting">Waiting</option><option value="resolved">Resolved</option><option value="closed">Closed</option>
+                  <option value="waiting">Waiting</option><option value="closed">Closed</option>
                 </select>
               </label>
               <label class="ctl">Priority
@@ -136,6 +139,7 @@
                 <h3 class="card-title">Properties</h3>
                 <dl class="props">
                   <dt>Company</dt><dd id="p-company"></dd>
+                  <dt>Contact</dt><dd id="p-contact"></dd>
                   <dt>Category</dt><dd id="p-category"></dd>
                   <dt>Type</dt><dd id="p-type"></dd>
                   <dt>Total hours</dt><dd id="p-hours"></dd>
@@ -161,7 +165,164 @@
             </aside>
           </div>
         </section>
+
+        <!-- CUSTOMERS LIST -->
+        <section id="customers-view" class="hidden">
+          <div class="page-head">
+            <div><h2>Customers</h2><p class="muted" id="cust-summary"></p></div>
+            <button class="btn btn-primary" id="new-customer-btn">+ New Customer</button>
+          </div>
+          <div class="toolbar"><input type="search" id="cust-search" placeholder="Search customers…" class="search-box" /></div>
+          <div class="table-wrap">
+            <table class="ticket-table">
+              <thead><tr><th>Company</th><th>Primary Contact</th><th>Email</th><th>Phone</th><th>Tickets</th><th>Status</th><th>Added</th></tr></thead>
+              <tbody id="customer-rows"></tbody>
+            </table>
+            <div id="customers-empty" class="empty hidden"><div class="empty-emoji">🏢</div><h3>No customers</h3><p class="muted">Add your first customer to get started.</p></div>
+          </div>
+        </section>
+
+        <!-- CUSTOMER DETAIL -->
+        <section id="customer-detail-view" class="hidden">
+          <button class="back-link" id="cust-back-btn">← Back to customers</button>
+          <div class="detail-top card">
+            <div class="detail-top-head"><h2 id="cd-name"></h2><span id="cd-status" class="badge"></span></div>
+            <button class="btn btn-ghost" id="cd-edit-btn">Edit customer</button>
+          </div>
+          <div class="detail-grid">
+            <div class="detail-main">
+              <div class="card">
+                <h3 class="card-title">Company details</h3>
+                <dl class="props">
+                  <dt>Primary contact</dt><dd id="cd-contact"></dd>
+                  <dt>Email</dt><dd id="cd-email"></dd>
+                  <dt>Phone</dt><dd id="cd-phone"></dd>
+                  <dt>Website</dt><dd id="cd-website"></dd>
+                  <dt>Address</dt><dd id="cd-address"></dd>
+                  <dt>Customer since</dt><dd id="cd-since"></dd>
+                </dl>
+              </div>
+              <div class="card">
+                <h3 class="card-title">Recent tickets</h3>
+                <div id="cd-tickets"></div>
+              </div>
+            </div>
+            <aside class="detail-side">
+              <div class="card">
+                <h3 class="card-title">Contacts</h3>
+                <div id="cd-contacts" class="contact-list"></div>
+                <button class="btn btn-ghost btn-block" id="cd-addcontact-btn" style="margin-top:12px">+ Add contact</button>
+              </div>
+              <div class="card">
+                <h3 class="card-title">Portal logins</h3>
+                <div id="cd-users" class="time-list"></div>
+                <button class="btn btn-ghost btn-block" id="cd-adduser-btn" style="margin-top:12px">+ Add portal login</button>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- USERS -->
+        <section id="users-view" class="hidden">
+          <div class="page-head">
+            <div><h2>Users</h2><p class="muted" id="users-summary"></p></div>
+            <button class="btn btn-primary" id="new-user-btn">+ New User</button>
+          </div>
+          <div class="toolbar">
+            <input type="search" id="user-search" placeholder="Search users…" class="search-box" />
+            <select id="uf-role"><option value="">All roles</option><option value="admin">Admin</option><option value="technician">Technician</option><option value="client">Client (portal)</option></select>
+          </div>
+          <div class="table-wrap">
+            <table class="ticket-table">
+              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Company</th><th>Status</th></tr></thead>
+              <tbody id="user-rows"></tbody>
+            </table>
+            <div id="users-empty" class="empty hidden"><div class="empty-emoji">👥</div><h3>No users</h3><p class="muted">Add a staff member or portal user.</p></div>
+          </div>
+        </section>
       </main>
+    </div>
+  </div>
+
+  <!-- CUSTOMER MODAL -->
+  <div id="cust-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2 id="cust-modal-title">New Customer</h2><button class="modal-x" id="cust-modal-close">×</button></div>
+      <form id="cust-form">
+        <label>Company name<input type="text" id="cf-company" required /></label>
+        <div class="form-row">
+          <label>Primary contact<input type="text" id="cf-contact" required /></label>
+          <label>Email<input type="email" id="cf-email" required /></label>
+        </div>
+        <div class="form-row">
+          <label>Phone<input type="text" id="cf-phone" /></label>
+          <label>Website<input type="text" id="cf-website" placeholder="company.com" /></label>
+        </div>
+        <div class="form-row">
+          <label>Status<select id="cf-active"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+          <label>&nbsp;</label>
+        </div>
+        <label>Address<textarea id="cf-address" rows="2"></textarea></label>
+        <div id="cf-error" class="form-error"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="cf-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD PORTAL USER MODAL -->
+  <div id="puser-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2>Add Portal Login</h2><button class="modal-x" id="pu-close">×</button></div>
+      <form id="pu-form">
+        <label>Full name<input type="text" id="pu-name" required /></label>
+        <label>Email<input type="email" id="pu-email" required /></label>
+        <label>Temporary password<input type="text" id="pu-password" required placeholder="At least 8 characters" /></label>
+        <div id="pu-error" class="form-error"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="pu-cancel">Cancel</button><button type="submit" class="btn btn-primary">Create login</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CONTACT MODAL -->
+  <div id="contact-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2 id="contact-modal-title">Add Contact</h2><button class="modal-x" id="co-close">×</button></div>
+      <form id="contact-form">
+        <label>Full name<input type="text" id="co-name" required placeholder="Jim Smith" /></label>
+        <label>Job title<input type="text" id="co-title" placeholder="IT Manager" /></label>
+        <div class="form-row">
+          <label>Email<input type="email" id="co-email" placeholder="jim@company.com" /></label>
+          <label>Phone<input type="text" id="co-phone" placeholder="555-0123" /></label>
+        </div>
+        <div id="co-error" class="form-error"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="co-delete" style="margin-right:auto;display:none">Delete</button>
+          <button type="button" class="btn btn-ghost" id="co-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- USER MODAL -->
+  <div id="user-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2 id="user-modal-title">New User</h2><button class="modal-x" id="um-close">×</button></div>
+      <form id="user-form">
+        <label>Full name<input type="text" id="uf-name" required /></label>
+        <div class="form-row">
+          <label>Email<input type="email" id="uf-email" required /></label>
+          <label>Phone<input type="text" id="uf-phone" /></label>
+        </div>
+        <div class="form-row">
+          <label>Role<select id="uf-roleSel"><option value="admin">Admin</option><option value="technician" selected>Technician</option><option value="client">Client (portal)</option></select></label>
+          <label>Status<select id="uf-active"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+        </div>
+        <label id="uf-client-wrap">Company <span class="muted">(for portal users)</span><select id="uf-client"><option value="">— None —</option></select></label>
+        <label id="uf-pw-wrap">Password<input type="text" id="uf-password" placeholder="Set a password" /></label>
+        <div id="uf-error" class="form-error"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="uf-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
     </div>
   </div>
 
@@ -172,6 +333,7 @@
       <form id="new-form">
         <label>Subject<input type="text" id="nt-title" required placeholder="Short summary" /></label>
         <label>Company<select id="nt-client" required></select></label>
+        <label>Contact<select id="nt-contact"><option value="">— None —</option></select></label>
         <label>Description<textarea id="nt-desc" rows="3" placeholder="Details…"></textarea></label>
         <div class="form-row">
           <label>Category<select id="nt-category"><option value="">— Select —</option><option>Network</option><option>Wireless</option><option>Cloud</option><option>Security</option><option>Email</option><option>Hardware</option><option>Software</option><option>Other</option></select></label>

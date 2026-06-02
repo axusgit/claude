@@ -52,6 +52,8 @@ make sure the chosen `PORT` is open in the security group.
 | Ticket activity log | `GET /api/tickets/{id}/activity` (audit trail of lifecycle events) |
 | Ticket attachments | `POST` (multipart) / `GET` list / `GET /{attachment_id}` download / `DELETE` under `/api/tickets/{id}/attachments` |
 | Portal provisioning | `POST /api/clients/{id}/portal-users` (staff creates a client login) |
+| Customer contacts | `GET/POST /api/clients/{id}/contacts`, `PUT/DELETE /api/clients/{id}/contacts/{cid}` (people who belong to a customer) |
+| Users (staff + portal) | `GET/POST /api/users/`, `PUT /api/users/{id}` (manage accounts: role, company, phone, status) |
 | Client portal | `GET /api/portal/me`, `GET/POST /api/portal/tickets`, `GET /api/portal/tickets/{id}`, comments + attachments under it — all scoped to the user's own company |
 
 Authenticated requests use a bearer token: `Authorization: Bearer <token>` from login.
@@ -77,8 +79,10 @@ categories, activity log, attachments, **client portal** (branded SPA, dark/ligh
 theme; clients submit/reply/attach — scoped to their own company), and a
 **technician console** at `/staff` (queue with filters + stats, live status/priority/
 assignee editing, public + internal replies, time logging, attachments, activity).
-**Ticketing next:** service boards/queues, companies & contacts, billing-ready time,
-email-to-ticket + notifications.
+**Admin built:** Customers (list/detail/edit, website, portal logins), Contacts
+(people per customer), tickets carry a reporting contact, and a Users section
+(manage staff & portal accounts — role, company, phone, status).
+**Next:** service boards/queues, billing-ready time, email-to-ticket + notifications.
 (No SLA tracking by design — Axus staff resolve issues ASAP rather than to fixed targets.)
 **Billing (QuickBooks replacement) — not started:** invoices API (model exists,
 no router), payments/A-R, tax, reports.
