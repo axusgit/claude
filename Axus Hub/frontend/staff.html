@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Axus Hub — Service Desk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/staff.css" />
+</head>
+<body>
+  <!-- ===================== LOGIN ===================== -->
+  <div id="login-view" class="login-wrap">
+    <button class="theme-toggle theme-toggle-float" id="theme-toggle-login" title="Toggle dark / light"><span class="theme-icon">🌙</span></button>
+    <div class="login-aurora"></div>
+    <div class="login-card">
+      <img class="login-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus Technologies" />
+      <h1>Service Desk</h1>
+      <p class="login-sub">Staff sign-in</p>
+      <form id="login-form">
+        <label>Email<input type="email" id="login-email" required autocomplete="username" placeholder="you@axustechnologies.com" /></label>
+        <label>Password<input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" /></label>
+        <div id="login-error" class="form-error"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="login-btn">Sign in</button>
+      </form>
+      <div class="login-foot">Simplifying <span>IT</span></div>
+    </div>
+  </div>
+
+  <!-- ===================== APP ===================== -->
+  <div id="app-view" class="hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <img class="topbar-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus" />
+        <span class="desk-tag">Service Desk</span>
+      </div>
+      <div class="topbar-right">
+        <button class="theme-toggle" id="theme-toggle" title="Toggle dark / light"><span class="theme-icon">🌙</span></button>
+        <div class="who"><span id="who-name" class="who-name"></span><span id="who-role" class="who-company"></span></div>
+        <button class="btn btn-ghost" id="logout-btn">Sign out</button>
+      </div>
+    </header>
+    <div class="accent-strip"></div>
+
+    <div class="layout">
+      <!-- SIDEBAR -->
+      <aside class="sidebar">
+        <button class="btn btn-primary btn-block" id="new-ticket-btn">+ New Ticket</button>
+        <nav class="side-nav" id="side-nav">
+          <div class="side-label">Queues</div>
+          <a data-filter="open" class="nav-item active">Open <span class="nav-count" id="c-open"></span></a>
+          <a data-filter="unassigned" class="nav-item">Unassigned <span class="nav-count" id="c-unassigned"></span></a>
+          <a data-filter="mine" class="nav-item">My Tickets <span class="nav-count" id="c-mine"></span></a>
+          <a data-filter="waiting" class="nav-item">Waiting on Client <span class="nav-count" id="c-waiting"></span></a>
+          <div class="side-label">Status</div>
+          <a data-filter="in_progress" class="nav-item">In Progress <span class="nav-count" id="c-inprogress"></span></a>
+          <a data-filter="resolved" class="nav-item">Resolved <span class="nav-count" id="c-resolved"></span></a>
+          <a data-filter="all" class="nav-item">All Tickets <span class="nav-count" id="c-all"></span></a>
+        </nav>
+      </aside>
+
+      <!-- CONTENT -->
+      <main class="content">
+        <!-- QUEUE -->
+        <section id="queue-view">
+          <div class="stats-row" id="stats-row"></div>
+          <div class="toolbar">
+            <input type="search" id="search" placeholder="Search ref, subject, company…" class="search-box" />
+            <select id="f-priority"><option value="">All priorities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Normal</option><option value="low">Low</option></select>
+            <select id="f-client"><option value="">All companies</option></select>
+            <h3 class="queue-title" id="queue-title"></h3>
+          </div>
+          <div class="table-wrap">
+            <table class="ticket-table">
+              <thead><tr>
+                <th>Ref</th><th>Subject</th><th>Company</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Updated</th>
+              </tr></thead>
+              <tbody id="ticket-rows"></tbody>
+            </table>
+            <div id="queue-empty" class="empty hidden"><div class="empty-emoji">✅</div><h3>Nothing here</h3><p class="muted">No tickets match this view.</p></div>
+          </div>
+        </section>
+
+        <!-- DETAIL -->
+        <section id="detail-view" class="hidden">
+          <button class="back-link" id="back-btn">← Back to queue</button>
+          <div class="detail-top card">
+            <div class="detail-top-head">
+              <span id="d-ref" class="ref-pill"></span>
+              <h2 id="d-title"></h2>
+            </div>
+            <div class="control-row">
+              <label class="ctl">Status
+                <select id="d-status">
+                  <option value="open">Open</option><option value="in_progress">In Progress</option>
+                  <option value="waiting">Waiting</option><option value="resolved">Resolved</option><option value="closed">Closed</option>
+                </select>
+              </label>
+              <label class="ctl">Priority
+                <select id="d-priority">
+                  <option value="low">Low</option><option value="medium">Normal</option><option value="high">High</option><option value="critical">Critical</option>
+                </select>
+              </label>
+              <label class="ctl">Assignee
+                <select id="d-assignee"><option value="">Unassigned</option></select>
+              </label>
+            </div>
+          </div>
+
+          <div class="detail-grid">
+            <div class="detail-main">
+              <div class="card">
+                <p id="d-desc" class="detail-desc"></p>
+              </div>
+              <div class="card">
+                <h3 class="card-title">Conversation</h3>
+                <div id="thread" class="thread"></div>
+                <form id="reply-form" class="reply-form">
+                  <textarea id="reply-body" rows="3" placeholder="Write a reply…" required></textarea>
+                  <div class="reply-actions">
+                    <label class="internal-toggle"><input type="checkbox" id="reply-internal" /> Internal note (staff only)</label>
+                    <button type="submit" class="btn btn-primary" id="reply-btn">Post</button>
+                  </div>
+                </form>
+              </div>
+              <div class="card">
+                <h3 class="card-title">Activity</h3>
+                <div id="activity" class="activity"></div>
+              </div>
+            </div>
+
+            <aside class="detail-side">
+              <div class="card">
+                <h3 class="card-title">Properties</h3>
+                <dl class="props">
+                  <dt>Company</dt><dd id="p-company"></dd>
+                  <dt>Category</dt><dd id="p-category"></dd>
+                  <dt>Type</dt><dd id="p-type"></dd>
+                  <dt>Total hours</dt><dd id="p-hours"></dd>
+                  <dt>Opened</dt><dd id="p-created"></dd>
+                </dl>
+              </div>
+              <div class="card">
+                <h3 class="card-title">Log time</h3>
+                <form id="time-form" class="time-form">
+                  <div class="time-row">
+                    <input type="number" id="time-hours" step="0.25" min="0" placeholder="Hours" required />
+                    <button type="submit" class="btn btn-primary">Log</button>
+                  </div>
+                  <input type="text" id="time-notes" placeholder="What did you do?" />
+                </form>
+                <div id="time-list" class="time-list"></div>
+              </div>
+              <div class="card">
+                <h3 class="card-title">Attachments</h3>
+                <div id="attach-list" class="attach-list"></div>
+                <label class="upload-box"><input type="file" id="attach-input" hidden /><span>📎 Add a file</span></label>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- ===================== NEW TICKET MODAL ===================== -->
+  <div id="new-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2>New Ticket</h2><button class="modal-x" id="modal-close">×</button></div>
+      <form id="new-form">
+        <label>Subject<input type="text" id="nt-title" required placeholder="Short summary" /></label>
+        <label>Company<select id="nt-client" required></select></label>
+        <label>Description<textarea id="nt-desc" rows="3" placeholder="Details…"></textarea></label>
+        <div class="form-row">
+          <label>Category<select id="nt-category"><option value="">— Select —</option><option>Network</option><option>Wireless</option><option>Cloud</option><option>Security</option><option>Email</option><option>Hardware</option><option>Software</option><option>Other</option></select></label>
+          <label>Priority<select id="nt-priority"><option value="low">Low</option><option value="medium" selected>Normal</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+        </div>
+        <label>Assignee<select id="nt-assignee"><option value="">Unassigned</option></select></label>
+        <div id="nt-error" class="form-error"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="nt-cancel">Cancel</button><button type="submit" class="btn btn-primary">Create ticket</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/staff.js"></script>
+</body>
+</html>

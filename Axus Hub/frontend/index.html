@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Axus Hub — Client Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <!-- ===================== LOGIN ===================== -->
+  <div id="login-view" class="login-wrap">
+    <button class="theme-toggle theme-toggle-float" id="theme-toggle-login" title="Toggle dark / light">
+      <span class="theme-icon">🌙</span>
+    </button>
+    <div class="login-aurora"></div>
+    <div class="login-card">
+      <img class="login-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus Technologies" />
+      <h1>Client Portal</h1>
+      <p class="login-sub">Track your support tickets &amp; talk to our team</p>
+      <form id="login-form">
+        <label>Email
+          <input type="email" id="login-email" required autocomplete="username" placeholder="you@company.com" />
+        </label>
+        <label>Password
+          <input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" />
+        </label>
+        <div id="login-error" class="form-error"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="login-btn">Sign in</button>
+      </form>
+      <div class="login-foot">Simplifying <span>IT</span></div>
+    </div>
+  </div>
+
+  <!-- ===================== APP ===================== -->
+  <div id="app-view" class="hidden">
+    <header class="topbar">
+      <img class="topbar-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus Technologies" />
+      <div class="topbar-right">
+        <button class="theme-toggle" id="theme-toggle" title="Toggle dark / light">
+          <span class="theme-icon">🌙</span>
+        </button>
+        <div class="who">
+          <span id="who-name" class="who-name"></span>
+          <span id="who-company" class="who-company"></span>
+        </div>
+        <button class="btn btn-ghost" id="logout-btn">Sign out</button>
+      </div>
+    </header>
+    <div class="accent-strip"></div>
+
+    <main class="container">
+      <!-- LIST -->
+      <section id="list-view">
+        <div class="page-head">
+          <div>
+            <h2>Your Tickets</h2>
+            <p class="muted" id="list-summary"></p>
+          </div>
+          <button class="btn btn-primary" id="new-ticket-btn">+ New Ticket</button>
+        </div>
+        <div id="ticket-list" class="ticket-list"></div>
+        <div id="list-empty" class="empty hidden">
+          <div class="empty-emoji">🎉</div>
+          <h3>No tickets yet</h3>
+          <p class="muted">When you submit a request, it’ll show up here.</p>
+          <button class="btn btn-primary" onclick="App.showNew()">Submit your first ticket</button>
+        </div>
+      </section>
+
+      <!-- DETAIL -->
+      <section id="detail-view" class="hidden">
+        <button class="back-link" id="back-btn">← Back to tickets</button>
+        <div class="detail-grid">
+          <div class="detail-main">
+            <div class="card">
+              <div class="detail-head">
+                <span id="d-ref" class="ref-pill"></span>
+                <span id="d-status" class="badge"></span>
+                <span id="d-priority" class="prio"></span>
+              </div>
+              <h2 id="d-title"></h2>
+              <p id="d-desc" class="detail-desc"></p>
+              <div class="meta-row">
+                <span id="d-category" class="chip"></span>
+                <span id="d-created" class="muted"></span>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3 class="card-title">Conversation</h3>
+              <div id="thread" class="thread"></div>
+              <form id="reply-form" class="reply-form">
+                <textarea id="reply-body" rows="3" placeholder="Write a reply to our team…" required></textarea>
+                <div class="reply-actions">
+                  <button type="submit" class="btn btn-primary">Send reply</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <aside class="detail-side">
+            <div class="card">
+              <h3 class="card-title">Attachments</h3>
+              <div id="attach-list" class="attach-list"></div>
+              <label class="upload-box">
+                <input type="file" id="attach-input" hidden />
+                <span>📎 Add a file</span>
+              </label>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===================== NEW TICKET MODAL ===================== -->
+  <div id="new-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>New Ticket</h2>
+        <button class="modal-x" id="modal-close">×</button>
+      </div>
+      <form id="new-form">
+        <label>Subject
+          <input type="text" id="nt-title" required placeholder="Brief summary of the issue" />
+        </label>
+        <label>Description
+          <textarea id="nt-desc" rows="4" placeholder="What’s going on? Include any details that help us help you."></textarea>
+        </label>
+        <div class="form-row">
+          <label>Category
+            <select id="nt-category">
+              <option value="">— Select —</option>
+              <option>Network</option><option>Wireless</option><option>Cloud</option>
+              <option>Security</option><option>Email</option><option>Hardware</option>
+              <option>Software</option><option>Other</option>
+            </select>
+          </label>
+          <label>Priority
+            <select id="nt-priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Normal</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </label>
+        </div>
+        <div id="nt-error" class="form-error"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="nt-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit ticket</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
