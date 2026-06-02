@@ -1,0 +1,74 @@
+# Axus Hub
+
+Internal hub for Axus Technologies: clients, tickets, time tracking, and invoicing.
+FastAPI backend with JWT auth.
+
+## Backend
+
+### Setup
+
+```powershell
+cd "Axus Hub/backend"
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+copy .env.example .env   # then edit .env
+```
+
+Generate a real `SECRET_KEY` and set it in `.env`.
+
+### Database
+
+- **Production:** PostgreSQL — set `DATABASE_URL=postgresql://user:pass@host/dbname`.
+- **Local dev (no Postgres needed):** `DATABASE_URL=sqlite:///./axushub.db`.
+
+Tables are created automatically on startup.
+
+### Run
+
+```powershell
+.\venv\Scripts\python.exe run.py
+```
+
+`HOST`, `PORT`, and `RELOAD` are read from the environment (see `.env.example`).
+The server binds to `0.0.0.0` by default so it is reachable externally — on AWS,
+make sure the chosen `PORT` is open in the security group.
+
+- Health check: `GET /api/health`
+- Interactive API docs: `/docs`
+
+### API overview
+
+| Area | Routes |
+|------|--------|
+| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` |
+| Clients | `GET/POST /api/clients/`, `GET/PUT /api/clients/{id}` |
+| Tickets | `GET/POST /api/tickets/`, `GET/PUT /api/tickets/{id}` |
+| Ticket time | `GET/POST /api/tickets/{id}/time` |
+| Ticket conversation | `GET/POST /api/tickets/{id}/comments` (`is_internal` separates staff notes from client-visible replies; `?public_only=true` hides internal notes) |
+| Ticket activity log | `GET /api/tickets/{id}/activity` (audit trail of lifecycle events) |
+| Ticket attachments | `POST` (multipart) / `GET` list / `GET /{attachment_id}` download / `DELETE` under `/api/tickets/{id}/attachments` |
+
+Authenticated requests use a bearer token: `Authorization: Bearer <token>` from login.
+
+### Ticketing (replacing Xcitium Service Desk)
+
+- Each ticket gets a human-friendly **reference** (e.g. `AXUS-1001`) and a **category**.
+- A **conversation thread** holds public replies and internal staff notes.
+- An **activity log** automatically records creation, status/priority/assignee/category
+  changes, time logged, comments, attachments, and SOW promotion.
+- **Attachments** can be uploaded per ticket (optionally tied to a reply). Files are
+  stored on disk under `UPLOAD_DIR` (default `uploads/`, gitignored) with a configurable
+  size cap (`MAX_ATTACHMENT_MB`, default 25). Stored under random names to prevent
+  collisions and path traversal.
+- Tickets auto-promote from `standard` to `sow` once logged time reaches 8 hours.
+
+## Status
+
+Backend runs; auth, clients, and ticketing flows are verified end-to-end.
+
+**Ticketing built:** tickets, time tracking, conversation thread, reference numbers,
+categories, activity log, attachments.
+**Ticketing next:** email-to-ticket + notifications, client portal.
+(No SLA tracking by design — Axus staff resolve issues ASAP rather than to fixed targets.)
+**Billing (QuickBooks replacement) — not started:** invoices API (model exists,
+no router), payments/A-R, tax, reports.

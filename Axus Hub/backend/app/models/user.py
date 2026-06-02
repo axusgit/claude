@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey
 from sqlalchemy.sql import func
 import enum
 from app.database import Base
@@ -19,4 +19,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(Enum(UserRole), default=UserRole.technician, nullable=False)
     is_active = Column(Boolean, default=True)
+    # Set for client-portal users: ties the login to the company they belong to,
+    # so the portal can scope them to their own tickets only.
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

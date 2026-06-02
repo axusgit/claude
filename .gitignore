@@ -19,6 +19,9 @@ env/
 *.sqlite
 *.sqlite3
 
+# Uploaded attachments (stored on disk, not in git)
+uploads/
+
 # OS / editor
 .DS_Store
 Thumbs.db
