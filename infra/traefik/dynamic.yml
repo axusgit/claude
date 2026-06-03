@@ -4,6 +4,11 @@
 # headers that apps trust (see libs/auth).
 http:
   middlewares:
+    # Country allow/deny gate, evaluated by the Hub (editable in its admin UI).
+    geogate:
+      forwardAuth:
+        address: http://hub:8000/api/geo/check
+        trustForwardHeader: true
     authentik:
       forwardAuth:
         address: http://authentik-server:9000/outpost.goauthentik.io/auth/traefik

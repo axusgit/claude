@@ -6,12 +6,15 @@ reads the identity and shows each user the apps they're entitled to. In local de
 """
 import os
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import List
 
 from axus_auth import get_identity, Identity
+import geo
 
 PLATFORM_DOMAIN = os.getenv("PLATFORM_DOMAIN", "hub.axustechnologies.com")
 AUTHENTIK_URL = os.getenv("AUTHENTIK_URL", f"https://id.{PLATFORM_DOMAIN}")
@@ -102,6 +105,46 @@ async def dashboard(request: Request):
                     pass
             systems.append({**base, "available": False, "kpis": []})
     return {"systems": systems}
+
+
+# ----- Geo access control (edge gate + admin policy) -----
+
+@app.get("/api/geo/check")
+def geo_check(request: Request):
+    """Traefik forward-auth gate: allow/deny by source country. No auth (runs
+    before auth, for everyone)."""
+    ip = geo.client_ip(request.headers.get("X-Forwarded-For", ""),
+                       request.client.host if request.client else "")
+    allowed, country = geo.evaluate(ip)
+    if allowed:
+        return Response(status_code=200, headers={"X-Geo-Country": country or "?"})
+    raise HTTPException(status_code=403, detail=f"Access from your location ({country or 'unknown'}) is not permitted")
+
+
+class GeoPolicyIn(BaseModel):
+    mode: str            # off | allow | deny
+    countries: List[str] = []
+
+
+def _require_admin(request: Request) -> Identity:
+    identity = get_identity(request)
+    if identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return identity
+
+
+@app.get("/api/geo/policy")
+def get_geo_policy(request: Request):
+    _require_admin(request)
+    return geo.load_policy()
+
+
+@app.put("/api/geo/policy")
+def put_geo_policy(data: GeoPolicyIn, request: Request):
+    _require_admin(request)
+    if data.mode not in ("off", "allow", "deny"):
+        raise HTTPException(status_code=400, detail="mode must be off, allow or deny")
+    return geo.save_policy({"mode": data.mode, "countries": data.countries})
 
 
 @app.get("/api/apps/health")

@@ -15,8 +15,11 @@
   }
   const toggleTheme = () => applyTheme((document.documentElement.getAttribute("data-theme") || "light") === "dark" ? "light" : "dark");
 
-  async function api(path) {
-    const r = await fetch(path, { credentials: "include" });
+  async function api(path, opts = {}) {
+    const init = { credentials: "include", headers: {} };
+    if (opts.method) init.method = opts.method;
+    if (opts.body !== undefined) { init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(opts.body); }
+    const r = await fetch(path, init);
     if (!r.ok) throw new Error("HTTP " + r.status);
     return r.json();
   }
@@ -123,6 +126,43 @@
       <a class="admin-card" href="${c.href}" target="_blank" rel="noopener">
         <span class="ac-icon">${c.icon}</span><h4>${c.title}</h4><p>${c.desc}</p>
         <span class="link">Open →</span></a>`).join("");
+    if (me.is_admin) initGeo();
+  }
+
+  /* ---------- Country access control ---------- */
+  const COUNTRIES = [["US","United States"],["CA","Canada"],["MX","Mexico"],["GB","United Kingdom"],["IE","Ireland"],["FR","France"],["DE","Germany"],["ES","Spain"],["PT","Portugal"],["IT","Italy"],["NL","Netherlands"],["BE","Belgium"],["CH","Switzerland"],["AT","Austria"],["SE","Sweden"],["NO","Norway"],["DK","Denmark"],["FI","Finland"],["PL","Poland"],["CZ","Czechia"],["RO","Romania"],["GR","Greece"],["UA","Ukraine"],["RU","Russia"],["BY","Belarus"],["TR","Turkey"],["IL","Israel"],["SA","Saudi Arabia"],["AE","United Arab Emirates"],["IN","India"],["PK","Pakistan"],["BD","Bangladesh"],["CN","China"],["HK","Hong Kong"],["TW","Taiwan"],["JP","Japan"],["KR","South Korea"],["KP","North Korea"],["VN","Vietnam"],["TH","Thailand"],["PH","Philippines"],["ID","Indonesia"],["MY","Malaysia"],["SG","Singapore"],["AU","Australia"],["NZ","New Zealand"],["BR","Brazil"],["AR","Argentina"],["CL","Chile"],["CO","Colombia"],["PE","Peru"],["ZA","South Africa"],["NG","Nigeria"],["EG","Egypt"],["KE","Kenya"],["IR","Iran"],["IQ","Iraq"],["SY","Syria"],["AF","Afghanistan"],["NP","Nepal"]];
+  const COUNTRY_NAME = Object.fromEntries(COUNTRIES);
+  let geoPolicy = { mode: "off", countries: [] };
+
+  async function initGeo() {
+    try { geoPolicy = await api("/api/geo/policy"); } catch (e) { return; }
+    $("geo-card").style.display = "";
+    $("geo-country-pick").innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}">${esc(n)} (${c})</option>`).join("");
+    $("geo-mode").value = geoPolicy.mode || "off";
+    renderGeo();
+    $("geo-mode").onchange = () => { geoPolicy.mode = $("geo-mode").value; renderGeo(); };
+    $("geo-add-btn").onclick = () => {
+      const c = $("geo-country-pick").value;
+      if (c && !geoPolicy.countries.includes(c)) { geoPolicy.countries.push(c); renderGeo(); }
+    };
+    $("geo-save").onclick = saveGeo;
+  }
+  function renderGeo() {
+    const showList = geoPolicy.mode !== "off";
+    $("geo-countries-wrap").style.display = showList ? "" : "none";
+    $("geo-chips").innerHTML = (geoPolicy.countries || []).map(c =>
+      `<span class="geo-chip">${esc(COUNTRY_NAME[c] || c)} (${c}) <b data-rm="${c}">×</b></span>`).join("")
+      || `<span class="muted">No countries selected.</span>`;
+    $("geo-chips").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => {
+      geoPolicy.countries = geoPolicy.countries.filter(x => x !== b.dataset.rm); renderGeo();
+    });
+  }
+  async function saveGeo() {
+    $("geo-status").textContent = "Saving…";
+    try {
+      geoPolicy = await api("/api/geo/policy", { method: "PUT", body: { mode: geoPolicy.mode, countries: geoPolicy.countries } });
+      $("geo-status").textContent = "Saved ✓"; setTimeout(() => $("geo-status").textContent = "", 2500);
+    } catch (e) { $("geo-status").textContent = "Save failed"; }
   }
 
   async function loadHealth() {

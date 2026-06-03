@@ -81,6 +81,7 @@ services:
       traefik.http.routers.authentik.rule: Host(`id.${PLATFORM_DOMAIN}`)
       traefik.http.routers.authentik.entrypoints: websecure
       traefik.http.routers.authentik.tls.certresolver: letsencrypt
+      traefik.http.routers.authentik.middlewares: geogate@file
       traefik.http.services.authentik.loadbalancer.server.port: "9000"
       # the forward-auth outpost callback, served on EVERY app host
       traefik.http.routers.ak-outpost.rule: PathPrefix(`/outpost.goauthentik.io/`)
@@ -114,13 +115,16 @@ services:
       AUTH_MODE: central
       PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
       AUTHENTIK_URL: https://id.${PLATFORM_DOMAIN}
+      GEO_POLICY_PATH: /data/geo_policy.json
+    volumes:
+      - hub_data:/data
     depends_on: [authentik-server]
     labels:
       traefik.enable: "true"
       traefik.http.routers.hub.rule: Host(`${PLATFORM_DOMAIN}`)
       traefik.http.routers.hub.entrypoints: internal       # 8443, IP-restricted
       traefik.http.routers.hub.tls.certresolver: letsencrypt
-      traefik.http.routers.hub.middlewares: authentik@file
+      traefik.http.routers.hub.middlewares: geogate@file,authentik@file
       traefik.http.services.hub.loadbalancer.server.port: "8000"
     networks: [axus]
 
@@ -141,7 +145,7 @@ services:
       traefik.http.routers.support.rule: Host(`support.${PLATFORM_DOMAIN}`)
       traefik.http.routers.support.entrypoints: websecure
       traefik.http.routers.support.tls.certresolver: letsencrypt
-      traefik.http.routers.support.middlewares: authentik@file
+      traefik.http.routers.support.middlewares: geogate@file,authentik@file
       traefik.http.services.support.loadbalancer.server.port: "8000"
     networks: [axus]
 
@@ -154,3 +158,4 @@ volumes:
   authentik_media:
   authentik_templates:
   traefik_letsencrypt:
+  hub_data:

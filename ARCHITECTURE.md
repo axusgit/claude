@@ -70,6 +70,23 @@ Example — a Support Technician (`role-technician`, `app-support`, `app-rmm`) c
 reach Support and RMM, is denied Accounting/Engineering, and appears as a
 `technician` inside Support.
 
+## Edge security (defense in depth)
+
+Three independent layers protect the platform:
+
+1. **Port segmentation.** Client-facing surfaces (Support portal, Authentik login)
+   are served on **:443** (public). Axus-staff-only apps (Hub, Accounting,
+   Engineering, RMM console) are served on **:8443** via a separate Traefik
+   entrypoint — locked down to allowed source IPs in the **Lightsail firewall**.
+   SSO still spans both (cookie is scoped to the domain, not the port).
+2. **Country geo-gate.** A Traefik forward-auth middleware (`geogate`) calls the
+   Hub's `/api/geo/check` on every public request; the Hub resolves the source
+   country offline (`geoip2fast`, no API key) and allows/denies per a policy
+   that admins edit live in **Hub → Administration → Country access control**
+   (off / allowlist / denylist). Private/unknown IPs fail open.
+3. **Identity + (future) MFA.** Authentik authenticates every request via
+   forward-auth; MFA enforcement is a future Authentik policy with no app changes.
+
 ## Repository layout
 
 | Path | What |

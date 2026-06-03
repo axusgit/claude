@@ -102,6 +102,29 @@
         <section id="view-admin" class="view hidden">
           <div class="section-head"><h3>Administration</h3><span class="muted">Identity &amp; access management</span></div>
           <div class="admin-grid" id="admin-grid"></div>
+
+          <div class="card" id="geo-card" style="margin-top:20px; display:none">
+            <h3 class="card-title">Country access control</h3>
+            <p class="muted" style="margin:-6px 0 16px">Restrict platform access by visitor country. Enforced at the edge on all public traffic; private/internal addresses are always allowed.</p>
+            <label class="geo-field">Mode
+              <select id="geo-mode">
+                <option value="off">Off — allow every country</option>
+                <option value="allow">Allowlist — allow ONLY the selected countries</option>
+                <option value="deny">Denylist — block the selected countries</option>
+              </select>
+            </label>
+            <div id="geo-countries-wrap" style="margin-top:14px">
+              <div class="geo-add">
+                <select id="geo-country-pick"></select>
+                <button class="btn btn-ghost" id="geo-add-btn" type="button">+ Add</button>
+              </div>
+              <div id="geo-chips" class="geo-chips"></div>
+            </div>
+            <div class="geo-actions">
+              <span id="geo-status" class="muted"></span>
+              <button class="btn btn-primary" id="geo-save">Save policy</button>
+            </div>
+          </div>
         </section>
 
       </main>

@@ -134,6 +134,18 @@ a { text-decoration: none; color: inherit; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 12px 22px; border-radius: 10px; font-weight: 600; box-shadow: var(--shadow-lg); z-index: 60; }
 
+/* geo access control */
+.geo-field { display: block; font-size: 13px; font-weight: 600; color: var(--text-soft); }
+.geo-field select, .geo-add select { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font: inherit; color: var(--text); }
+.geo-field select { width: 100%; max-width: 480px; margin-top: 6px; }
+.geo-add { display: flex; gap: 10px; }
+.geo-add select { flex: 1; max-width: 360px; }
+.geo-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.geo-chip { background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; }
+.geo-chip b { cursor: pointer; color: var(--muted); font-weight: 700; }
+.geo-chip b:hover { color: #e5484d; }
+.geo-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 18px; }
+
 @media (max-width: 860px) {
   #app { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; gap: 10px; }

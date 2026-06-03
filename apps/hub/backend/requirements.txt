@@ -2,5 +2,7 @@ fastapi==0.111.0
 uvicorn[standard]==0.29.0
 httpx==0.28.1
 python-dotenv==1.0.1
+geoip2fast==1.2.2
+
 # shared identity helpers (installed editable from the monorepo in dev; copied in Docker)
 # pip install -e ../../../libs/auth

@@ -22,6 +22,9 @@ env/
 # Uploaded attachments (stored on disk, not in git)
 uploads/
 
+# Runtime state / policy files
+geo_policy.json
+
 # OS / editor
 .DS_Store
 Thumbs.db

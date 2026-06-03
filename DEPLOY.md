@@ -13,7 +13,11 @@ See `ARCHITECTURE.md` for the design. The legacy bare-metal Support
 
 1. **DNS at Hover** — add A records → `52.22.69.65`:
    `hub`, `support.hub`, `id.hub` (and `rmm.hub`, `accounting.hub`, … as apps land).
-2. **AWS Security Group** — open inbound **80** and **443**.
+2. **Lightsail firewall** — open inbound **80** and **443** from anywhere
+   (public apps + ACME), and **8443** **restricted to your office/VPN IPs only**
+   (internal apps: Hub, Accounting, Engineering, RMM). Country allow/deny is
+   handled in-app (Hub → Administration → Country access control), since
+   Lightsail has no geo rules.
 3. **Server** — install Docker Engine + Compose plugin:
    ```bash
    curl -fsSL https://get.docker.com | sh
