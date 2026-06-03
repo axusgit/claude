@@ -23,6 +23,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "8443:8443"               # internal apps; lock down to your IPs in the AWS SG
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
@@ -83,7 +84,7 @@ services:
       traefik.http.services.authentik.loadbalancer.server.port: "9000"
       # the forward-auth outpost callback, served on EVERY app host
       traefik.http.routers.ak-outpost.rule: PathPrefix(`/outpost.goauthentik.io/`)
-      traefik.http.routers.ak-outpost.entrypoints: websecure
+      traefik.http.routers.ak-outpost.entrypoints: websecure,internal
       traefik.http.routers.ak-outpost.tls.certresolver: letsencrypt
       traefik.http.routers.ak-outpost.priority: "100"
       traefik.http.routers.ak-outpost.service: authentik
@@ -117,7 +118,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.http.routers.hub.rule: Host(`${PLATFORM_DOMAIN}`)
-      traefik.http.routers.hub.entrypoints: websecure
+      traefik.http.routers.hub.entrypoints: internal       # 8443, IP-restricted
       traefik.http.routers.hub.tls.certresolver: letsencrypt
       traefik.http.routers.hub.middlewares: authentik@file
       traefik.http.services.hub.loadbalancer.server.port: "8000"

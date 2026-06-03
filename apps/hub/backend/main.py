@@ -15,14 +15,18 @@ from axus_auth import get_identity, Identity
 
 PLATFORM_DOMAIN = os.getenv("PLATFORM_DOMAIN", "hub.axustechnologies.com")
 AUTHENTIK_URL = os.getenv("AUTHENTIK_URL", f"https://id.{PLATFORM_DOMAIN}")
+# Internal-only apps are served on this port (IP-restricted in the AWS SG);
+# client-facing apps (Support) stay on the default 443.
+INTERNAL_PORT = os.getenv("INTERNAL_PORT", "8443")
 
 # The catalog of connected applications. Each app is gated by an Authentik
-# entitlement group; admins see everything.
+# entitlement group; admins see everything. `internal` apps are Axus-staff-only
+# (served on :8443); non-internal apps are client-facing (:443).
 APP_CATALOG = [
-    {"key": "support", "name": "Support", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫"},
-    {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️"},
-    {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰"},
-    {"key": "engineering", "name": "Engineering", "desc": "Projects, docs & dev-ops", "group": "app-engineering", "icon": "🛠️"},
+    {"key": "support", "name": "Support", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False},
+    {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
+    {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": True},
+    {"key": "engineering", "name": "Engineering", "desc": "Projects, docs & dev-ops", "group": "app-engineering", "icon": "🛠️", "internal": True},
 ]
 
 # Internal (Docker-network) URLs used to pull each app's KPI summary
@@ -51,7 +55,8 @@ def _apps_for(identity: Identity):
     for a in APP_CATALOG:
         authorized = is_admin or identity.has_group(a["group"])
         if authorized:
-            apps.append({**a, "url": f"https://{a['key']}.{PLATFORM_DOMAIN}"})
+            port = f":{INTERNAL_PORT}" if a.get("internal") else ""
+            apps.append({**a, "url": f"https://{a['key']}.{PLATFORM_DOMAIN}{port}"})
     return apps
 
 
@@ -106,8 +111,9 @@ async def apps_health(request: Request):
     results = {}
     async with httpx.AsyncClient(timeout=2.5) as client:
         for a in _apps_for(identity):
+            target = INTERNAL_URLS.get(a["key"], a["url"])  # prefer the internal address
             try:
-                r = await client.get(f"{a['url']}/api/health")
+                r = await client.get(f"{target}/api/health")
                 results[a["key"]] = "up" if r.status_code == 200 else "degraded"
             except Exception:
                 results[a["key"]] = "down"

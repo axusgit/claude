@@ -13,6 +13,8 @@ entryPoints:
           scheme: https
   websecure:
     address: ":443"
+  internal:                        # internal-only apps (Hub, Accounting, …);
+    address: ":8443"               # restricted to allowed source IPs in the AWS SG
 
 providers:
   docker:
