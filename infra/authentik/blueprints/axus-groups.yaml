@@ -1,0 +1,36 @@
+# Authentik blueprint — auto-applied on startup. Creates the platform's
+# entitlement groups (app-*) and role groups (role-*). Assign users to these
+# in the Authentik admin to grant app access and roles.
+version: 1
+metadata:
+  name: Axus platform groups
+entries:
+  # --- application entitlements (gate access per app) ---
+  - model: authentik_core.group
+    identifiers: {name: app-support}
+    attrs: {name: app-support}
+  - model: authentik_core.group
+    identifiers: {name: app-rmm}
+    attrs: {name: app-rmm}
+  - model: authentik_core.group
+    identifiers: {name: app-accounting}
+    attrs: {name: app-accounting}
+  - model: authentik_core.group
+    identifiers: {name: app-engineering}
+    attrs: {name: app-engineering}
+  # --- roles (mapped to in-app role by libs/auth) ---
+  - model: authentik_core.group
+    identifiers: {name: role-admin}
+    attrs: {name: role-admin, is_superuser: false}
+  - model: authentik_core.group
+    identifiers: {name: role-technician}
+    attrs: {name: role-technician}
+  - model: authentik_core.group
+    identifiers: {name: role-finance}
+    attrs: {name: role-finance}
+  - model: authentik_core.group
+    identifiers: {name: role-engineer}
+    attrs: {name: role-engineer}
+  - model: authentik_core.group
+    identifiers: {name: role-client}
+    attrs: {name: role-client}

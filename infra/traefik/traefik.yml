@@ -1,0 +1,38 @@
+# Traefik v3 static configuration.
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false        # only containers with traefik.enable=true
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      # email is injected via TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL
+      # (set from ACME_EMAIL in docker-compose), since static-file env vars are
+      # not interpolated.
+      storage: /letsencrypt/acme.json
+      httpChallenge:               # per-host certs (DNS stays on Hover)
+        entryPoint: web
+
+api:
+  dashboard: false
+
+log:
+  level: INFO

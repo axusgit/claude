@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Axus Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <img class="topbar-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus" />
+        <span class="hub-tag">Hub</span>
+      </div>
+      <div class="topbar-center">
+        <input type="search" id="search" class="global-search" placeholder="Search apps & quick actions…" />
+      </div>
+      <div class="topbar-right">
+        <button class="theme-toggle" id="theme-toggle" title="Toggle dark / light"><span class="theme-icon">🌙</span></button>
+        <a id="account-link" class="icon-btn" title="Account" target="_blank" rel="noopener">⚙️</a>
+        <div class="who"><span id="who-name" class="who-name"></span><span id="who-role" class="who-role"></span></div>
+        <div class="avatar" id="avatar"></div>
+        <a id="logout" class="btn btn-ghost" href="/outpost.goauthentik.io/sign_out">Sign out</a>
+      </div>
+    </header>
+    <div class="accent-strip"></div>
+
+    <main class="container">
+      <section class="hero">
+        <h1 id="hero-title">Welcome</h1>
+        <p class="muted" id="hero-sub"></p>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Your Applications</h2><span class="muted" id="apps-count"></span></div>
+        <div id="launcher" class="launcher"></div>
+        <div id="no-apps" class="empty hidden">
+          <div class="empty-emoji">🔒</div><h3>No applications yet</h3>
+          <p class="muted">You don't have access to any apps. Contact an administrator.</p>
+        </div>
+      </section>
+
+      <div class="grid-2">
+        <section class="card">
+          <h3 class="card-title">System Health</h3>
+          <div id="health-list" class="health-list"></div>
+        </section>
+        <section class="card">
+          <h3 class="card-title">Notifications</h3>
+          <div id="notifications" class="notif-list">
+            <div class="notif-empty muted">You're all caught up. 🎉</div>
+          </div>
+        </section>
+      </div>
+
+      <section class="card" id="admin-card" style="display:none">
+        <h3 class="card-title">Administration</h3>
+        <p class="muted">Manage users, roles, permissions, and platform settings in the identity console.</p>
+        <a id="admin-link" class="btn btn-primary" target="_blank" rel="noopener">Open Admin Console →</a>
+      </section>
+    </main>
+  </div>
+
+  <div id="loading" class="loading"><div class="spinner"></div></div>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

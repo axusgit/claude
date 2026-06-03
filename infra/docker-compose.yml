@@ -1,0 +1,155 @@
+# Axus platform stack. Run from infra/ with infra/.env present:
+#   docker compose up -d
+#
+# Traefik routes *.hub.axustechnologies.com by Host header, terminates TLS
+# (per-host Let's Encrypt), and gates apps via Authentik forward-auth.
+name: axus
+
+x-authentik-env: &authentik-env
+  AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+  AUTHENTIK_REDIS__HOST: redis
+  AUTHENTIK_POSTGRESQL__HOST: postgres
+  AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER}
+  AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
+  AUTHENTIK_POSTGRESQL__NAME: authentik
+
+services:
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    command: --configFile=/etc/traefik/traefik.yml
+    environment:
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks: [axus]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: authentik
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [axus]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [axus]
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.10.5}
+    restart: unless-stopped
+    command: server
+    environment:
+      <<: *authentik-env
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD}
+      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL}
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ./authentik/blueprints:/blueprints/axus:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    labels:
+      traefik.enable: "true"
+      # identity provider UI
+      traefik.http.routers.authentik.rule: Host(`id.${PLATFORM_DOMAIN}`)
+      traefik.http.routers.authentik.entrypoints: websecure
+      traefik.http.routers.authentik.tls.certresolver: letsencrypt
+      traefik.http.services.authentik.loadbalancer.server.port: "9000"
+      # the forward-auth outpost callback, served on EVERY app host
+      traefik.http.routers.ak-outpost.rule: PathPrefix(`/outpost.goauthentik.io/`)
+      traefik.http.routers.ak-outpost.entrypoints: websecure
+      traefik.http.routers.ak-outpost.tls.certresolver: letsencrypt
+      traefik.http.routers.ak-outpost.priority: "100"
+      traefik.http.routers.ak-outpost.service: authentik
+    networks: [axus]
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.10.5}
+    restart: unless-stopped
+    command: worker
+    environment: *authentik-env
+    volumes:
+      - authentik_media:/media
+      - authentik_templates:/templates
+      - ./authentik/blueprints:/blueprints/axus:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [axus]
+
+  hub:
+    build:
+      context: ..
+      dockerfile: apps/hub/Dockerfile
+    restart: unless-stopped
+    environment:
+      AUTH_MODE: central
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
+      AUTHENTIK_URL: https://id.${PLATFORM_DOMAIN}
+    depends_on: [authentik-server]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.hub.rule: Host(`${PLATFORM_DOMAIN}`)
+      traefik.http.routers.hub.entrypoints: websecure
+      traefik.http.routers.hub.tls.certresolver: letsencrypt
+      traefik.http.routers.hub.middlewares: authentik@file
+      traefik.http.services.hub.loadbalancer.server.port: "8000"
+    networks: [axus]
+
+  support:
+    build:
+      context: ..
+      dockerfile: apps/support/Dockerfile
+    restart: unless-stopped
+    environment:
+      AUTH_MODE: central
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/support
+      SECRET_KEY: ${SUPPORT_SECRET_KEY}
+    depends_on:
+      postgres: {condition: service_healthy}
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.support.rule: Host(`support.${PLATFORM_DOMAIN}`)
+      traefik.http.routers.support.entrypoints: websecure
+      traefik.http.routers.support.tls.certresolver: letsencrypt
+      traefik.http.routers.support.middlewares: authentik@file
+      traefik.http.services.support.loadbalancer.server.port: "8000"
+    networks: [axus]
+
+networks:
+  axus:
+
+volumes:
+  pg_data:
+  redis_data:
+  authentik_media:
+  authentik_templates:
+  traefik_letsencrypt:

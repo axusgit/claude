@@ -1,8 +1,13 @@
-# Axus Hub — Deployment & Updates
+# Axus Support — Deployment & Updates
 
-Production runs at **https://hub.axustechnologies.com**.
+> **Note:** Support is being moved into the platform stack. Production will run at
+> **https://support.hub.axustechnologies.com** as a container behind Traefik +
+> Authentik — see the repo-root **`DEPLOY.md`** and **`ARCHITECTURE.md`**. The
+> bare-metal/systemd instructions below describe the **legacy** deployment, valid
+> only until the cutover completes. For local development, see "Local development"
+> in the root `DEPLOY.md`.
 
-## Production environment
+## Legacy production environment (pre-cutover)
 
 | Piece | Value |
 |------|-------|
