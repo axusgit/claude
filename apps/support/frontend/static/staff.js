@@ -634,8 +634,9 @@ const Staff = (() => {
       try { await createTicket(payload); } catch (err) { $("nt-error").textContent = err.message; }
     };
 
-    if (token) { try { await enter(); } catch (e) { logout(); } }
-    else showLogin();
+    // Try an existing session (stored JWT locally, or gateway identity in
+    // central mode); fall back to the login screen.
+    try { await enter(); } catch (e) { showLogin(); }
   }
   async function enter() { await loadAll(); showApp(); showQueue(); }
 

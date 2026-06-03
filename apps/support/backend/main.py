@@ -9,11 +9,13 @@ import os
 # The database schema is managed by Alembic migrations (`alembic upgrade head`),
 # not auto-created at startup. See DEPLOY.md.
 
-app = FastAPI(title="Axus Hub", version="1.0.0")
+app = FastAPI(title="Axus Support", version="1.0.0")
 
+# Restrict cross-origin to the platform domain (and localhost for dev). The UI is
+# served same-origin, so this is mainly defense-in-depth.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"https?://(localhost(:\d+)?|([a-z0-9-]+\.)*hub\.axustechnologies\.com)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,7 +31,7 @@ app.include_router(users.router)
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": "Axus Hub"}
+    return {"status": "ok", "app": "Axus Support"}
 
 
 # Serve the frontend (client portal) if it has been built

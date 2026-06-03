@@ -250,8 +250,9 @@ const App = (() => {
       } catch (err) { $("nt-error").textContent = err.message; }
     };
 
-    if (token) { try { await enterApp(); } catch (e) { logout(); } }
-    else showLogin();
+    // Try an existing session (stored JWT locally, or gateway identity in
+    // central mode); fall back to the login screen.
+    try { await enterApp(); } catch (e) { showLogin(); }
   }
 
   async function enterApp() {
