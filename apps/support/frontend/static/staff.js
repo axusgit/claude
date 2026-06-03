@@ -110,6 +110,7 @@ const Staff = (() => {
     switch (filter) {
       case "open": return ACTIVE.includes(t.status);
       case "unassigned": return ACTIVE.includes(t.status) && !t.assigned_to_id;
+      case "assigned": return ACTIVE.includes(t.status) && !!t.assigned_to_id;
       case "mine": return ACTIVE.includes(t.status) && t.assigned_to_id === me.id;
       case "waiting": return t.status === "waiting";
       case "in_progress": return t.status === "in_progress";
@@ -122,8 +123,8 @@ const Staff = (() => {
       const saved = filter; filter = f; const r = matchesFilter(t); filter = saved; return r;
     }).length;
     $("c-open").textContent = c("open"); $("c-unassigned").textContent = c("unassigned");
-    $("c-mine").textContent = c("mine"); $("c-waiting").textContent = c("waiting");
-    $("c-inprogress").textContent = c("in_progress"); $("c-closed").textContent = c("closed");
+    $("c-assigned").textContent = c("assigned");
+    $("c-mine").textContent = c("mine"); $("c-closed").textContent = c("closed");
     $("c-all").textContent = tickets.length;
     boardsData.forEach(b => { const el = $("bc-" + b.id); if (el) el.textContent = tickets.filter(t => t.board_id === b.id).length; });
   }
