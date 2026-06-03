@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.routers import auth, clients, tickets, portal, users
+from app.routers import auth, clients, tickets, portal, users, summary
 import app.models  # ensure all models/relationships are registered
 import os
 
@@ -27,6 +27,7 @@ app.include_router(clients.router)
 app.include_router(tickets.router)
 app.include_router(portal.router)
 app.include_router(users.router)
+app.include_router(summary.router)
 
 
 @app.get("/api/health")

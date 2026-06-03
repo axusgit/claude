@@ -25,6 +25,16 @@ APP_CATALOG = [
     {"key": "engineering", "name": "Engineering", "desc": "Projects, docs & dev-ops", "group": "app-engineering", "icon": "🛠️"},
 ]
 
+# Internal (Docker-network) URLs used to pull each app's KPI summary
+# server-to-server for the command-center dashboard. Apps absent here show as
+# "not yet connected".
+INTERNAL_URLS = {
+    "support": os.getenv("SUPPORT_INTERNAL_URL", "http://support:8000"),
+    # "rmm": os.getenv("RMM_INTERNAL_URL", "http://rmm:8000"),
+    # "accounting": os.getenv("ACCOUNTING_INTERNAL_URL", "http://accounting:8000"),
+    # "engineering": os.getenv("ENGINEERING_INTERNAL_URL", "http://engineering:8000"),
+}
+
 app = FastAPI(title="Axus Hub", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
@@ -65,6 +75,28 @@ def me(request: Request):
         "admin_url": f"{AUTHENTIK_URL}/if/admin/" if identity.role == "admin" else None,
         "account_url": f"{AUTHENTIK_URL}/if/user/",
     }
+
+
+@app.get("/api/dashboard")
+async def dashboard(request: Request):
+    """Command-center KPIs: each authorized app's /api/summary, aggregated."""
+    identity = get_identity(request)
+    systems = []
+    async with httpx.AsyncClient(timeout=2.5) as client:
+        for a in _apps_for(identity):
+            base = {"app": a["key"], "name": a["name"], "icon": a["icon"], "url": a["url"]}
+            internal = INTERNAL_URLS.get(a["key"])
+            if internal:
+                try:
+                    r = await client.get(f"{internal}/api/summary")
+                    if r.status_code == 200:
+                        s = r.json()
+                        systems.append({**base, "available": True, "kpis": s.get("kpis", []), "footnote": s.get("footnote")})
+                        continue
+                except Exception:
+                    pass
+            systems.append({**base, "available": False, "kpis": []})
+    return {"systems": systems}
 
 
 @app.get("/api/apps/health")

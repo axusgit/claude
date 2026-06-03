@@ -54,28 +54,36 @@
     document.querySelectorAll(".admin-only").forEach(el => { el.style.display = me.is_admin ? "" : "none"; });
   }
 
-  function renderDashboard() {
-    const launcher = $("dash-launcher"); launcher.innerHTML = "";
-    me.apps.slice(0, 8).forEach(a => launcher.appendChild(appTile(a, true)));
+  async function renderDashboard() {
     $("dash-health").innerHTML = me.apps.map(a => `
       <div class="health-row"><span class="health-dot ${health[a.key] || ""}" data-health="${a.key}"></span>
         <span>${esc(a.name)}</span><span class="health-state" data-state="${a.key}">${health[a.key] || "checking…"}</span></div>`).join("")
       || `<div class="muted">No applications.</div>`;
-    renderStats();
+    try {
+      const d = await api("/api/dashboard");
+      renderCommandCenter(d.systems);
+    } catch (e) {
+      $("command-center").innerHTML = `<div class="muted">Unable to load metrics.</div>`;
+    }
   }
 
-  function renderStats() {
-    const total = me.apps.length;
-    const up = Object.values(health).filter(s => s === "up").length;
-    const allKnown = Object.keys(health).length === total && total > 0;
-    const status = total === 0 ? "—" : (allKnown && up === total ? "Operational" : (up === 0 && allKnown ? "Down" : "Degraded"));
-    const statusCls = status === "Operational" ? "good" : (status === "Down" ? "bad" : (status === "—" ? "" : "accent"));
-    $("stats-row").innerHTML = `
-      ${stat(total, "Applications", "accent")}
-      ${stat(status, "System status", statusCls)}
-      ${stat(cap(me.role), "Your role", "")}
-      ${stat(0, "Notifications", "")}`;
+  function renderCommandCenter(systems) {
+    $("command-center").innerHTML = systems.map(s => {
+      if (!s.available) {
+        return `<div class="sys-panel unavailable">
+          <div class="sys-head"><div class="sys-title"><span class="sys-icon">${s.icon}</span>${esc(s.name)}</div></div>
+          <div class="sys-empty muted">Not yet connected</div></div>`;
+      }
+      const kpis = s.kpis.map(k =>
+        `<div class="kpi"><div class="kpi-val ${k.tone || ""}">${k.value}</div><div class="kpi-label">${esc(k.label)}</div></div>`).join("");
+      return `<div class="sys-panel">
+        <div class="sys-head"><div class="sys-title"><span class="sys-icon">${s.icon}</span>${esc(s.name)}</div>
+          <a class="link" href="${s.url}">Open →</a></div>
+        <div class="kpi-row">${kpis}</div>
+        ${s.footnote ? `<div class="sys-foot muted">${esc(s.footnote)}</div>` : ""}</div>`;
+    }).join("");
   }
+
   const stat = (n, label, cls) => `<div class="stat-card"><div class="stat-num ${cls}">${n}</div><div class="stat-label">${label}</div></div>`;
 
   function renderApps() {
@@ -125,7 +133,6 @@
       const st = document.querySelector(`[data-state="${key}"]`); if (st) st.textContent = state;
       const mon = document.querySelector(`[data-mon="${key}"]`); if (mon) { mon.className = "pill " + state; mon.textContent = state; }
     }
-    renderStats();
   }
 
   function wireSearch() {
