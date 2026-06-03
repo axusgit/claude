@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.routers import auth, clients, tickets, portal, users, summary, boards
+from app.routers import auth, clients, tickets, portal, users, summary, boards, email
 import app.models  # ensure all models/relationships are registered
 import os
 
@@ -29,6 +29,27 @@ app.include_router(portal.router)
 app.include_router(users.router)
 app.include_router(summary.router)
 app.include_router(boards.router)
+app.include_router(email.router)
+
+
+@app.on_event("startup")
+def start_email_poller():
+    """Poll the support mailbox in a background thread when Graph is configured."""
+    import os, time, threading
+    from app import graph, email_intake
+    if not graph.is_configured():
+        return
+    interval = max(15, int(os.getenv("EMAIL_POLL_SECONDS", "60")))
+
+    def loop():
+        while True:
+            try:
+                email_intake.process_inbox()
+            except Exception:
+                pass
+            time.sleep(interval)
+
+    threading.Thread(target=loop, daemon=True, name="email-poller").start()
 
 
 @app.on_event("startup")

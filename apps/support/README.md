@@ -1,7 +1,23 @@
-# Axus Hub
+# Axus Support
 
-Internal hub for Axus Technologies: clients, tickets, time tracking, and invoicing.
-FastAPI backend with JWT auth.
+Axus Technologies support/ticketing platform: client portal, technician console,
+customers, contacts, service boards, time tracking, attachments, and
+email-to-ticket. Part of the Axus platform (`support.hub.axustechnologies.com`);
+auth is delegated to the platform IdP (see repo-root `ARCHITECTURE.md`).
+
+## Email-to-ticket (Microsoft Graph)
+
+When configured, Support polls a shared mailbox and turns email into tickets
+(new ticket or threaded reply by `[AXUS-####]` / conversation id), matching the
+sender to a contact/customer; staff public replies are emailed back. Configure in
+`.env` (`GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`,
+`SUPPORT_MAILBOX`); blank = disabled.
+
+**Entra app registration:** register an app → **API permissions → Microsoft Graph
+→ Application** = `Mail.ReadWrite` + `Mail.Send` → **grant admin consent**; add a
+**client secret**; copy the **tenant id**, **client id**, secret value, and the
+shared mailbox address. (App-only/client-credentials — no user sign-in.) Test with
+`POST /api/email/poll`; `GET /api/email/status` shows config.
 
 ## Backend
 

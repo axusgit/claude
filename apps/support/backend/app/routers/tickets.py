@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -249,6 +249,7 @@ def get_time_entries(ticket_id: int, db: Session = Depends(get_db), _=Depends(ge
 def add_comment(
     ticket_id: int,
     data: CommentIn,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -269,6 +270,10 @@ def add_comment(
     )
     db.commit()
     db.refresh(comment)
+    # Public staff replies are emailed to the ticket's contact (best effort).
+    if not data.is_internal:
+        from app import email_intake
+        background.add_task(email_intake.notify_contact_reply, ticket_id, data.body)
     return comment
 
 

@@ -30,6 +30,8 @@ class Ticket(Base):
     id = Column(Integer, primary_key=True, index=True)
     # Human-friendly reference shown to staff and clients, e.g. "AXUS-1001".
     reference = Column(String, unique=True, index=True, nullable=True)
+    # Graph conversationId, for threading inbound email replies onto the ticket.
+    email_conversation_id = Column(String, index=True, nullable=True)
     title = Column(String, nullable=False)
     description = Column(Text)
     category = Column(String, nullable=True)  # e.g. Hardware, Software, Network, Email
