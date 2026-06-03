@@ -38,6 +38,7 @@ class Ticket(Base):
     ticket_type = Column(Enum(TicketType), default=TicketType.standard, nullable=False)
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    board_id = Column(Integer, ForeignKey("boards.id"), nullable=True)       # service board / queue
     contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)  # who reported it
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)

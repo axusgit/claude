@@ -5,9 +5,10 @@ const Staff = (() => {
   let token = localStorage.getItem(TOKEN_KEY) || null;
   let me = null;
   let tickets = [];                 // full set
-  let clientMap = {}, userMap = {}; // id -> name
+  let clientMap = {}, userMap = {}, boardMap = {}; // id -> name
   let clientsData = [];             // full customer records
   let usersData = [];               // full user records
+  let boardsData = [];              // service boards
   let staffUsers = [];              // assignable
   let filter = "open";
   let current = null;               // open ticket object
@@ -77,19 +78,23 @@ const Staff = (() => {
     if (me.role === "client") { logout(); throw new Error("Use the client portal to sign in"); }
     $("who-name").textContent = me.full_name;
     $("who-role").textContent = cap(me.role);
-    const [cl, us] = await Promise.all([api("/api/clients/"), api("/api/users/")]);
-    clientsData = cl; usersData = us;
+    const [cl, us, bd] = await Promise.all([api("/api/clients/"), api("/api/users/"), api("/api/boards/")]);
+    clientsData = cl; usersData = us; boardsData = bd;
     clientMap = {}; cl.forEach(c => clientMap[c.id] = c.company_name);
     userMap = {}; us.forEach(u => userMap[u.id] = u.full_name);
+    boardMap = {}; bd.forEach(b => boardMap[b.id] = b.name);
     staffUsers = us.filter(u => u.role !== "client");
     $("c-customers").textContent = cl.length;
     $("c-users").textContent = us.length;
-    // populate company + assignee selects
+    // populate company + assignee + board selects
     fillSelect($("f-client"), cl.map(c => [c.id, c.company_name]), "All companies");
     fillSelect($("nt-client"), cl.map(c => [c.id, c.company_name]), null);
     fillSelect($("nt-assignee"), staffUsers.map(u => [u.id, u.full_name]), "Unassigned");
     fillSelect($("d-assignee"), staffUsers.map(u => [u.id, u.full_name]), "Unassigned");
     fillSelect($("uf-client"), cl.map(c => [c.id, c.company_name]), "— None —");
+    fillSelect($("nt-board"), bd.map(b => [b.id, b.name]), "— None —");
+    fillSelect($("d-board"), bd.map(b => [b.id, b.name]), "— None —");
+    renderBoardNav();
     await loadTickets();
   }
   function fillSelect(sel, pairs, placeholder) {
@@ -101,6 +106,7 @@ const Staff = (() => {
 
   /* ---------- Queue ---------- */
   function matchesFilter(t) {
+    if (filter.startsWith("board:")) return t.board_id === parseInt(filter.slice(6));
     switch (filter) {
       case "open": return ACTIVE.includes(t.status);
       case "unassigned": return ACTIVE.includes(t.status) && !t.assigned_to_id;
@@ -119,6 +125,20 @@ const Staff = (() => {
     $("c-mine").textContent = c("mine"); $("c-waiting").textContent = c("waiting");
     $("c-inprogress").textContent = c("in_progress"); $("c-closed").textContent = c("closed");
     $("c-all").textContent = tickets.length;
+    boardsData.forEach(b => { const el = $("bc-" + b.id); if (el) el.textContent = tickets.filter(t => t.board_id === b.id).length; });
+  }
+  function renderBoardNav() {
+    const nav = $("board-nav");
+    nav.innerHTML = boardsData.map(b =>
+      `<a data-board="${b.id}" class="nav-item">${esc(b.name)} <span class="nav-count" id="bc-${b.id}"></span></a>`).join("");
+    nav.querySelectorAll(".nav-item").forEach(item => {
+      item.onclick = () => {
+        document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+        item.classList.add("active");
+        filter = "board:" + item.dataset.board;
+        showQueue(); renderQueue();
+      };
+    });
   }
   function renderStats() {
     const open = tickets.filter(t => ACTIVE.includes(t.status)).length;
@@ -176,6 +196,7 @@ const Staff = (() => {
     $("d-status").value = current.status;
     $("d-priority").value = current.priority;
     $("d-assignee").value = current.assigned_to_id || "";
+    $("d-board").value = current.board_id || "";
     $("p-company").textContent = clientMap[current.client_id] || "—";
     $("p-category").textContent = current.category || "Uncategorized";
     $("p-type").textContent = current.ticket_type === "sow" ? "SOW / Project" : "Standard";
@@ -600,6 +621,7 @@ const Staff = (() => {
     $("d-status").onchange = e => patch("status", e.target.value);
     $("d-priority").onchange = e => patch("priority", e.target.value);
     $("d-assignee").onchange = e => { if (e.target.value) patch("assigned_to_id", parseInt(e.target.value)); };
+    $("d-board").onchange = e => patch("board_id", e.target.value ? parseInt(e.target.value) : null);
 
     $("reply-form").onsubmit = async e => {
       e.preventDefault(); const b = $("reply-body").value.trim(); if (!b) return;
@@ -631,6 +653,7 @@ const Staff = (() => {
       };
       const a = $("nt-assignee").value; if (a) payload.assigned_to_id = parseInt(a);
       const ct = $("nt-contact").value; if (ct) payload.contact_id = parseInt(ct);
+      const bd = $("nt-board").value; if (bd) payload.board_id = parseInt(bd);
       try { await createTicket(payload); } catch (err) { $("nt-error").textContent = err.message; }
     };
 

@@ -29,6 +29,7 @@ class TicketIn(BaseModel):
     category: Optional[str] = None
     priority: str = "medium"
     client_id: int
+    board_id: Optional[int] = None
     contact_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
 
@@ -39,6 +40,7 @@ class TicketUpdate(BaseModel):
     category: Optional[str] = None
     status: Optional[str] = None
     priority: Optional[str] = None
+    board_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
 
 
@@ -130,6 +132,7 @@ class TicketOut(BaseModel):
     priority: str
     ticket_type: str
     client_id: int
+    board_id: Optional[int]
     contact_id: Optional[int]
     assigned_to_id: Optional[int]
     created_by_id: int

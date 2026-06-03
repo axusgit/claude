@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.routers import auth, clients, tickets, portal, users, summary
+from app.routers import auth, clients, tickets, portal, users, summary, boards
 import app.models  # ensure all models/relationships are registered
 import os
 
@@ -28,6 +28,27 @@ app.include_router(tickets.router)
 app.include_router(portal.router)
 app.include_router(users.router)
 app.include_router(summary.router)
+app.include_router(boards.router)
+
+
+@app.on_event("startup")
+def seed_default_boards():
+    """Create the default service boards once, if none exist."""
+    from app.database import SessionLocal
+    from app.models.board import Board
+    db = SessionLocal()
+    try:
+        if db.query(Board).count() == 0:
+            defaults = [
+                ("Help Desk", "Day-to-day support requests"),
+                ("Projects", "Scheduled project & SOW work"),
+                ("NOC", "Monitoring & infrastructure alerts"),
+                ("Onboarding", "New client / employee setup"),
+            ]
+            db.add_all([Board(name=n, description=d) for n, d in defaults])
+            db.commit()
+    finally:
+        db.close()
 
 
 @app.get("/api/health")
