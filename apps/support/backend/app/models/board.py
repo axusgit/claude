@@ -4,6 +4,7 @@ from app.database import Base
 
 
 DEFAULT_BOARD_NAME = "Support"
+PROJECT_BOARD_NAME = "Projects"
 
 
 class Board(Base):
@@ -20,4 +21,10 @@ class Board(Base):
 def default_board_id(db):
     """Id of the default board new tickets land on (the Support board)."""
     b = db.query(Board).filter(Board.name == DEFAULT_BOARD_NAME).first()
+    return b.id if b else None
+
+
+def project_board_id(db):
+    """Id of the Projects board (where converted projects/SOW work lands)."""
+    b = db.query(Board).filter(Board.name == PROJECT_BOARD_NAME).first()
     return b.id if b else None

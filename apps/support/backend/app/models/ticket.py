@@ -43,6 +43,8 @@ class Ticket(Base):
     board_id = Column(Integer, ForeignKey("boards.id"), nullable=True)       # service board / queue
     contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)   # legacy: email-intake reporter
     reporter_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # business user who reported it
+    # If set, this ticket belongs to a project (another ticket of type sow).
+    project_id = Column(Integer, ForeignKey("tickets.id"), nullable=True)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 

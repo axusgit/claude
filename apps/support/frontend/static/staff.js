@@ -237,7 +237,9 @@ const Staff = (() => {
     $("d-board").value = current.board_id || "";
     $("p-company").textContent = clientMap[current.client_id] || "—";
     $("p-category").textContent = current.category || "Uncategorized";
-    $("p-type").textContent = current.ticket_type === "sow" ? "SOW / Project" : "Standard";
+    const isProject = current.ticket_type === "sow";
+    $("p-type").textContent = isProject ? "Project (SOW)" : "Standard";
+    $("convert-project-btn").style.display = isProject ? "none" : "";  // hide once it's a project
     $("p-hours").textContent = (current.total_hours || 0) + " h";
     $("p-created").textContent = fmtDate(current.created_at);
     // resolve the reporting user's name
@@ -247,11 +249,61 @@ const Staff = (() => {
     } else { $("p-contact").textContent = "—"; }
     $("reply-internal").checked = false; $("reply-form").classList.remove("internal-mode");
     showDetail();
-    await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id), loadWatchers(id)]);
+    await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id), loadWatchers(id), loadProjectLinks(current)]);
+  }
+
+  /* ---------- Projects (parent ticket ↔ associated tickets) ---------- */
+  function loadProjectsInto(selectEl, excludeId) {
+    const projects = tickets.filter(t => t.ticket_type === "sow" && t.id !== excludeId);
+    selectEl.innerHTML = `<option value="">— None —</option>` +
+      projects.map(p => `<option value="${p.id}">${esc(p.reference || ("#" + p.id))} · ${esc(p.title)}</option>`).join("");
+  }
+  async function loadProjectLinks(t) {
+    // (a) if this ticket belongs to a project, show a link to it in Properties
+    if (t.project_id) {
+      const p = tickets.find(x => x.id === t.project_id);
+      $("p-project").innerHTML = `<a class="tu-link" id="p-project-link">${p ? esc(p.reference || ("#" + p.id)) : "Project"}</a>`;
+      const link = $("p-project-link"); if (link) link.onclick = () => openTicket(t.project_id);
+    } else {
+      $("p-project").textContent = "—";
+    }
+    // (b) if this ticket IS a project, list its associated tickets + all project files
+    const card = $("project-tickets-card");
+    if (t.ticket_type === "sow") {
+      card.hidden = false;
+      const kids = await api(`/api/tickets/${t.id}/children`);
+      $("pt-count").textContent = `(${kids.length})`;
+      $("pt-list").innerHTML = kids.length
+        ? kids.map(k => `<div class="pt-item" data-id="${k.id}"><span class="pt-ref">${esc(k.reference || ("#" + k.id))}</span>` +
+            `<span class="pt-title">${esc(k.title)}</span><span class="badge ${k.status}">${cap(k.status)}</span></div>`).join("")
+        : `<div class="muted">No tickets in this project yet.</div>`;
+      $("pt-list").querySelectorAll(".pt-item").forEach(el => el.onclick = () => openTicket(Number(el.dataset.id)));
+      await loadProjectAttachments(t.id);
+    } else {
+      card.hidden = true;
+      $("project-files-card").hidden = true;
+    }
+  }
+  async function loadProjectAttachments(projectId) {
+    const files = await api(`/api/tickets/${projectId}/project-attachments`);
+    $("project-files-card").hidden = false;
+    $("pf-count").textContent = `(${files.length})`;
+    $("pf-list").innerHTML = files.length
+      ? files.map(f => `<div class="pf-item">
+          <span class="pf-ico">📄</span>
+          <a class="pf-name" data-att="${f.id}" data-tid="${f.ticket_id}" data-fn="${esc(f.filename)}">${esc(f.filename)}</a>
+          <span class="pf-src">${esc(f.ticket_reference || ("#" + f.ticket_id))}</span>
+          <span class="pf-time">${fmtDate(f.created_at)}</span>
+          <span class="attach-size">${fileSize(f.size)}</span>
+        </div>`).join("")
+      : `<div class="muted">No files uploaded to this project yet.</div>`;
+    $("pf-list").querySelectorAll(".pf-name").forEach(a => {
+      a.onclick = ev => { ev.preventDefault(); download(Number(a.dataset.att), a.dataset.fn, Number(a.dataset.tid)); };
+    });
   }
 
   /* ---------- Ticket users (reporter + up to 9 additional) ---------- */
-  const MAX_ADDITIONAL_USERS = 9;
+  const MAX_ADDITIONAL_USERS = 10;
   async function loadWatchers(ticketId) {
     const [watchers, businessUsers] = await Promise.all([
       api(`/api/tickets/${ticketId}/watchers`),
@@ -297,6 +349,16 @@ const Staff = (() => {
       if (link) link.onclick = () => openCustomer(current.client_id);
     }
   }
+  async function convertToProject() {
+    if (!current || current.ticket_type === "sow") return;
+    if (!confirm("Convert this ticket into a Project? It will move to the Projects board and be assigned.")) return;
+    try {
+      await api(`/api/tickets/${current.id}/convert-to-project`, { method: "POST" });
+      await loadTickets(); await openTicket(current.id);
+      toast("Converted to Project");
+    } catch (e) { toast(e.message); }
+  }
+
   async function addWatcher() {
     const uid = $("tu-select").value;
     if (!uid) return;
@@ -390,8 +452,8 @@ const Staff = (() => {
     }).join("");
   }
 
-  async function download(attId, filename) {
-    const res = await api(`/api/tickets/${current.id}/attachments/${attId}`);
+  async function download(attId, filename, ticketId) {
+    const res = await api(`/api/tickets/${ticketId || current.id}/attachments/${attId}`);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
@@ -724,17 +786,39 @@ const Staff = (() => {
 
   /* ---------- New / Edit ticket modal ---------- */
   let ticketEditId = null;
+  let ntPreset = null;  // {client_id, project_id} applied on the next showNew()
   const showNew = () => {
     ticketEditId = null;
-    $("nt-modal-title").textContent = "New Ticket";
     $("nt-submit").textContent = "Create ticket";
     $("new-form").reset();
     $("nt-error").textContent = "";
+    loadProjectsInto($("nt-project"), null);
+    // A project can't be chosen when creating a normal ticket — child (C-) tickets are
+    // only created from within a project. So the Project field is hidden on create.
+    $("nt-project-wrap").style.display = "none";
+    if (ntPreset && ntPreset.project_id) {
+      // "New ticket in this project" — project + business are inherited from the project,
+      // not user-selectable here (a child belongs to the same business as its project).
+      $("nt-client").value = String(ntPreset.client_id);
+      $("nt-client-wrap").style.display = "none";
+      $("nt-project").value = String(ntPreset.project_id);
+      const p = tickets.find(t => t.id === ntPreset.project_id);
+      const biz = clientMap[ntPreset.client_id] || "";
+      $("nt-modal-title").textContent = "New Ticket in " + (p ? (p.reference || "Project") : "Project") + (biz ? " · " + biz : "");
+    } else {
+      $("nt-client-wrap").style.display = "";
+      $("nt-modal-title").textContent = "New Ticket";
+    }
+    ntPreset = null;
     $("new-modal").classList.remove("hidden");
     // load the Users for whichever Business is currently selected (onchange won't fire on open)
     loadUsersInto($("nt-contact"), $("nt-client").value);
     $("nt-title").focus();
   };
+  function newTicketInProject() {
+    ntPreset = { client_id: current.client_id, project_id: current.id };
+    showNew();
+  }
   async function showEditTicket() {
     if (!current) return;
     const t = current;
@@ -743,8 +827,12 @@ const Staff = (() => {
     $("nt-submit").textContent = "Save changes";
     $("nt-error").textContent = "";
     $("nt-title").value = t.title || "";
+    $("nt-client-wrap").style.display = "";     // business is editable on an existing ticket
     $("nt-client").value = String(t.client_id);
     $("nt-board").value = t.board_id ? String(t.board_id) : "";
+    $("nt-project-wrap").style.display = "";    // existing tickets can be linked to a project
+    loadProjectsInto($("nt-project"), t.id);    // a ticket can't be its own project
+    $("nt-project").value = t.project_id ? String(t.project_id) : "";
     $("nt-desc").value = t.description || "";
     $("nt-category").value = t.category || "";
     $("nt-priority").value = t.priority;
@@ -814,6 +902,8 @@ const Staff = (() => {
     $("sig-logo-remove").onclick = () => { sigLogo = ""; renderSigLogo(); };
     $("new-ticket-btn").onclick = showNew;
     $("edit-ticket-btn").onclick = () => showEditTicket();
+    $("convert-project-btn").onclick = convertToProject;
+    $("pt-add-btn").onclick = newTicketInProject;
     $("modal-close").onclick = closeNew; $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showQueue(); };
 
@@ -844,8 +934,8 @@ const Staff = (() => {
     $("um-close").onclick = closeUserModal; $("uf-cancel").onclick = closeUserModal;
     $("user-form").onsubmit = async e => { e.preventDefault(); $("uf-error").textContent = ""; try { await saveUser(); } catch (err) { $("uf-error").textContent = err.message; } };
 
-    // sidebar nav (ticket queues + manage sections)
-    document.querySelectorAll(".nav-item").forEach(item => {
+    // sidebar nav (ticket queues + manage sections) — only real nav links, not action buttons
+    document.querySelectorAll(".nav-item[data-filter], .nav-item[data-section]").forEach(item => {
       item.onclick = () => {
         document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
         item.classList.add("active");
@@ -903,6 +993,7 @@ const Staff = (() => {
       const a = $("nt-assignee").value; if (a) payload.assigned_to_id = parseInt(a);
       const ct = $("nt-contact").value; if (ct) payload.reporter_user_id = parseInt(ct);
       const bd = $("nt-board").value; if (bd) payload.board_id = parseInt(bd);
+      const pj = $("nt-project").value; if (pj) payload.project_id = parseInt(pj);
       try {
         if (ticketEditId) {
           await api(`/api/tickets/${ticketEditId}`, { method: "PUT", body: payload });

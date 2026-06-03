@@ -41,6 +41,8 @@
   color: var(--text-soft); cursor: pointer; transition: background .15s, color .15s;
 }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
+/* "+ New Ticket" styled as a nav item (button element needs its chrome reset) */
+button.nav-item { width: 100%; background: none; border: none; font-family: inherit; text-align: left; }
 .nav-item.active { background: var(--orange); color: #fff; font-weight: 600; }
 .nav-item.active .nav-count { background: rgba(255,255,255,.25); color: #fff; }
 .nav-count { font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text-soft);
@@ -230,6 +232,27 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
 .pwr-row { display: flex; gap: 8px; align-items: stretch; }
 .pwr-row input { margin-top: 6px; }
 .pwr-row .btn { margin-top: 6px; white-space: nowrap; }
+
+/* ===================== Project tickets ===================== */
+.pt-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.pt-head .card-title { margin: 0; }
+.pt-list { display: flex; flex-direction: column; gap: 8px; }
+.pt-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
+  cursor: pointer; font-size: 13.5px; transition: border-color .15s; }
+.pt-item:hover { border-color: var(--orange); }
+.pt-ref { font-weight: 700; color: var(--orange); white-space: nowrap; }
+.pt-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+/* project files list */
+.pf-list { display: flex; flex-direction: column; gap: 6px; }
+.pf-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; font-size: 13px; }
+.pf-ico { flex-shrink: 0; }
+.pf-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600; color: var(--text); cursor: pointer; }
+.pf-name:hover { color: var(--orange); text-decoration: underline; }
+.pf-src { font-weight: 700; color: var(--orange); white-space: nowrap; font-size: 12px; }
+.pf-time { color: var(--muted); white-space: nowrap; font-size: 12px; }
 
 /* ===================== Ticket users ===================== */
 .tu-add { display: flex; gap: 8px; margin-top: 10px; }

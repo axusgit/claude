@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models.ticket import Ticket, TimeEntry, TicketComment, TicketActivity, TicketStatus, TicketType
 from app.models.ticket_watcher import TicketWatcher
 from app.models.attachment import Attachment
-from app.auth import get_current_user
+from app.auth import get_current_user, require_staff
 from app.models.user import User
 from pydantic import BaseModel
 
@@ -19,13 +19,39 @@ router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 STANDARD_HOUR_LIMIT = 8.0
 
 
-def generate_ticket_reference(db: Session) -> str:
-    """A unique ticket reference: 'A-' + a 6-digit random number, e.g. A-481923."""
+def _unique_ticket_number(db: Session) -> int:
+    """A 6-digit number unique across *all* references (any prefix), so the number
+    can be re-prefixed when a ticket changes role (T- ticket, C- child, P- project)."""
     for _ in range(50):
-        ref = f"A-{random.randint(100000, 999999)}"
-        if not db.query(Ticket).filter(Ticket.reference == ref).first():
-            return ref
+        n = random.randint(100000, 999999)
+        if not db.query(Ticket).filter(Ticket.reference.like(f"%-{n}")).first():
+            return n
     raise HTTPException(status_code=500, detail="Could not allocate a ticket reference")
+
+
+def generate_ticket_reference(db: Session, prefix: str = "T") -> str:
+    """A new ticket reference, e.g. 'T-481923' (standalone) or 'C-481923' (under a project)."""
+    return f"{prefix}-{_unique_ticket_number(db)}"
+
+
+def _renumber(reference: str, prefix: str) -> str:
+    """Swap a reference's prefix, keeping its number: ('A-123456','C') -> 'C-123456'."""
+    if reference and "-" in reference:
+        return f"{prefix}-{reference.split('-')[-1]}"
+    return reference
+
+
+def _validate_project_parent(db: Session, project_id: Optional[int], self_id: Optional[int] = None):
+    """A ticket may be linked only to a real project (a ticket of type sow), not itself."""
+    if project_id is None:
+        return
+    if self_id is not None and project_id == self_id:
+        raise HTTPException(status_code=400, detail="A ticket cannot be its own project")
+    parent = db.query(Ticket).filter(Ticket.id == project_id).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if parent.ticket_type != TicketType.sow:
+        raise HTTPException(status_code=400, detail="That ticket is not a project")
 
 # Where uploaded files are stored on disk, and the per-file size cap.
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
@@ -42,6 +68,7 @@ class TicketIn(BaseModel):
     board_id: Optional[int] = None
     reporter_user_id: Optional[int] = None  # business user who reported it
     assigned_to_id: Optional[int] = None
+    project_id: Optional[int] = None        # parent project (a ticket of type sow)
 
 
 class TicketUpdate(BaseModel):
@@ -54,6 +81,7 @@ class TicketUpdate(BaseModel):
     board_id: Optional[int] = None
     reporter_user_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
+    project_id: Optional[int] = None
 
 
 class TimeEntryIn(BaseModel):
@@ -148,6 +176,7 @@ class TicketOut(BaseModel):
     contact_id: Optional[int]
     reporter_user_id: Optional[int]
     assigned_to_id: Optional[int]
+    project_id: Optional[int]
     created_by_id: int
     total_hours: float
     invoiced: bool
@@ -177,6 +206,7 @@ def list_tickets(
 @router.post("/", response_model=TicketOut)
 def create_ticket(data: TicketIn, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from app.models.board import default_board_id
+    _validate_project_parent(db, data.project_id)
     ticket = Ticket(
         **data.model_dump(),
         created_by_id=current_user.id,
@@ -185,7 +215,8 @@ def create_ticket(data: TicketIn, db: Session = Depends(get_db), current_user: U
     if ticket.board_id is None:
         ticket.board_id = default_board_id(db)
     db.add(ticket)
-    ticket.reference = generate_ticket_reference(db)
+    # a ticket created under a project gets a child reference (C-), otherwise a ticket one (T-)
+    ticket.reference = generate_ticket_reference(db, prefix="C" if data.project_id else "T")
     db.flush()  # assign ticket.id for the activity log
     _log_activity(db, ticket.id, current_user.id, "created", f"Ticket created: {ticket.title}")
     db.commit()
@@ -201,11 +232,54 @@ def get_ticket(ticket_id: int, db: Session = Depends(get_db), _=Depends(get_curr
     return ticket
 
 
+@router.get("/{ticket_id}/children", response_model=List[TicketOut])
+def list_project_tickets(ticket_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Tickets associated with this project (its children)."""
+    return (
+        db.query(Ticket)
+        .filter(Ticket.project_id == ticket_id)
+        .order_by(Ticket.created_at.desc())
+        .all()
+    )
+
+
+class ProjectAttachmentOut(BaseModel):
+    id: int
+    ticket_id: int
+    ticket_reference: Optional[str]
+    filename: str
+    size: int
+    created_at: datetime
+
+
+@router.get("/{ticket_id}/project-attachments", response_model=List[ProjectAttachmentOut])
+def list_project_attachments(ticket_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Every file uploaded to a project — on the project itself or on any ticket inside it."""
+    child_ids = [r[0] for r in db.query(Ticket.id).filter(Ticket.project_id == ticket_id).all()]
+    ticket_ids = [ticket_id] + child_ids
+    refmap = {tid: ref for tid, ref in
+              db.query(Ticket.id, Ticket.reference).filter(Ticket.id.in_(ticket_ids)).all()}
+    atts = (
+        db.query(Attachment)
+        .filter(Attachment.ticket_id.in_(ticket_ids))
+        .order_by(Attachment.created_at.desc())
+        .all()
+    )
+    return [
+        ProjectAttachmentOut(
+            id=a.id, ticket_id=a.ticket_id, ticket_reference=refmap.get(a.ticket_id),
+            filename=a.filename, size=a.size, created_at=a.created_at,
+        )
+        for a in atts
+    ]
+
+
 @router.put("/{ticket_id}", response_model=TicketOut)
 def update_ticket(ticket_id: int, data: TicketUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    _validate_project_parent(db, data.project_id, self_id=ticket_id)
 
     changes = data.model_dump(exclude_none=True)
     # Snapshot audited fields before applying, so we can log what actually changed.
@@ -213,6 +287,13 @@ def update_ticket(ticket_id: int, data: TicketUpdate, db: Session = Depends(get_
 
     for key, value in changes.items():
         setattr(ticket, key, value)
+
+    # Joining a project re-prefixes the reference to a child one (C-), keeping the number.
+    if changes.get("project_id") and ticket.ticket_type != TicketType.sow and not (ticket.reference or "").startswith("C-"):
+        old_ref = ticket.reference
+        ticket.reference = _renumber(ticket.reference, "C")
+        _log_activity(db, ticket.id, current_user.id, "linked_to_project",
+                      f"Linked to project ({old_ref} → {ticket.reference})")
 
     # Auto-close timestamp
     if data.status == TicketStatus.closed and not ticket.closed_at:
@@ -225,6 +306,36 @@ def update_ticket(ticket_id: int, data: TicketUpdate, db: Session = Depends(get_
                 f"{label} changed from {_fmt(old[field])} to {_fmt(changes[field])}",
             )
 
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+
+@router.post("/{ticket_id}/convert-to-project", response_model=TicketOut)
+def convert_to_project(ticket_id: int, db: Session = Depends(get_db),
+                       current_user: User = Depends(require_staff)):
+    """Admin/technician: turn a ticket into a Project — mark it SOW, move it to the
+    Projects board, and assign it (to the converter if it's currently unassigned)."""
+    from app.models.board import project_board_id
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.ticket_type == TicketType.sow:
+        raise HTTPException(status_code=400, detail="Ticket is already a Project")
+
+    ticket.ticket_type = TicketType.sow
+    pb = project_board_id(db)
+    if pb:
+        ticket.board_id = pb
+    if not ticket.assigned_to_id:
+        ticket.assigned_to_id = current_user.id
+
+    # Re-prefix the reference as a project: keep the same number, swap to 'P-'.
+    old_ref = ticket.reference
+    ticket.reference = _renumber(ticket.reference, "P")
+
+    detail = f"Converted to Project ({old_ref} → {ticket.reference})" if old_ref else "Converted to Project"
+    _log_activity(db, ticket.id, current_user.id, "converted_to_project", detail)
     db.commit()
     db.refresh(ticket)
     return ticket
@@ -348,7 +459,7 @@ def delete_comment(ticket_id: int, comment_id: int,
 
 
 # ----- Ticket users (additional users beyond the reporter) -----
-MAX_ADDITIONAL_USERS = 9
+MAX_ADDITIONAL_USERS = 10
 
 
 class WatcherIn(BaseModel):

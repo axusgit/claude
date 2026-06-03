@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=23" />
-  <link rel="stylesheet" href="/static/staff.css?v=23" />
+  <link rel="stylesheet" href="/static/styles.css?v=35" />
+  <link rel="stylesheet" href="/static/staff.css?v=35" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -58,11 +58,11 @@
     <div class="layout">
       <!-- SIDEBAR -->
       <aside class="sidebar">
-        <button class="btn btn-primary btn-block" id="new-ticket-btn">+ New Ticket</button>
         <nav class="side-nav" id="side-nav">
           <div class="nav-group" data-group="tickets">
             <button type="button" class="side-label" data-toggle>Tickets <span class="side-caret">▾</span></button>
             <div class="nav-group-body">
+              <button class="nav-item nav-action" id="new-ticket-btn">New Ticket</button>
               <a data-filter="all" class="nav-item">All Tickets <span class="nav-count" id="c-all"></span></a>
               <a data-filter="mine" class="nav-item">My Tickets <span class="nav-count" id="c-mine"></span></a>
               <a data-filter="open" class="nav-item active">Open <span class="nav-count" id="c-open"></span></a>
@@ -120,7 +120,8 @@
             <div class="detail-top-head">
               <span id="d-ref" class="ref-pill"></span>
               <h2 id="d-title"></h2>
-              <button class="btn btn-ghost btn-xs" id="edit-ticket-btn" style="margin-left:auto">✎ Edit ticket</button>
+              <button class="btn btn-ghost btn-xs" id="convert-project-btn" style="margin-left:auto">★ Convert to Project</button>
+              <button class="btn btn-ghost btn-xs" id="edit-ticket-btn">✎ Edit ticket</button>
             </div>
             <div class="control-row">
               <label class="ctl">Status
@@ -148,6 +149,17 @@
               <div class="card">
                 <p id="d-desc" class="detail-desc"></p>
               </div>
+              <div class="card" id="project-tickets-card" hidden>
+                <div class="pt-head">
+                  <h3 class="card-title">Project Tickets <span class="muted" id="pt-count" style="font-weight:500;font-size:12px"></span></h3>
+                  <button class="btn btn-primary" id="pt-add-btn">New ticket</button>
+                </div>
+                <div id="pt-list" class="pt-list"></div>
+              </div>
+              <div class="card" id="project-files-card" hidden>
+                <h3 class="card-title">Project Files <span class="muted" id="pf-count" style="font-weight:500;font-size:12px"></span></h3>
+                <div id="pf-list" class="pf-list"></div>
+              </div>
               <div class="card">
                 <h3 class="card-title">Conversation</h3>
                 <div id="thread" class="thread"></div>
@@ -171,6 +183,7 @@
                 <dl class="props">
                   <dt>Business</dt><dd id="p-company"></dd>
                   <dt>Opened by</dt><dd id="p-contact"></dd>
+                  <dt>Project</dt><dd id="p-project"></dd>
                   <dt>Category</dt><dd id="p-category"></dd>
                   <dt>Type</dt><dd id="p-type"></dd>
                   <dt>Total hours</dt><dd id="p-hours"></dd>
@@ -179,7 +192,7 @@
               </div>
               <div class="card">
                 <h3 class="card-title">Ticket Users <span class="muted" id="tu-count" style="font-weight:500;font-size:12px"></span></h3>
-                <p class="muted" style="margin:-4px 0 10px;font-size:12px">Everyone here is emailed on replies. Up to 9 additional users.</p>
+                <p class="muted" style="margin:-4px 0 10px;font-size:12px">Everyone here is emailed on replies. Up to 10 additional users.</p>
                 <div id="tu-list" class="time-list"></div>
                 <div id="tu-add-wrap"></div>
               </div>
@@ -356,9 +369,10 @@
       <div class="modal-head"><h2 id="nt-modal-title">New Ticket</h2><button class="modal-x" id="modal-close">×</button></div>
       <form id="new-form">
         <label>Subject<input type="text" id="nt-title" required placeholder="Short summary" /></label>
-        <label>Business<select id="nt-client" required></select></label>
+        <label id="nt-client-wrap">Business<select id="nt-client" required></select></label>
         <label>User<select id="nt-contact"><option value="">— None —</option></select></label>
         <label>Board<select id="nt-board"><option value="">— None —</option></select></label>
+        <label id="nt-project-wrap">Project <span class="muted">(optional)</span><select id="nt-project"><option value="">— None —</option></select></label>
         <label>Description<textarea id="nt-desc" rows="3" placeholder="Details…"></textarea></label>
         <div class="form-row">
           <label>Category<select id="nt-category"><option value="">— Select —</option><option>Network</option><option>Wireless</option><option>Cloud</option><option>Security</option><option>Email</option><option>Hardware</option><option>Software</option><option>Other</option></select></label>
@@ -393,6 +407,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=23"></script>
+  <script src="/static/staff.js?v=35"></script>
 </body>
 </html>

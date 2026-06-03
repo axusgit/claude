@@ -8,8 +8,8 @@ from app.models.contact import Contact
 from app.models.user import User
 from app import graph
 
-# Match current 'A-123456' references and legacy 'AXUS-1001' ones in email subjects.
-REF_RE = re.compile(r"\b(A-\d+|AXUS-\d+)\b", re.I)
+# Match ticket 'T-', child 'C-', project 'P-', and legacy 'A-' / 'AXUS-' refs in subjects.
+REF_RE = re.compile(r"\b(T-\d+|C-\d+|P-\d+|A-\d+|AXUS-\d+)\b", re.I)
 UNMATCHED_COMPANY = "Unmatched Senders"
 SYS_EMAIL = "email-intake@axustechnologies.com"
 
