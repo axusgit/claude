@@ -78,10 +78,12 @@ def _process_one(db, msg):
         return "reply"
 
     client_id, contact_id = _resolve_sender(db, email, name)
+    from app.models.board import default_board_id
     ticket = Ticket(
         title=subject[:200],
         description=f"From: {name} <{email}>\n\n{body}",
         client_id=client_id, contact_id=contact_id, created_by_id=sys_user.id,
+        board_id=default_board_id(db),
         email_conversation_id=conv, ticket_type=TicketType.standard,
     )
     db.add(ticket)

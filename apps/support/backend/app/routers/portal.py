@@ -93,6 +93,8 @@ def submit_ticket(
         created_by_id=user.id,
         ticket_type=TicketType.standard,
     )
+    from app.models.board import default_board_id
+    ticket.board_id = default_board_id(db)
     db.add(ticket)
     db.flush()
     ticket.reference = f"AXUS-{REFERENCE_BASE + ticket.id}"

@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=4" />
-  <link rel="stylesheet" href="/static/staff.css?v=4" />
+  <link rel="stylesheet" href="/static/styles.css?v=6" />
+  <link rel="stylesheet" href="/static/staff.css?v=6" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -74,11 +74,15 @@
             <select id="f-priority"><option value="">All priorities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Normal</option><option value="low">Low</option></select>
             <select id="f-client"><option value="">All companies</option></select>
             <h3 class="queue-title" id="queue-title"></h3>
+            <div class="col-picker">
+              <button class="btn btn-ghost" id="cols-btn" type="button" title="Show / hide columns">⊞ Columns</button>
+              <div class="col-menu hidden" id="cols-menu"></div>
+            </div>
           </div>
           <div class="table-wrap">
             <table class="ticket-table">
               <thead><tr>
-                <th>Ref</th><th>Subject</th><th>Company</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Updated</th>
+                <th class="col-ref">Ref</th><th class="col-subject">Subject</th><th class="col-company">Company</th><th class="col-board">Board</th><th class="col-priority">Priority</th><th class="col-status">Status</th><th class="col-assignee">Assignee</th><th class="col-updated">Updated</th>
               </tr></thead>
               <tbody id="ticket-rows"></tbody>
             </table>
@@ -97,8 +101,8 @@
             <div class="control-row">
               <label class="ctl">Status
                 <select id="d-status">
-                  <option value="open">Open</option><option value="in_progress">In Progress</option>
-                  <option value="waiting">Waiting</option><option value="closed">Closed</option>
+                  <option value="open">Open</option>
+                  <option value="closed">Closed</option>
                 </select>
               </label>
               <label class="ctl">Priority
@@ -351,6 +355,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js"></script>
+  <script src="/static/staff.js?v=6"></script>
 </body>
 </html>

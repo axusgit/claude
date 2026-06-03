@@ -61,10 +61,10 @@ def seed_default_boards():
     try:
         if db.query(Board).count() == 0:
             defaults = [
-                ("Help Desk", "Day-to-day support requests"),
+                ("Support", "Day-to-day support requests"),
                 ("Projects", "Scheduled project & SOW work"),
-                ("NOC", "Monitoring & infrastructure alerts"),
-                ("Onboarding", "New client / employee setup"),
+                ("Accounting", "Billing & finance tickets"),
+                ("Talent", "Recruiting & talent management"),
             ]
             db.add_all([Board(name=n, description=d) for n, d in defaults])
             db.commit()

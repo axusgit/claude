@@ -175,17 +175,45 @@ const Staff = (() => {
       tr.onclick = () => openTicket(t.id);
       const aName = t.assigned_to_id ? userMap[t.assigned_to_id] : null;
       tr.innerHTML = `
-        <td class="cell-ref">${esc(t.reference || "")}</td>
-        <td class="cell-subject">${esc(t.title)}</td>
-        <td class="cell-muted">${esc(clientMap[t.client_id] || "—")}</td>
-        <td><span class="prio-dot prio ${t.priority}">${cap(t.priority)}</span></td>
-        <td><span class="badge ${t.status}">${cap(t.status)}</span></td>
-        <td>${aName
+        <td class="cell-ref col-ref">${esc(t.reference || "")}</td>
+        <td class="cell-subject col-subject">${esc(t.title)}</td>
+        <td class="cell-muted col-company">${esc(clientMap[t.client_id] || "—")}</td>
+        <td class="cell-muted col-board">${t.board_id ? esc(boardMap[t.board_id] || "—") : "—"}</td>
+        <td class="col-priority"><span class="prio-dot prio ${t.priority}">${cap(t.priority)}</span></td>
+        <td class="col-status"><span class="badge ${t.status}">${cap(t.status)}</span></td>
+        <td class="col-assignee">${aName
           ? `<span class="assignee-pill"><span class="mini-avatar">${initials(aName)}</span>${esc(aName)}</span>`
           : `<span class="assignee-pill"><span class="mini-avatar none">?</span><span class="cell-muted">Unassigned</span></span>`}</td>
-        <td class="cell-muted">${fmtDate(t.updated_at || t.created_at)}</td>`;
+        <td class="cell-muted col-updated">${fmtDate(t.updated_at || t.created_at)}</td>`;
       tbody.appendChild(tr);
     }
+    applyColumns();
+  }
+
+  /* ---------- Column chooser ---------- */
+  const COLUMNS = [
+    { key: "ref", label: "Ref" }, { key: "subject", label: "Subject" },
+    { key: "company", label: "Company" }, { key: "board", label: "Board" },
+    { key: "priority", label: "Priority" }, { key: "status", label: "Status" },
+    { key: "assignee", label: "Assignee" }, { key: "updated", label: "Updated" },
+  ];
+  const COLS_KEY = "axus-staff-hidden-cols";
+  let hiddenCols = new Set(JSON.parse(localStorage.getItem(COLS_KEY) || "[]"));
+
+  function applyColumns() {
+    COLUMNS.forEach(c => {
+      const hide = hiddenCols.has(c.key);
+      document.querySelectorAll(`.ticket-table .col-${c.key}`).forEach(el => el.style.display = hide ? "none" : "");
+    });
+  }
+  function renderColsMenu() {
+    $("cols-menu").innerHTML = COLUMNS.map(c =>
+      `<label class="col-opt"><input type="checkbox" data-col="${c.key}" ${hiddenCols.has(c.key) ? "" : "checked"} /> ${c.label}</label>`).join("");
+    $("cols-menu").querySelectorAll("input").forEach(i => i.onchange = () => {
+      if (i.checked) hiddenCols.delete(i.dataset.col); else hiddenCols.add(i.dataset.col);
+      localStorage.setItem(COLS_KEY, JSON.stringify([...hiddenCols]));
+      applyColumns();
+    });
   }
 
   /* ---------- Detail ---------- */
@@ -617,6 +645,11 @@ const Staff = (() => {
     $("search").oninput = renderQueue;
     $("f-priority").onchange = renderQueue;
     $("f-client").onchange = renderQueue;
+    // column chooser
+    renderColsMenu();
+    $("cols-btn").onclick = e => { e.stopPropagation(); $("cols-menu").classList.toggle("hidden"); };
+    $("cols-menu").onclick = e => e.stopPropagation();
+    document.addEventListener("click", () => $("cols-menu").classList.add("hidden"));
 
     // detail controls
     $("d-status").onchange = e => patch("status", e.target.value);

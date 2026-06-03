@@ -27,7 +27,7 @@
 .nav-count { font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text-soft);
   min-width: 22px; text-align: center; padding: 1px 7px; border-radius: 999px; }
 
-.content { padding: 26px 30px 60px; max-width: 1200px; }
+.content { padding: 26px 34px 60px; max-width: none; width: 100%; }
 
 /* ---------- Stats ---------- */
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
@@ -58,7 +58,7 @@
 .ticket-table tbody tr:hover { background: var(--surface-2); }
 .ticket-table tbody tr:last-child td { border-bottom: none; }
 .cell-ref { font-weight: 700; color: var(--orange); white-space: nowrap; }
-.cell-subject { font-weight: 600; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-subject { font-weight: 600; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell-muted { color: var(--muted); white-space: nowrap; }
 .prio-dot { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; text-transform: capitalize; }
 .prio-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
@@ -129,6 +129,17 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(247,148,29,
   .detail-grid { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---------- Column chooser ---------- */
+.col-picker { position: relative; }
+.col-menu { position: absolute; right: 0; top: calc(100% + 8px); min-width: 175px; z-index: 12;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow-lg); padding: 8px;
+  backdrop-filter: blur(14px) saturate(130%); -webkit-backdrop-filter: blur(14px) saturate(130%); }
+.col-opt { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 8px;
+  font-size: 13.5px; font-weight: 500; cursor: pointer; }
+.col-opt:hover { background: var(--surface-2); }
+.col-opt input { width: auto; margin: 0; cursor: pointer; }
 
 /* ===================== Console polish layer (modern, no neon) ===================== */
 .sidebar { backdrop-filter: blur(16px) saturate(130%); -webkit-backdrop-filter: blur(16px) saturate(130%);

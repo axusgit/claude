@@ -163,11 +163,14 @@ def list_tickets(
 
 @router.post("/", response_model=TicketOut)
 def create_ticket(data: TicketIn, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models.board import default_board_id
     ticket = Ticket(
         **data.model_dump(),
         created_by_id=current_user.id,
         ticket_type=TicketType.standard,
     )
+    if ticket.board_id is None:
+        ticket.board_id = default_board_id(db)
     db.add(ticket)
     db.flush()  # assign ticket.id before building the reference
     ticket.reference = f"AXUS-{REFERENCE_BASE + ticket.id}"
