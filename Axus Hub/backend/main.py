@@ -2,13 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.database import engine, Base
 from app.routers import auth, clients, tickets, portal, users
-import app.models  # ensure all models are registered
+import app.models  # ensure all models/relationships are registered
 import os
 
-# Create all database tables
-Base.metadata.create_all(bind=engine)
+# The database schema is managed by Alembic migrations (`alembic upgrade head`),
+# not auto-created at startup. See DEPLOY.md.
 
 app = FastAPI(title="Axus Hub", version="1.0.0")
 
