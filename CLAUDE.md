@@ -12,6 +12,7 @@ This is the **Axus Technologies platform monorepo**. Axus Hub is the central pla
 |------|-------------|
 | `apps/hub/` | **Central platform**: dashboard, app launcher, profile, monitoring, admin. OIDC/forward-auth client of Authentik. |
 | `apps/support/` | **Support** platform (ticketing, service desk, customer portal) — `support.hub.axustechnologies.com`. Formerly mislabeled "Axus Hub". Live in prod. |
+| `apps/accounting/` | **Accounting** (billing/invoicing) — `accounting.hub.axustechnologies.com:8443` (internal). Own DB; feeds the Hub command center. |
 | `apps/rmm/` | RMM scaffold (future) — `rmm.hub.axustechnologies.com`. |
 | `infra/` | Docker Compose stack: Traefik (reverse proxy + TLS), Authentik (IdP), Postgres, Redis. |
 | `libs/auth/` | Shared central-identity module (reads Authentik forward-auth headers; dev fallback). |

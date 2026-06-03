@@ -37,8 +37,8 @@ APP_CATALOG = [
 # "not yet connected".
 INTERNAL_URLS = {
     "support": os.getenv("SUPPORT_INTERNAL_URL", "http://support:8000"),
+    "accounting": os.getenv("ACCOUNTING_INTERNAL_URL", "http://accounting:8000"),
     # "rmm": os.getenv("RMM_INTERNAL_URL", "http://rmm:8000"),
-    # "accounting": os.getenv("ACCOUNTING_INTERNAL_URL", "http://accounting:8000"),
     # "engineering": os.getenv("ENGINEERING_INTERNAL_URL", "http://engineering:8000"),
 }
 

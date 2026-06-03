@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Axus Accounting</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <img class="topbar-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus" />
+        <span class="app-tag">Accounting</span>
+      </div>
+      <div class="topbar-right">
+        <button class="theme-toggle" id="theme-toggle" title="Toggle dark / light"><span class="theme-icon">🌙</span></button>
+        <a class="btn btn-ghost" href="https://hub.axustechnologies.com:8443">← Hub</a>
+      </div>
+    </header>
+    <div class="accent-strip"></div>
+
+    <main class="container">
+      <div class="stats-row" id="stats-row"></div>
+      <div class="page-head">
+        <h2>Invoices</h2>
+        <button class="btn btn-primary" id="new-btn">+ New Invoice</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Number</th><th>Customer</th><th>Status</th><th>Issued</th><th>Due</th><th class="right">Total</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div id="empty" class="empty hidden"><div class="empty-emoji">🧾</div><h3>No invoices</h3><p class="muted">Create your first invoice.</p></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- NEW INVOICE MODAL -->
+  <div id="new-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-head"><h2>New Invoice</h2><button class="modal-x" id="nm-close">×</button></div>
+      <form id="new-form">
+        <div class="form-row">
+          <label>Customer<select id="iv-customer" required></select></label>
+          <label>Due date<input type="date" id="iv-due" /></label>
+        </div>
+        <div class="line-head"><span>Description</span><span>Qty</span><span>Unit price</span><span>Amount</span><span></span></div>
+        <div id="line-items"></div>
+        <button type="button" class="btn btn-ghost" id="add-line">+ Add line</button>
+        <label style="margin-top:14px">Notes<textarea id="iv-notes" rows="2"></textarea></label>
+        <div class="modal-total">Total: <strong id="iv-total">$0</strong></div>
+        <div id="nm-error" class="form-error"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="nm-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create invoice</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- INVOICE DETAIL MODAL -->
+  <div id="detail-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-head"><h2 id="d-number"></h2><button class="modal-x" id="dm-close">×</button></div>
+      <div class="detail-meta">
+        <div><span class="muted">Customer</span><div id="d-customer"></div></div>
+        <div><span class="muted">Status</span><div><span id="d-status" class="badge"></span></div></div>
+        <div><span class="muted">Issued</span><div id="d-issued"></div></div>
+        <div><span class="muted">Due</span><div id="d-due"></div></div>
+      </div>
+      <table class="data-table" style="margin-top:14px">
+        <thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Unit</th><th class="right">Amount</th></tr></thead>
+        <tbody id="d-lines"></tbody>
+      </table>
+      <div class="modal-total">Total: <strong id="d-total"></strong></div>
+      <div class="modal-actions" id="d-actions"></div>
+    </div>
+  </div>
+
+  <div id="loading" class="loading"><div class="spinner"></div></div>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

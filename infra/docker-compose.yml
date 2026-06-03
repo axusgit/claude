@@ -149,6 +149,25 @@ services:
       traefik.http.services.support.loadbalancer.server.port: "8000"
     networks: [axus]
 
+  accounting:
+    build:
+      context: ..
+      dockerfile: apps/accounting/Dockerfile
+    restart: unless-stopped
+    environment:
+      AUTH_MODE: central
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/accounting
+    depends_on:
+      postgres: {condition: service_healthy}
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.accounting.rule: Host(`accounting.${PLATFORM_DOMAIN}`)
+      traefik.http.routers.accounting.entrypoints: internal       # 8443, IP-restricted
+      traefik.http.routers.accounting.tls.certresolver: letsencrypt
+      traefik.http.routers.accounting.middlewares: geogate@file,authentik@file
+      traefik.http.services.accounting.loadbalancer.server.port: "8000"
+    networks: [axus]
+
 networks:
   axus:
 
