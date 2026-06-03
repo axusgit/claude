@@ -61,6 +61,7 @@ def me(request: Request):
         "groups": identity.groups,
         "is_admin": identity.role == "admin",
         "apps": _apps_for(identity),
+        "authentik_url": AUTHENTIK_URL,
         "admin_url": f"{AUTHENTIK_URL}/if/admin/" if identity.role == "admin" else None,
         "account_url": f"{AUTHENTIK_URL}/if/user/",
     }

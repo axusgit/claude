@@ -1,10 +1,12 @@
-/* ===================== Axus Hub — dashboard ===================== */
+/* ===================== Axus Hub — application frame ===================== */
 (() => {
   const THEME_KEY = "axus-theme";
   const $ = id => document.getElementById(id);
   const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const initials = n => (n || "?").split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
-  let me = null;
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+  const TITLES = { dashboard: "Dashboard", apps: "Applications", monitoring: "Monitoring", reports: "Reports", admin: "Administration" };
+  let me = null, health = {};
 
   function applyTheme(t) {
     document.documentElement.setAttribute("data-theme", t);
@@ -19,82 +21,135 @@
     return r.json();
   }
 
-  function renderProfile() {
-    $("who-name").textContent = me.name;
-    $("who-role").textContent = me.role.charAt(0).toUpperCase() + me.role.slice(1);
-    $("avatar").textContent = initials(me.name);
-    $("hero-title").textContent = `Welcome back, ${me.name.split(" ")[0]}`;
-    const n = me.apps.length;
-    $("hero-sub").textContent = `You have access to ${n} application${n === 1 ? "" : "s"}.`;
-    $("account-link").href = me.account_url || "#";
-    if (me.is_admin && me.admin_url) {
-      $("admin-card").style.display = "";
-      $("admin-link").href = me.admin_url;
-    }
+  /* ---------- navigation ---------- */
+  function showView(name) {
+    document.querySelectorAll(".view").forEach(v => v.classList.add("hidden"));
+    $("view-" + name).classList.remove("hidden");
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.view === name));
+    $("page-title").textContent = TITLES[name] || "Hub";
+    if (name === "monitoring") loadHealth();
   }
 
-  function renderLauncher() {
-    const wrap = $("launcher");
+  /* ---------- shared render helpers ---------- */
+  function appTile(a, compact) {
+    const t = document.createElement("a");
+    t.className = "app-tile";
+    t.href = a.url;
+    t.innerHTML = `
+      <span class="app-status ${health[a.key] || ""}" data-app="${a.key}"></span>
+      <div class="app-icon">${a.icon}</div>
+      <div class="app-name">${esc(a.name)}</div>
+      <div class="app-desc">${esc(a.desc)}</div>
+      <div class="app-launch">Launch →</div>`;
+    return t;
+  }
+
+  function renderProfile() {
+    $("side-name").textContent = me.name;
+    $("side-role").textContent = cap(me.role);
+    $("avatar").textContent = initials(me.name);
+    $("account-link").href = me.account_url || "#";
+    $("hero-title").textContent = `Welcome back, ${me.name.split(" ")[0]}`;
+    $("hero-sub").textContent = `You have access to ${me.apps.length} application${me.apps.length === 1 ? "" : "s"}.`;
+    document.querySelectorAll(".admin-only").forEach(el => { el.style.display = me.is_admin ? "" : "none"; });
+  }
+
+  function renderDashboard() {
+    const launcher = $("dash-launcher"); launcher.innerHTML = "";
+    me.apps.slice(0, 8).forEach(a => launcher.appendChild(appTile(a, true)));
+    $("dash-health").innerHTML = me.apps.map(a => `
+      <div class="health-row"><span class="health-dot ${health[a.key] || ""}" data-health="${a.key}"></span>
+        <span>${esc(a.name)}</span><span class="health-state" data-state="${a.key}">${health[a.key] || "checking…"}</span></div>`).join("")
+      || `<div class="muted">No applications.</div>`;
+    renderStats();
+  }
+
+  function renderStats() {
+    const total = me.apps.length;
+    const up = Object.values(health).filter(s => s === "up").length;
+    const allKnown = Object.keys(health).length === total && total > 0;
+    const status = total === 0 ? "—" : (allKnown && up === total ? "Operational" : (up === 0 && allKnown ? "Down" : "Degraded"));
+    const statusCls = status === "Operational" ? "good" : (status === "Down" ? "bad" : (status === "—" ? "" : "accent"));
+    $("stats-row").innerHTML = `
+      ${stat(total, "Applications", "accent")}
+      ${stat(status, "System status", statusCls)}
+      ${stat(cap(me.role), "Your role", "")}
+      ${stat(0, "Notifications", "")}`;
+  }
+  const stat = (n, label, cls) => `<div class="stat-card"><div class="stat-num ${cls}">${n}</div><div class="stat-label">${label}</div></div>`;
+
+  function renderApps() {
+    const wrap = $("launcher"); wrap.innerHTML = "";
     $("apps-count").textContent = me.apps.length ? `${me.apps.length} available` : "";
     $("no-apps").classList.toggle("hidden", me.apps.length > 0);
-    wrap.innerHTML = "";
-    me.apps.forEach(a => {
-      const tile = document.createElement("a");
-      tile.className = "app-tile";
-      tile.href = a.url;
-      tile.innerHTML = `
-        <span class="app-status" data-app="${a.key}"></span>
-        <div class="app-icon">${a.icon}</div>
-        <div class="app-name">${esc(a.name)}</div>
-        <div class="app-desc">${esc(a.desc)}</div>
-        <div class="app-launch">Launch →</div>`;
-      wrap.appendChild(tile);
-    });
-    // health list mirrors the launcher
-    $("health-list").innerHTML = me.apps.map(a => `
-      <div class="health-row">
-        <span class="health-dot" data-health="${a.key}"></span>
-        <span>${esc(a.name)}</span>
-        <span class="health-state" data-state="${a.key}">checking…</span>
-      </div>`).join("") || `<div class="muted">No applications.</div>`;
+    me.apps.forEach(a => wrap.appendChild(appTile(a, false)));
+  }
+
+  function renderMonitoring() {
+    $("mon-rows").innerHTML = me.apps.map(a => {
+      const s = health[a.key] || "";
+      return `<tr><td>${esc(a.name)}</td>
+        <td><span class="pill ${s}" data-mon="${a.key}">${s || "checking…"}</span></td>
+        <td class="muted">${esc(a.url)}</td></tr>`;
+    }).join("") || `<tr><td colspan="3" class="muted">No applications.</td></tr>`;
+  }
+
+  function renderReports() {
+    $("report-stats").innerHTML = `
+      ${stat(me.apps.length, "Connected apps", "accent")}
+      ${stat(Object.values(health).filter(s => s === "up").length, "Online now", "good")}
+      ${stat("—", "Open tickets", "")}
+      ${stat("—", "Revenue (MTD)", "")}`;
+  }
+
+  function renderAdmin() {
+    if (!me.is_admin) { $("admin-grid").innerHTML = `<div class="muted">Administrator access required.</div>`; return; }
+    const base = me.authentik_url;
+    const cards = [
+      { icon: "👥", title: "Users", desc: "Create and manage platform user accounts.", href: `${base}/if/admin/#/identity/users` },
+      { icon: "🔑", title: "Roles & Groups", desc: "Manage role-* and app-* groups that grant access.", href: `${base}/if/admin/#/identity/groups` },
+      { icon: "🧩", title: "Applications", desc: "Configure connected apps, providers and outposts.", href: `${base}/if/admin/#/core/applications` },
+      { icon: "🛡️", title: "Identity Console", desc: "Full Authentik admin: flows, policies, MFA, events.", href: `${base}/if/admin/` },
+    ];
+    $("admin-grid").innerHTML = cards.map(c => `
+      <a class="admin-card" href="${c.href}" target="_blank" rel="noopener">
+        <span class="ac-icon">${c.icon}</span><h4>${c.title}</h4><p>${c.desc}</p>
+        <span class="link">Open →</span></a>`).join("");
   }
 
   async function loadHealth() {
-    let health = {};
     try { health = await api("/api/apps/health"); } catch (e) { return; }
     for (const [key, state] of Object.entries(health)) {
-      document.querySelectorAll(`.app-status[data-app="${key}"]`).forEach(el => el.classList.add(state));
-      const dot = document.querySelector(`.health-dot[data-health="${key}"]`);
-      if (dot) dot.classList.add(state);
-      const lbl = document.querySelector(`.health-state[data-state="${key}"]`);
-      if (lbl) lbl.textContent = state;
+      document.querySelectorAll(`[data-app="${key}"]`).forEach(el => { el.className = "app-status " + state; });
+      const dot = document.querySelector(`[data-health="${key}"]`); if (dot) dot.className = "health-dot " + state;
+      const st = document.querySelector(`[data-state="${key}"]`); if (st) st.textContent = state;
+      const mon = document.querySelector(`[data-mon="${key}"]`); if (mon) { mon.className = "pill " + state; mon.textContent = state; }
     }
+    renderStats();
   }
 
   function wireSearch() {
     $("search").oninput = e => {
       const q = e.target.value.toLowerCase();
-      document.querySelectorAll(".app-tile").forEach(t => {
-        const txt = t.textContent.toLowerCase();
-        t.style.display = txt.includes(q) ? "" : "none";
-      });
+      document.querySelectorAll(".app-tile").forEach(t => { t.style.display = t.textContent.toLowerCase().includes(q) ? "" : "none"; });
+      if (q) showView("apps");
     };
   }
 
   async function start() {
     applyTheme(localStorage.getItem(THEME_KEY) || "light");
     $("theme-toggle").onclick = toggleTheme;
-    try {
-      me = await api("/api/me");
-    } catch (e) {
-      // In production the gateway authenticates before we get here; a 401 means
-      // the session expired — bounce to re-auth.
-      window.location.href = "/outpost.goauthentik.io/start?rd=" + encodeURIComponent(location.href);
-      return;
-    }
+    try { me = await api("/api/me"); }
+    catch (e) { window.location.href = "/outpost.goauthentik.io/start?rd=" + encodeURIComponent(location.href); return; }
+
     renderProfile();
-    renderLauncher();
+    renderDashboard(); renderApps(); renderMonitoring(); renderReports(); renderAdmin();
     wireSearch();
+
+    document.querySelectorAll(".nav-item").forEach(n => n.onclick = () => showView(n.dataset.view));
+    document.querySelectorAll("[data-goto]").forEach(el => el.onclick = e => { e.preventDefault(); showView(el.dataset.goto); });
+
+    $("refresh-health").onclick = loadHealth;
     $("loading").classList.add("hidden");
     $("app").classList.remove("hidden");
     loadHealth();

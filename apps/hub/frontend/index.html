@@ -11,58 +11,102 @@
 </head>
 <body>
   <div id="app" class="hidden">
-    <header class="topbar">
-      <div class="topbar-left">
-        <img class="topbar-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus" />
-        <span class="hub-tag">Hub</span>
+    <!-- ===================== SIDEBAR ===================== -->
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus" />
+        <span class="brand-tag">Hub</span>
       </div>
-      <div class="topbar-center">
-        <input type="search" id="search" class="global-search" placeholder="Search apps & quick actions…" />
-      </div>
-      <div class="topbar-right">
-        <button class="theme-toggle" id="theme-toggle" title="Toggle dark / light"><span class="theme-icon">🌙</span></button>
-        <a id="account-link" class="icon-btn" title="Account" target="_blank" rel="noopener">⚙️</a>
-        <div class="who"><span id="who-name" class="who-name"></span><span id="who-role" class="who-role"></span></div>
-        <div class="avatar" id="avatar"></div>
-        <a id="logout" class="btn btn-ghost" href="/outpost.goauthentik.io/sign_out">Sign out</a>
-      </div>
-    </header>
-    <div class="accent-strip"></div>
-
-    <main class="container">
-      <section class="hero">
-        <h1 id="hero-title">Welcome</h1>
-        <p class="muted" id="hero-sub"></p>
-      </section>
-
-      <section>
-        <div class="section-head"><h2>Your Applications</h2><span class="muted" id="apps-count"></span></div>
-        <div id="launcher" class="launcher"></div>
-        <div id="no-apps" class="empty hidden">
-          <div class="empty-emoji">🔒</div><h3>No applications yet</h3>
-          <p class="muted">You don't have access to any apps. Contact an administrator.</p>
+      <nav class="side-nav">
+        <a data-view="dashboard" class="nav-item active"><span class="ni">▦</span> Dashboard</a>
+        <a data-view="apps" class="nav-item"><span class="ni">▣</span> Applications</a>
+        <a data-view="monitoring" class="nav-item"><span class="ni">📡</span> Monitoring</a>
+        <a data-view="reports" class="nav-item"><span class="ni">📈</span> Reports</a>
+        <a data-view="admin" class="nav-item admin-only"><span class="ni">⚙</span> Administration</a>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="user-chip">
+          <div class="avatar" id="avatar"></div>
+          <div class="user-meta"><span id="side-name" class="side-name"></span><span id="side-role" class="muted"></span></div>
         </div>
-      </section>
+        <div class="foot-actions">
+          <button class="theme-toggle" id="theme-toggle" title="Toggle dark / light"><span class="theme-icon">🌙</span></button>
+          <a id="account-link" class="icon-btn" title="My account" target="_blank" rel="noopener">👤</a>
+          <a class="icon-btn" id="logout" title="Sign out" href="/outpost.goauthentik.io/sign_out">⎋</a>
+        </div>
+      </div>
+    </aside>
 
-      <div class="grid-2">
-        <section class="card">
-          <h3 class="card-title">System Health</h3>
-          <div id="health-list" class="health-list"></div>
-        </section>
-        <section class="card">
-          <h3 class="card-title">Notifications</h3>
-          <div id="notifications" class="notif-list">
-            <div class="notif-empty muted">You're all caught up. 🎉</div>
+    <!-- ===================== MAIN ===================== -->
+    <div class="main">
+      <header class="topbar">
+        <h1 id="page-title">Dashboard</h1>
+        <div class="topbar-right">
+          <input type="search" id="search" class="global-search" placeholder="Search applications…" />
+          <button class="icon-btn" id="bell" title="Notifications">🔔</button>
+        </div>
+      </header>
+      <div class="accent-strip"></div>
+      <main class="content">
+
+        <!-- DASHBOARD -->
+        <section id="view-dashboard" class="view">
+          <div class="hero">
+            <h2 id="hero-title">Welcome</h2>
+            <p class="muted" id="hero-sub"></p>
+          </div>
+          <div class="stats-row" id="stats-row"></div>
+          <div class="section-head"><h3>Quick launch</h3><a class="link" data-goto="apps">View all →</a></div>
+          <div id="dash-launcher" class="launcher compact"></div>
+          <div class="grid-2">
+            <div class="card">
+              <h3 class="card-title">System health</h3>
+              <div id="dash-health" class="health-list"></div>
+            </div>
+            <div class="card">
+              <h3 class="card-title">Activity</h3>
+              <div id="dash-activity" class="notif-list"><div class="muted notif-empty">No recent activity.</div></div>
+            </div>
           </div>
         </section>
-      </div>
 
-      <section class="card" id="admin-card" style="display:none">
-        <h3 class="card-title">Administration</h3>
-        <p class="muted">Manage users, roles, permissions, and platform settings in the identity console.</p>
-        <a id="admin-link" class="btn btn-primary" target="_blank" rel="noopener">Open Admin Console →</a>
-      </section>
-    </main>
+        <!-- APPLICATIONS -->
+        <section id="view-apps" class="view hidden">
+          <div class="section-head"><h3>Your applications</h3><span class="muted" id="apps-count"></span></div>
+          <div id="launcher" class="launcher"></div>
+          <div id="no-apps" class="empty hidden"><div class="empty-emoji">🔒</div><h3>No applications</h3><p class="muted">You don't have access to any apps yet. Contact an administrator.</p></div>
+        </section>
+
+        <!-- MONITORING -->
+        <section id="view-monitoring" class="view hidden">
+          <div class="section-head"><h3>Platform monitoring</h3><button class="btn btn-ghost" id="refresh-health">↻ Refresh</button></div>
+          <div class="card">
+            <table class="mon-table">
+              <thead><tr><th>Service</th><th>Status</th><th>Endpoint</th></tr></thead>
+              <tbody id="mon-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- REPORTS -->
+        <section id="view-reports" class="view hidden">
+          <div class="section-head"><h3>Reports &amp; analytics</h3></div>
+          <div class="stats-row" id="report-stats"></div>
+          <div class="card placeholder">
+            <div class="empty-emoji">📊</div>
+            <h3>Cross-app analytics</h3>
+            <p class="muted">Platform-wide reporting will aggregate metrics from each connected app (tickets, revenue, devices, projects) here.</p>
+          </div>
+        </section>
+
+        <!-- ADMINISTRATION -->
+        <section id="view-admin" class="view hidden">
+          <div class="section-head"><h3>Administration</h3><span class="muted">Identity &amp; access management</span></div>
+          <div class="admin-grid" id="admin-grid"></div>
+        </section>
+
+      </main>
+    </div>
   </div>
 
   <div id="loading" class="loading"><div class="spinner"></div></div>
