@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models.board import Board
 from app.models.ticket import Ticket
-from app.auth import get_current_user
+from app.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
 
@@ -31,7 +31,7 @@ def list_boards(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 
 @router.post("/", response_model=BoardOut)
-def create_board(data: BoardIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def create_board(data: BoardIn, db: Session = Depends(get_db), _=Depends(require_admin)):
     if db.query(Board).filter(Board.name == data.name).first():
         raise HTTPException(status_code=400, detail="A board with that name already exists")
     board = Board(**data.model_dump())
@@ -42,7 +42,7 @@ def create_board(data: BoardIn, db: Session = Depends(get_db), _=Depends(get_cur
 
 
 @router.put("/{board_id}", response_model=BoardOut)
-def update_board(board_id: int, data: BoardIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def update_board(board_id: int, data: BoardIn, db: Session = Depends(get_db), _=Depends(require_admin)):
     board = db.query(Board).filter(Board.id == board_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
@@ -54,7 +54,7 @@ def update_board(board_id: int, data: BoardIn, db: Session = Depends(get_db), _=
 
 
 @router.delete("/{board_id}")
-def delete_board(board_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def delete_board(board_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
     board = db.query(Board).filter(Board.id == board_id).first()
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")

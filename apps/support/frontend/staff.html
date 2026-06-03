@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=6" />
-  <link rel="stylesheet" href="/static/staff.css?v=6" />
+  <link rel="stylesheet" href="/static/styles.css?v=17" />
+  <link rel="stylesheet" href="/static/staff.css?v=17" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -38,8 +38,19 @@
       </div>
       <div class="topbar-right">
         <button class="theme-toggle" id="theme-toggle" title="Toggle dark / light"><span class="theme-icon">🌙</span></button>
-        <div class="who"><span id="who-name" class="who-name"></span><span id="who-role" class="who-company"></span></div>
-        <button class="btn btn-ghost" id="logout-btn">Sign out</button>
+        <div class="profile" id="profile">
+          <button class="profile-btn" id="profile-btn" aria-haspopup="true" aria-expanded="false">
+            <span class="profile-av" id="profile-av">··</span>
+            <span class="who"><span id="who-name" class="who-name"></span><span id="who-role" class="who-company"></span></span>
+            <span class="profile-caret">▾</span>
+          </button>
+          <div class="profile-menu hidden" id="profile-menu" role="menu">
+            <div class="pm-head"><span class="pm-name" id="pm-name"></span><span class="pm-email" id="pm-email"></span></div>
+            <button class="pm-item" id="sig-btn" role="menuitem"><span class="pm-ico">✎</span> Signature</button>
+            <div class="pm-sep"></div>
+            <button class="pm-item pm-danger" id="logout-btn" role="menuitem"><span class="pm-ico">⎋</span> Sign out</button>
+          </div>
+        </div>
       </div>
     </header>
     <div class="accent-strip"></div>
@@ -49,18 +60,30 @@
       <aside class="sidebar">
         <button class="btn btn-primary btn-block" id="new-ticket-btn">+ New Ticket</button>
         <nav class="side-nav" id="side-nav">
-          <div class="side-label">Tickets</div>
-          <a data-filter="all" class="nav-item">All Tickets <span class="nav-count" id="c-all"></span></a>
-          <a data-filter="mine" class="nav-item">My Tickets <span class="nav-count" id="c-mine"></span></a>
-          <a data-filter="open" class="nav-item active">Open <span class="nav-count" id="c-open"></span></a>
-          <a data-filter="assigned" class="nav-item">Assigned <span class="nav-count" id="c-assigned"></span></a>
-          <a data-filter="unassigned" class="nav-item">Unassigned <span class="nav-count" id="c-unassigned"></span></a>
-          <a data-filter="closed" class="nav-item">Closed <span class="nav-count" id="c-closed"></span></a>
-          <div class="side-label">Boards</div>
-          <div id="board-nav"></div>
-          <div class="side-label">Manage</div>
-          <a data-section="customers" class="nav-item">Customers <span class="nav-count" id="c-customers"></span></a>
-          <a data-section="users" class="nav-item">Users <span class="nav-count" id="c-users"></span></a>
+          <div class="nav-group" data-group="tickets">
+            <button type="button" class="side-label" data-toggle>Tickets <span class="side-caret">▾</span></button>
+            <div class="nav-group-body">
+              <a data-filter="all" class="nav-item">All Tickets <span class="nav-count" id="c-all"></span></a>
+              <a data-filter="mine" class="nav-item">My Tickets <span class="nav-count" id="c-mine"></span></a>
+              <a data-filter="open" class="nav-item active">Open <span class="nav-count" id="c-open"></span></a>
+              <a data-filter="assigned" class="nav-item">Assigned <span class="nav-count" id="c-assigned"></span></a>
+              <a data-filter="unassigned" class="nav-item">Unassigned <span class="nav-count" id="c-unassigned"></span></a>
+              <a data-filter="closed" class="nav-item">Closed <span class="nav-count" id="c-closed"></span></a>
+            </div>
+          </div>
+          <div class="nav-group" data-group="boards">
+            <button type="button" class="side-label" data-toggle>Boards <span class="side-caret">▾</span></button>
+            <div class="nav-group-body">
+              <div id="board-nav"></div>
+            </div>
+          </div>
+          <div class="nav-group" data-group="manage">
+            <button type="button" class="side-label" data-toggle>Manage <span class="side-caret">▾</span></button>
+            <div class="nav-group-body">
+              <a data-section="customers" class="nav-item">Customers <span class="nav-count" id="c-customers"></span></a>
+              <a data-section="users" class="nav-item">Users <span class="nav-count" id="c-users"></span></a>
+            </div>
+          </div>
         </nav>
       </aside>
 
@@ -290,6 +313,24 @@
     </div>
   </div>
 
+  <!-- RESET PORTAL PASSWORD MODAL -->
+  <div id="pwreset-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2>Reset Password</h2><button class="modal-x" id="pwr-close">×</button></div>
+      <p class="muted" style="margin:-6px 0 14px">Set a new password for <strong id="pwr-who"></strong>. Share it securely; they can change it after signing in.</p>
+      <form id="pwr-form">
+        <label>New password
+          <div class="pwr-row">
+            <input type="text" id="pwr-password" required placeholder="At least 8 characters" autocomplete="new-password" />
+            <button type="button" class="btn btn-ghost" id="pwr-gen" title="Generate a strong password">Generate</button>
+          </div>
+        </label>
+        <div id="pwr-error" class="form-error"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="pwr-cancel">Cancel</button><button type="submit" class="btn btn-primary">Reset password</button></div>
+      </form>
+    </div>
+  </div>
+
   <!-- CONTACT MODAL -->
   <div id="contact-modal" class="modal-overlay hidden">
     <div class="modal">
@@ -354,7 +395,28 @@
     </div>
   </div>
 
+  <!-- SIGNATURE MODAL -->
+  <div id="sig-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2>My signature</h2><button class="modal-x" id="sig-close">×</button></div>
+      <p class="muted" style="margin:-6px 0 14px">Automatically appended to your public replies to customers (not to internal notes).</p>
+      <label>Signature<textarea id="sig-text" rows="5" placeholder="Andy Carr&#10;Axus Technologies — Support&#10;support@axustechnologies.com"></textarea></label>
+      <label style="margin-top:14px">Logo
+        <div class="sig-logo-row">
+          <div class="sig-logo-preview" id="sig-logo-preview" aria-label="Logo preview"><span class="sig-logo-empty">No logo</span></div>
+          <div class="sig-logo-ctrls">
+            <button type="button" class="btn btn-ghost" id="sig-logo-pick">Upload logo…</button>
+            <button type="button" class="btn btn-ghost hidden" id="sig-logo-remove">Remove</button>
+            <p class="muted sig-logo-hint">PNG/JPG/SVG. Auto-resized to signature size (max 64px tall).</p>
+          </div>
+          <input type="file" id="sig-logo-file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" class="hidden" />
+        </div>
+      </label>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" id="sig-cancel">Cancel</button><button type="button" class="btn btn-primary" id="sig-save">Save</button></div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=6"></script>
+  <script src="/static/staff.js?v=17"></script>
 </body>
 </html>

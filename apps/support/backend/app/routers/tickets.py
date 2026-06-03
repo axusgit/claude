@@ -276,7 +276,7 @@ def add_comment(
     # Public staff replies are emailed to the ticket's contact (best effort).
     if not data.is_internal:
         from app import email_intake
-        background.add_task(email_intake.notify_contact_reply, ticket_id, data.body)
+        background.add_task(email_intake.notify_contact_reply, ticket_id, data.body, current_user.id)
     return comment
 
 
@@ -296,6 +296,42 @@ def get_comments(
     if public_only:
         q = q.filter(TicketComment.is_internal == False)  # noqa: E712
     return q.order_by(TicketComment.created_at).all()
+
+
+class CommentEditIn(BaseModel):
+    body: str
+
+
+def _editable_comment(db, ticket_id, comment_id, user):
+    c = db.query(TicketComment).filter(
+        TicketComment.id == comment_id, TicketComment.ticket_id == ticket_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    # Authors may edit/delete their own notes; admins may manage any.
+    if c.author_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=403, detail="You can only edit your own notes")
+    return c
+
+
+@router.put("/{ticket_id}/comments/{comment_id}", response_model=CommentOut)
+def edit_comment(ticket_id: int, comment_id: int, data: CommentEditIn,
+                 db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    comment = _editable_comment(db, ticket_id, comment_id, current_user)
+    comment.body = data.body
+    _log_activity(db, ticket_id, current_user.id, "comment_edited", "Note edited")
+    db.commit()
+    db.refresh(comment)
+    return comment
+
+
+@router.delete("/{ticket_id}/comments/{comment_id}")
+def delete_comment(ticket_id: int, comment_id: int,
+                   db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    comment = _editable_comment(db, ticket_id, comment_id, current_user)
+    db.delete(comment)
+    _log_activity(db, ticket_id, current_user.id, "comment_deleted", "Note deleted")
+    db.commit()
+    return {"status": "deleted", "id": comment_id}
 
 
 @router.get("/{ticket_id}/activity", response_model=List[ActivityOut])

@@ -6,7 +6,7 @@ from app.database import get_db
 from app.models.client import Client
 from app.models.contact import Contact
 from app.models.user import User, UserRole
-from app.auth import get_current_user, hash_password
+from app.auth import get_current_user, hash_password, require_admin, require_staff
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
@@ -93,7 +93,7 @@ def create_portal_user(
     client_id: int,
     data: PortalUserIn,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     """Provision a client-portal login tied to a specific client company."""
     client = db.query(Client).filter(Client.id == client_id).first()
@@ -124,6 +124,35 @@ def list_portal_users(client_id: int, db: Session = Depends(get_db), _=Depends(g
         .order_by(User.full_name)
         .all()
     )
+
+
+class PasswordResetIn(BaseModel):
+    password: str
+
+
+@router.put("/{client_id}/portal-users/{user_id}/password", response_model=PortalUserOut)
+def reset_portal_password(
+    client_id: int,
+    user_id: int,
+    data: PasswordResetIn,
+    db: Session = Depends(get_db),
+    _=Depends(require_staff),
+):
+    """Admin or technician resets a client-portal user's password."""
+    new_pw = (data.password or "").strip()
+    if len(new_pw) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.client_id == client_id, User.role == UserRole.client)
+        .first()
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="Portal user not found")
+    user.hashed_password = hash_password(new_pw)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 # ----- Contacts (people who belong to a customer) -----

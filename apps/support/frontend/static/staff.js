@@ -78,6 +78,15 @@ const Staff = (() => {
     if (me.role === "client") { logout(); throw new Error("Use the client portal to sign in"); }
     $("who-name").textContent = me.full_name;
     $("who-role").textContent = cap(me.role);
+    $("profile-av").textContent = initials(me.full_name);
+    $("pm-name").textContent = me.full_name;
+    $("pm-email").textContent = me.email;
+    // Only admins may change system configuration (users/access). Technicians get
+    // everything else; the config UI is hidden for them.
+    const isAdmin = me.role === "admin";
+    const usersNav = document.querySelector('[data-section="users"]');
+    if (usersNav) usersNav.style.display = isAdmin ? "" : "none";
+    if ($("cd-adduser-btn")) $("cd-adduser-btn").style.display = isAdmin ? "" : "none";
     const [cl, us, bd] = await Promise.all([api("/api/clients/"), api("/api/users/"), api("/api/boards/")]);
     clientsData = cl; usersData = us; boardsData = bd;
     clientMap = {}; cl.forEach(c => clientMap[c.id] = c.company_name);
@@ -236,6 +245,7 @@ const Staff = (() => {
       try { const cs = await api(`/api/clients/${current.client_id}/contacts`); const ct = cs.find(x => x.id === current.contact_id); $("p-contact").textContent = ct ? ct.full_name : "—"; }
       catch (e) { $("p-contact").textContent = "—"; }
     } else { $("p-contact").textContent = "—"; }
+    $("reply-internal").checked = false; $("reply-form").classList.remove("internal-mode");
     showDetail();
     await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id)]);
   }
@@ -247,13 +257,39 @@ const Staff = (() => {
     el.innerHTML = comments.map(c => {
       const mine = c.author_id === me.id;
       const who = userMap[c.author_id] || (mine ? "You" : "User");
+      const canEdit = me.role === "admin" || c.author_id === me.id;
       return `<div class="msg ${mine ? "me" : "them"} ${c.is_internal ? "internal" : ""}">
         <div class="msg-avatar">${initials(who)}</div>
         <div class="msg-bubble">
-          <div class="msg-meta">${esc(who)} · ${fmtDate(c.created_at)} ${c.is_internal ? '<span class="internal-tag">Internal</span>' : ""}</div>
-          <div class="msg-body">${esc(c.body)}</div>
+          <div class="msg-meta">${esc(who)} · ${fmtDate(c.created_at)} ${c.is_internal ? '<span class="internal-tag">Internal</span>' : ""}
+            ${canEdit ? `<span class="msg-actions"><a class="msg-edit" data-cid="${c.id}">Edit</a><a class="msg-del" data-cid="${c.id}">Delete</a></span>` : ""}</div>
+          <div class="msg-body" data-cid="${c.id}">${esc(c.body)}</div>
         </div></div>`;
     }).join("");
+    el.querySelectorAll(".msg-edit").forEach(b => b.onclick = () => editComment(id, b.dataset.cid));
+    el.querySelectorAll(".msg-del").forEach(b => b.onclick = () => delComment(id, b.dataset.cid));
+  }
+
+  function editComment(ticketId, cid) {
+    const body = document.querySelector(`.msg-body[data-cid="${cid}"]`);
+    if (!body || body.querySelector("textarea")) return;
+    const cur = body.textContent;
+    body.innerHTML = `<textarea class="edit-area" rows="3"></textarea>
+      <div class="edit-actions"><button class="btn btn-ghost edit-cancel">Cancel</button><button class="btn btn-primary edit-save">Save</button></div>`;
+    const ta = body.querySelector("textarea"); ta.value = cur; ta.focus();
+    body.querySelector(".edit-cancel").onclick = () => loadThread(ticketId);
+    body.querySelector(".edit-save").onclick = async () => {
+      const v = ta.value.trim(); if (!v) return;
+      try { await api(`/api/tickets/${ticketId}/comments/${cid}`, { method: "PUT", body: { body: v } });
+        await Promise.all([loadThread(ticketId), loadActivity(ticketId)]); toast("Note updated"); }
+      catch (e) { toast(e.message); }
+    };
+  }
+  async function delComment(ticketId, cid) {
+    if (!confirm("Delete this note?")) return;
+    try { await api(`/api/tickets/${ticketId}/comments/${cid}`, { method: "DELETE" });
+      await Promise.all([loadThread(ticketId), loadActivity(ticketId)]); toast("Note deleted"); }
+    catch (e) { toast(e.message); }
   }
 
   async function loadTime(id) {
@@ -278,13 +314,24 @@ const Staff = (() => {
     });
   }
 
+  function actDotClass(a) {
+    const d = (a.detail || "").toLowerCase();
+    if (d.startsWith("internal note")) return "internal";       // blue
+    if (d.includes("to closed")) return "closed";               // red
+    if (a.action === "assigned_to_id_changed" || d.startsWith("assignee changed")) return "assigned";  // green
+    return "";
+  }
+
   async function loadActivity(id) {
     const acts = await api(`/api/tickets/${id}/activity`);
-    $("activity").innerHTML = acts.slice().reverse().map(a => `
-      <div class="act-item"><div class="act-dot"></div><div class="act-body">
+    $("activity").innerHTML = acts.slice().reverse().map(a => {
+      const cls = actDotClass(a);
+      return `
+      <div class="act-item"><div class="act-dot${cls ? " " + cls : ""}"></div><div class="act-body">
         <div class="act-detail">${esc(a.detail || cap(a.action))}</div>
         <div class="act-time">${a.user_id ? esc(userMap[a.user_id] || "User") + " · " : ""}${fmtDate(a.created_at)}</div>
-      </div></div>`).join("");
+      </div></div>`;
+    }).join("");
   }
 
   async function download(attId, filename) {
@@ -304,9 +351,81 @@ const Staff = (() => {
     toast(cap(field) + " updated");
   }
   async function postReply(bodyText, internal) {
-    await api(`/api/tickets/${current.id}/comments`, { method: "POST", body: { body: bodyText, is_internal: internal } });
+    // public replies (visible to the customer) get the staff member's signature appended
+    let body = bodyText;
+    if (!internal && me.signature) body += "\n\n" + me.signature;
+    await api(`/api/tickets/${current.id}/comments`, { method: "POST", body: { body, is_internal: internal } });
     await Promise.all([loadThread(current.id), loadActivity(current.id)]);
     toast(internal ? "Internal note added" : "Reply posted");
+  }
+  /* ---------- Signature ---------- */
+  let sigLogo = null;  // pending logo data URL while the modal is open ("" = cleared)
+
+  // Resize an uploaded image to a signature-appropriate size (max 64px tall / 240px wide),
+  // keeping aspect ratio. SVGs are kept as-is (vector, already scalable).
+  function resizeLogo(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Could not read file"));
+      reader.onload = () => {
+        const src = reader.result;
+        if (file.type === "image/svg+xml") { resolve(src); return; }
+        const img = new Image();
+        img.onerror = () => reject(new Error("Invalid image"));
+        img.onload = () => {
+          const MAX_H = 64, MAX_W = 240;
+          let { width: w, height: h } = img;
+          const scale = Math.min(MAX_W / w, MAX_H / h, 1);
+          w = Math.round(w * scale); h = Math.round(h * scale);
+          const cv = document.createElement("canvas");
+          cv.width = w; cv.height = h;
+          cv.getContext("2d").drawImage(img, 0, 0, w, h);
+          // PNG preserves transparency; keeps logos clean on any background
+          resolve(cv.toDataURL("image/png"));
+        };
+        img.src = src;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderSigLogo() {
+    const cur = sigLogo === null ? (me.signature_logo || "") : sigLogo;
+    const prev = $("sig-logo-preview");
+    if (cur) {
+      prev.innerHTML = `<img src="${cur}" alt="Logo" />`;
+      $("sig-logo-remove").classList.remove("hidden");
+    } else {
+      prev.innerHTML = `<span class="sig-logo-empty">No logo</span>`;
+      $("sig-logo-remove").classList.add("hidden");
+    }
+  }
+
+  function openSignature() {
+    $("sig-text").value = me.signature || "";
+    sigLogo = null;            // null = "unchanged from saved"
+    renderSigLogo();
+    $("sig-modal").classList.remove("hidden");
+  }
+
+  async function onLogoPicked(file) {
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) { toast("Image too large (max 3 MB)"); return; }
+    try {
+      sigLogo = await resizeLogo(file);
+      renderSigLogo();
+    } catch (e) { toast(e.message); }
+  }
+
+  async function saveSignature() {
+    const body = { signature: $("sig-text").value };
+    if (sigLogo !== null) body.signature_logo = sigLogo;  // only send when changed
+    try {
+      const u = await api("/api/auth/signature", { method: "PUT", body });
+      me.signature = u.signature || "";
+      me.signature_logo = u.signature_logo || "";
+      $("sig-modal").classList.add("hidden"); toast("Signature saved");
+    } catch (e) { toast(e.message); }
   }
   async function logTime(hours, notes) {
     await api(`/api/tickets/${current.id}/time`, { method: "POST", body: { hours, notes: notes || null } });
@@ -394,8 +513,12 @@ const Staff = (() => {
       api(`/api/clients/${id}/contacts`),
     ]);
     $("cd-users").innerHTML = users.length
-      ? users.map(u => `<div class="time-item"><span>${esc(u.full_name)}<br><span class="cell-muted">${esc(u.email)}</span></span></div>`).join("")
+      ? users.map(u => `<div class="time-item"><span>${esc(u.full_name)}<br><span class="cell-muted">${esc(u.email)}</span></span>` +
+          `<button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button></div>`).join("")
       : `<div class="muted">No portal logins yet.</div>`;
+    $("cd-users").querySelectorAll("[data-reset-pw]").forEach(b => {
+      b.onclick = () => showPwReset(Number(b.dataset.resetPw), b.dataset.resetName);
+    });
     renderContacts(contacts);
   }
 
@@ -491,6 +614,31 @@ const Staff = (() => {
     $("puser-modal").classList.add("hidden"); $("pu-form").reset();
     await openCustomer(currentCustomer.id);
     toast("Portal login created");
+  }
+
+  /* ---------- Reset portal password (admin/technician) ---------- */
+  let pwResetUserId = null;
+  function genPassword() {
+    const a = "ABCDEFGHJKLMNPQRSTUVWXYZ", b = "abcdefghijkmnpqrstuvwxyz", n = "23456789", s = "!@#$%&*";
+    const all = a + b + n + s; const rnd = x => x[Math.floor(Math.random() * x.length)];
+    let out = [rnd(a), rnd(b), rnd(n), rnd(s)];
+    for (let i = 0; i < 8; i++) out.push(rnd(all));
+    return out.sort(() => Math.random() - 0.5).join("");
+  }
+  function showPwReset(userId, name) {
+    pwResetUserId = userId;
+    $("pwr-who").textContent = name;
+    $("pwr-password").value = ""; $("pwr-error").textContent = "";
+    $("pwreset-modal").classList.remove("hidden");
+    $("pwr-password").focus();
+  }
+  async function resetPortalPassword() {
+    const pw = $("pwr-password").value.trim();
+    if (pw.length < 8) { $("pwr-error").textContent = "Password must be at least 8 characters"; return; }
+    await api(`/api/clients/${currentCustomer.id}/portal-users/${pwResetUserId}/password`,
+      { method: "PUT", body: { password: pw } });
+    $("pwreset-modal").classList.add("hidden");
+    toast("Password reset");
   }
 
   /* ---------- Users ---------- */
@@ -599,6 +747,35 @@ const Staff = (() => {
       finally { $("login-btn").disabled = false; $("login-btn").textContent = "Sign in"; }
     };
     $("logout-btn").onclick = logout;
+    // Collapsible sidebar sections (click a header to expand / collapse; state remembered)
+    const COLLAPSE_KEY = "axus-staff-collapsed-groups";
+    let collapsed = new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || "[]"));
+    document.querySelectorAll(".nav-group").forEach(g => {
+      const key = g.dataset.group;
+      if (collapsed.has(key)) g.classList.add("collapsed");
+      g.querySelector(".side-label").onclick = () => {
+        g.classList.toggle("collapsed");
+        if (g.classList.contains("collapsed")) collapsed.add(key); else collapsed.delete(key);
+        localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed]));
+      };
+    });
+    // Profile dropdown
+    const profileMenu = $("profile-menu"), profileBtn = $("profile-btn");
+    const closeProfile = () => { profileMenu.classList.add("hidden"); profileBtn.setAttribute("aria-expanded", "false"); };
+    profileBtn.onclick = e => {
+      e.stopPropagation();
+      const open = profileMenu.classList.toggle("hidden");
+      profileBtn.setAttribute("aria-expanded", open ? "false" : "true");
+    };
+    document.addEventListener("click", e => { if (!$("profile").contains(e.target)) closeProfile(); });
+    // Signature (opened from the profile menu)
+    $("sig-btn").onclick = () => { closeProfile(); openSignature(); };
+    $("sig-close").onclick = () => $("sig-modal").classList.add("hidden");
+    $("sig-cancel").onclick = () => $("sig-modal").classList.add("hidden");
+    $("sig-save").onclick = saveSignature;
+    $("sig-logo-pick").onclick = () => $("sig-logo-file").click();
+    $("sig-logo-file").onchange = e => { onLogoPicked(e.target.files[0]); e.target.value = ""; };
+    $("sig-logo-remove").onclick = () => { sigLogo = ""; renderSigLogo(); };
     $("new-ticket-btn").onclick = showNew;
     $("modal-close").onclick = closeNew; $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showQueue(); };
@@ -614,6 +791,11 @@ const Staff = (() => {
     $("pu-close").onclick = () => $("puser-modal").classList.add("hidden");
     $("pu-cancel").onclick = () => $("puser-modal").classList.add("hidden");
     $("pu-form").onsubmit = async e => { e.preventDefault(); $("pu-error").textContent = ""; try { await addPortalUser(); } catch (err) { $("pu-error").textContent = err.message; } };
+    // reset portal password
+    $("pwr-close").onclick = () => $("pwreset-modal").classList.add("hidden");
+    $("pwr-cancel").onclick = () => $("pwreset-modal").classList.add("hidden");
+    $("pwr-gen").onclick = () => { $("pwr-password").value = genPassword(); };
+    $("pwr-form").onsubmit = async e => { e.preventDefault(); $("pwr-error").textContent = ""; try { await resetPortalPassword(); } catch (err) { $("pwr-error").textContent = err.message; } };
 
     // contacts
     $("cd-addcontact-btn").onclick = () => showContactModal(null);
@@ -657,10 +839,12 @@ const Staff = (() => {
     $("d-assignee").onchange = e => { if (e.target.value) patch("assigned_to_id", parseInt(e.target.value)); };
     $("d-board").onchange = e => patch("board_id", e.target.value ? parseInt(e.target.value) : null);
 
+    $("reply-internal").onchange = e => $("reply-form").classList.toggle("internal-mode", e.target.checked);
     $("reply-form").onsubmit = async e => {
       e.preventDefault(); const b = $("reply-body").value.trim(); if (!b) return;
       const internal = $("reply-internal").checked;
       $("reply-body").value = ""; $("reply-internal").checked = false;
+      $("reply-form").classList.remove("internal-mode");
       try { await postReply(b, internal); } catch (err) { toast(err.message); }
     };
     $("time-form").onsubmit = async e => {

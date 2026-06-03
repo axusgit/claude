@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.auth import verify_password, create_access_token, get_current_user, hash_password
+from typing import Optional
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -14,6 +15,8 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     role: str
+    signature: Optional[str] = None
+    signature_logo: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -37,6 +40,23 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+class SignatureIn(BaseModel):
+    signature: Optional[str] = None
+    signature_logo: Optional[str] = None  # data URL (already resized client-side), or "" to clear
+
+
+@router.put("/signature", response_model=UserOut)
+def update_signature(data: SignatureIn, db: Session = Depends(get_db),
+                     current_user: User = Depends(get_current_user)):
+    """Staff set their own reply signature (text + optional logo)."""
+    current_user.signature = (data.signature or "").strip() or None
+    if data.signature_logo is not None:
+        current_user.signature_logo = data.signature_logo or None
+    db.commit()
+    db.refresh(current_user)
     return current_user
 
 

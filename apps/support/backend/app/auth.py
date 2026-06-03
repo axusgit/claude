@@ -132,3 +132,10 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+def require_staff(current_user: User = Depends(get_current_user)) -> User:
+    """Admin or technician (any non-client staff member)."""
+    if current_user.role not in ("admin", "technician"):
+        raise HTTPException(status_code=403, detail="Staff access required")
+    return current_user

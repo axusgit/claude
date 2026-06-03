@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.auth import get_current_user, hash_password
+from app.auth import get_current_user, hash_password, require_admin
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -50,7 +50,7 @@ def list_users(role: Optional[str] = None, db: Session = Depends(get_db), _=Depe
 
 
 @router.post("/", response_model=UserOut)
-def create_user(data: UserCreateIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def create_user(data: UserCreateIn, db: Session = Depends(get_db), _=Depends(require_admin)):
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
     user = User(
@@ -68,7 +68,7 @@ def create_user(data: UserCreateIn, db: Session = Depends(get_db), _=Depends(get
 
 
 @router.put("/{user_id}", response_model=UserOut)
-def update_user(user_id: int, data: UserUpdateIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def update_user(user_id: int, data: UserUpdateIn, db: Session = Depends(get_db), _=Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

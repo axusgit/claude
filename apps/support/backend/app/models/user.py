@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.sql import func
 import enum
 from app.database import Base
@@ -19,6 +19,8 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(Enum(UserRole), default=UserRole.technician, nullable=False)
     phone = Column(String, nullable=True)
+    signature = Column(Text, nullable=True)        # staff reply signature (text)
+    signature_logo = Column(Text, nullable=True)   # signature logo (resized data URL)
     is_active = Column(Boolean, default=True)
     # Set for client-portal users: ties the login to the company they belong to,
     # so the portal can scope them to their own tickets only.

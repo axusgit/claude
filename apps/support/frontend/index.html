@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=4" />
+  <link rel="stylesheet" href="/static/styles.css?v=16" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -148,6 +148,10 @@
             </select>
           </label>
         </div>
+        <label class="consent-check">
+          <input type="checkbox" id="nt-consent" required />
+          <span>By checking this box, I represent that I am authorized to submit this service ticket on behalf of my organization. I acknowledge and agree that all requests are subject to applicable service fees and will be governed by the terms of the applicable Service Level Agreement (SLA) or Service Level Commitment (SLC).</span>
+        </label>
         <div id="nt-error" class="form-error"></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" id="nt-cancel">Cancel</button>
@@ -159,6 +163,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=16"></script>
 </body>
 </html>

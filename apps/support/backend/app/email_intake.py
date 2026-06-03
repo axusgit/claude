@@ -116,7 +116,7 @@ def process_inbox():
     return {"configured": True, "fetched": len(msgs), **results}
 
 
-def notify_contact_reply(ticket_id: int, body: str):
+def notify_contact_reply(ticket_id: int, body: str, author_id: int | None = None):
     """Email the ticket's contact a staff public reply (best effort, threaded by ref)."""
     if not graph.is_configured():
         return
@@ -128,7 +128,11 @@ def notify_contact_reply(ticket_id: int, body: str):
         c = db.query(Contact).filter(Contact.id == t.contact_id).first()
         if not c or not c.email:
             return
-        graph.send_mail(c.email, f"[{t.reference}] {t.title}", body)
+        logo = None
+        if author_id:
+            author = db.query(User).filter(User.id == author_id).first()
+            logo = author.signature_logo if author else None
+        graph.send_mail(c.email, f"[{t.reference}] {t.title}", body, logo_data_url=logo)
     except Exception:
         pass
     finally:

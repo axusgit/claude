@@ -69,14 +69,41 @@ def mark_read(message_id: str):
     r.raise_for_status()
 
 
-def send_mail(to_email: str, subject: str, body_text: str):
-    payload = {
-        "message": {
-            "subject": subject,
-            "body": {"contentType": "Text", "content": body_text},
-            "toRecipients": [{"emailAddress": {"address": to_email}}],
-        },
-        "saveToSentItems": True,
+def _parse_data_url(data_url: str):
+    """('data:image/png;base64,AAAA') -> (content_type, base64_str) or None."""
+    try:
+        head, b64 = data_url.split(",", 1)
+        ctype = head[len("data:"):].split(";", 1)[0] or "image/png"
+        return ctype, b64
+    except Exception:
+        return None
+
+
+def send_mail(to_email: str, subject: str, body_text: str, logo_data_url: str | None = None):
+    msg = {
+        "subject": subject,
+        "toRecipients": [{"emailAddress": {"address": to_email}}],
     }
-    r = httpx.post(f"{GRAPH}/users/{MAILBOX}/sendMail", headers=_headers(), json=payload, timeout=20)
+    parsed = _parse_data_url(logo_data_url) if logo_data_url else None
+    if parsed:
+        # HTML body so the signature logo renders; the image is sent inline (CID),
+        # which is far more reliable across mail clients than a data: URI.
+        ctype, b64 = parsed
+        import html as _html
+        cid = "axus-sig-logo"
+        body_html = _html.escape(body_text).replace("\n", "<br>")
+        msg["body"] = {
+            "contentType": "HTML",
+            "content": f'<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px">{body_html}'
+                       f'<br><img src="cid:{cid}" alt="logo" style="max-height:64px"></div>',
+        }
+        msg["attachments"] = [{
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": "logo.png", "contentType": ctype,
+            "isInline": True, "contentId": cid, "contentBytes": b64,
+        }]
+    else:
+        msg["body"] = {"contentType": "Text", "content": body_text}
+    r = httpx.post(f"{GRAPH}/users/{MAILBOX}/sendMail",
+                   headers=_headers(), json={"message": msg, "saveToSentItems": True}, timeout=30)
     r.raise_for_status()
