@@ -79,10 +79,12 @@ def _parse_data_url(data_url: str):
         return None
 
 
-def send_mail(to_email: str, subject: str, body_text: str, logo_data_url: str | None = None):
+def send_mail(to_email, subject: str, body_text: str, logo_data_url: str | None = None):
+    # to_email may be a single address or a list of addresses.
+    recipients = [to_email] if isinstance(to_email, str) else list(to_email)
     msg = {
         "subject": subject,
-        "toRecipients": [{"emailAddress": {"address": to_email}}],
+        "toRecipients": [{"emailAddress": {"address": addr}} for addr in recipients],
     }
     parsed = _parse_data_url(logo_data_url) if logo_data_url else None
     if parsed:

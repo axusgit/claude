@@ -5,8 +5,10 @@ from typing import List, Optional
 from datetime import datetime
 from uuid import uuid4
 import os
+import random
 from app.database import get_db
 from app.models.ticket import Ticket, TimeEntry, TicketComment, TicketActivity, TicketStatus, TicketType
+from app.models.ticket_watcher import TicketWatcher
 from app.models.attachment import Attachment
 from app.auth import get_current_user
 from app.models.user import User
@@ -15,7 +17,15 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
 STANDARD_HOUR_LIMIT = 8.0
-REFERENCE_BASE = 1000  # ticket references start at AXUS-1001
+
+
+def generate_ticket_reference(db: Session) -> str:
+    """A unique ticket reference: 'A-' + a 6-digit random number, e.g. A-481923."""
+    for _ in range(50):
+        ref = f"A-{random.randint(100000, 999999)}"
+        if not db.query(Ticket).filter(Ticket.reference == ref).first():
+            return ref
+    raise HTTPException(status_code=500, detail="Could not allocate a ticket reference")
 
 # Where uploaded files are stored on disk, and the per-file size cap.
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
@@ -30,7 +40,7 @@ class TicketIn(BaseModel):
     priority: str = "medium"
     client_id: int
     board_id: Optional[int] = None
-    contact_id: Optional[int] = None
+    reporter_user_id: Optional[int] = None  # business user who reported it
     assigned_to_id: Optional[int] = None
 
 
@@ -40,7 +50,9 @@ class TicketUpdate(BaseModel):
     category: Optional[str] = None
     status: Optional[str] = None
     priority: Optional[str] = None
+    client_id: Optional[int] = None
     board_id: Optional[int] = None
+    reporter_user_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
 
 
@@ -134,6 +146,7 @@ class TicketOut(BaseModel):
     client_id: int
     board_id: Optional[int]
     contact_id: Optional[int]
+    reporter_user_id: Optional[int]
     assigned_to_id: Optional[int]
     created_by_id: int
     total_hours: float
@@ -172,8 +185,8 @@ def create_ticket(data: TicketIn, db: Session = Depends(get_db), current_user: U
     if ticket.board_id is None:
         ticket.board_id = default_board_id(db)
     db.add(ticket)
-    db.flush()  # assign ticket.id before building the reference
-    ticket.reference = f"AXUS-{REFERENCE_BASE + ticket.id}"
+    ticket.reference = generate_ticket_reference(db)
+    db.flush()  # assign ticket.id for the activity log
     _log_activity(db, ticket.id, current_user.id, "created", f"Ticket created: {ticket.title}")
     db.commit()
     db.refresh(ticket)
@@ -332,6 +345,77 @@ def delete_comment(ticket_id: int, comment_id: int,
     _log_activity(db, ticket_id, current_user.id, "comment_deleted", "Note deleted")
     db.commit()
     return {"status": "deleted", "id": comment_id}
+
+
+# ----- Ticket users (additional users beyond the reporter) -----
+MAX_ADDITIONAL_USERS = 9
+
+
+class WatcherIn(BaseModel):
+    user_id: int
+
+
+class WatcherOut(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+    class Config:
+        from_attributes = True
+
+
+def _watcher_users(db: Session, ticket_id: int):
+    """The User rows currently attached to a ticket as additional users."""
+    return (
+        db.query(User)
+        .join(TicketWatcher, TicketWatcher.user_id == User.id)
+        .filter(TicketWatcher.ticket_id == ticket_id)
+        .order_by(User.full_name)
+        .all()
+    )
+
+
+@router.get("/{ticket_id}/watchers", response_model=List[WatcherOut])
+def list_watchers(ticket_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return _watcher_users(db, ticket_id)
+
+
+@router.post("/{ticket_id}/watchers", response_model=WatcherOut)
+def add_watcher(ticket_id: int, data: WatcherIn, db: Session = Depends(get_db),
+                current_user: User = Depends(get_current_user)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    user = db.query(User).filter(User.id == data.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == ticket.reporter_user_id:
+        raise HTTPException(status_code=400, detail="That user already opened this ticket")
+    existing = db.query(TicketWatcher).filter(
+        TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == data.user_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User is already on this ticket")
+    if db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket_id).count() >= MAX_ADDITIONAL_USERS:
+        raise HTTPException(status_code=400, detail=f"A ticket can have at most {MAX_ADDITIONAL_USERS} additional users")
+    db.add(TicketWatcher(ticket_id=ticket_id, user_id=data.user_id))
+    _log_activity(db, ticket_id, current_user.id, "user_added", f"Added {user.full_name} to the ticket")
+    db.commit()
+    return user
+
+
+@router.delete("/{ticket_id}/watchers/{user_id}")
+def remove_watcher(ticket_id: int, user_id: int, db: Session = Depends(get_db),
+                   current_user: User = Depends(get_current_user)):
+    w = db.query(TicketWatcher).filter(
+        TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == user_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="User is not on this ticket")
+    user = db.query(User).filter(User.id == user_id).first()
+    db.delete(w)
+    _log_activity(db, ticket_id, current_user.id, "user_removed",
+                  f"Removed {user.full_name if user else 'user'} from the ticket")
+    db.commit()
+    return {"status": "removed", "user_id": user_id}
 
 
 @router.get("/{ticket_id}/activity", response_model=List[ActivityOut])

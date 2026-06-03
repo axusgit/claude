@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=17" />
-  <link rel="stylesheet" href="/static/staff.css?v=17" />
+  <link rel="stylesheet" href="/static/styles.css?v=23" />
+  <link rel="stylesheet" href="/static/staff.css?v=23" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -80,7 +80,7 @@
           <div class="nav-group" data-group="manage">
             <button type="button" class="side-label" data-toggle>Manage <span class="side-caret">▾</span></button>
             <div class="nav-group-body">
-              <a data-section="customers" class="nav-item">Customers <span class="nav-count" id="c-customers"></span></a>
+              <a data-section="customers" class="nav-item">Business <span class="nav-count" id="c-customers"></span></a>
               <a data-section="users" class="nav-item">Users <span class="nav-count" id="c-users"></span></a>
             </div>
           </div>
@@ -93,7 +93,7 @@
         <section id="queue-view">
           <div class="stats-row" id="stats-row"></div>
           <div class="toolbar">
-            <input type="search" id="search" placeholder="Search ref, subject, company…" class="search-box" />
+            <input type="search" id="search" placeholder="Search ref, subject, business…" class="search-box" />
             <select id="f-priority"><option value="">All priorities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Normal</option><option value="low">Low</option></select>
             <select id="f-client"><option value="">All companies</option></select>
             <h3 class="queue-title" id="queue-title"></h3>
@@ -105,7 +105,7 @@
           <div class="table-wrap">
             <table class="ticket-table">
               <thead><tr>
-                <th class="col-ref">Ref</th><th class="col-subject">Subject</th><th class="col-company">Company</th><th class="col-board">Board</th><th class="col-priority">Priority</th><th class="col-status">Status</th><th class="col-assignee">Assignee</th><th class="col-updated">Updated</th>
+                <th class="col-ref">Ref</th><th class="col-subject">Subject</th><th class="col-company">Business</th><th class="col-board">Board</th><th class="col-priority">Priority</th><th class="col-status">Status</th><th class="col-assignee">Assignee</th><th class="col-updated">Updated</th>
               </tr></thead>
               <tbody id="ticket-rows"></tbody>
             </table>
@@ -120,6 +120,7 @@
             <div class="detail-top-head">
               <span id="d-ref" class="ref-pill"></span>
               <h2 id="d-title"></h2>
+              <button class="btn btn-ghost btn-xs" id="edit-ticket-btn" style="margin-left:auto">✎ Edit ticket</button>
             </div>
             <div class="control-row">
               <label class="ctl">Status
@@ -168,13 +169,19 @@
               <div class="card">
                 <h3 class="card-title">Properties</h3>
                 <dl class="props">
-                  <dt>Company</dt><dd id="p-company"></dd>
-                  <dt>Contact</dt><dd id="p-contact"></dd>
+                  <dt>Business</dt><dd id="p-company"></dd>
+                  <dt>Opened by</dt><dd id="p-contact"></dd>
                   <dt>Category</dt><dd id="p-category"></dd>
                   <dt>Type</dt><dd id="p-type"></dd>
                   <dt>Total hours</dt><dd id="p-hours"></dd>
                   <dt>Opened</dt><dd id="p-created"></dd>
                 </dl>
+              </div>
+              <div class="card">
+                <h3 class="card-title">Ticket Users <span class="muted" id="tu-count" style="font-weight:500;font-size:12px"></span></h3>
+                <p class="muted" style="margin:-4px 0 10px;font-size:12px">Everyone here is emailed on replies. Up to 9 additional users.</p>
+                <div id="tu-list" class="time-list"></div>
+                <div id="tu-add-wrap"></div>
               </div>
               <div class="card">
                 <h3 class="card-title">Log time</h3>
@@ -196,40 +203,40 @@
           </div>
         </section>
 
-        <!-- CUSTOMERS LIST -->
+        <!-- BUSINESS LIST -->
         <section id="customers-view" class="hidden">
           <div class="page-head">
-            <div><h2>Customers</h2><p class="muted" id="cust-summary"></p></div>
-            <button class="btn btn-primary" id="new-customer-btn">+ New Customer</button>
+            <div><h2>Business</h2><p class="muted" id="cust-summary"></p></div>
+            <button class="btn btn-primary" id="new-customer-btn">+ New Business</button>
           </div>
-          <div class="toolbar"><input type="search" id="cust-search" placeholder="Search customers…" class="search-box" /></div>
+          <div class="toolbar"><input type="search" id="cust-search" placeholder="Search business…" class="search-box" /></div>
           <div class="table-wrap">
             <table class="ticket-table">
-              <thead><tr><th>Company</th><th>Primary Contact</th><th>Email</th><th>Phone</th><th>Tickets</th><th>Status</th><th>Added</th></tr></thead>
+              <thead><tr><th>Business Name</th><th>Location</th><th>Phone</th><th>Website</th><th>Tickets</th><th>Added</th></tr></thead>
               <tbody id="customer-rows"></tbody>
             </table>
-            <div id="customers-empty" class="empty hidden"><div class="empty-emoji">🏢</div><h3>No customers</h3><p class="muted">Add your first customer to get started.</p></div>
+            <div id="customers-empty" class="empty hidden"><div class="empty-emoji">🏢</div><h3>No businesses</h3><p class="muted">Add your first business to get started.</p></div>
           </div>
         </section>
 
-        <!-- CUSTOMER DETAIL -->
+        <!-- BUSINESS DETAIL -->
         <section id="customer-detail-view" class="hidden">
-          <button class="back-link" id="cust-back-btn">← Back to customers</button>
+          <button class="back-link" id="cust-back-btn">← Back to business</button>
           <div class="detail-top card">
             <div class="detail-top-head"><h2 id="cd-name"></h2><span id="cd-status" class="badge"></span></div>
-            <button class="btn btn-ghost" id="cd-edit-btn">Edit customer</button>
+            <button class="btn btn-ghost" id="cd-edit-btn">Edit business</button>
           </div>
           <div class="detail-grid">
             <div class="detail-main">
               <div class="card">
-                <h3 class="card-title">Company details</h3>
+                <h3 class="card-title">Business details</h3>
                 <dl class="props">
-                  <dt>Primary contact</dt><dd id="cd-contact"></dd>
-                  <dt>Email</dt><dd id="cd-email"></dd>
+                  <dt>Location</dt><dd id="cd-location"></dd>
                   <dt>Phone</dt><dd id="cd-phone"></dd>
+                  <dt>Ext</dt><dd id="cd-ext"></dd>
                   <dt>Website</dt><dd id="cd-website"></dd>
-                  <dt>Address</dt><dd id="cd-address"></dd>
-                  <dt>Customer since</dt><dd id="cd-since"></dd>
+                  <dt>Notes</dt><dd id="cd-notes"></dd>
+                  <dt>Business since</dt><dd id="cd-since"></dd>
                 </dl>
               </div>
               <div class="card">
@@ -239,14 +246,9 @@
             </div>
             <aside class="detail-side">
               <div class="card">
-                <h3 class="card-title">Contacts</h3>
-                <div id="cd-contacts" class="contact-list"></div>
-                <button class="btn btn-ghost btn-block" id="cd-addcontact-btn" style="margin-top:12px">+ Add contact</button>
-              </div>
-              <div class="card">
-                <h3 class="card-title">Portal logins</h3>
+                <h3 class="card-title">Users</h3>
                 <div id="cd-users" class="time-list"></div>
-                <button class="btn btn-ghost btn-block" id="cd-adduser-btn" style="margin-top:12px">+ Add portal login</button>
+                <button class="btn btn-ghost btn-block" id="cd-adduser-btn" style="margin-top:12px">+ Add user</button>
               </div>
             </aside>
           </div>
@@ -264,7 +266,7 @@
           </div>
           <div class="table-wrap">
             <table class="ticket-table">
-              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Company</th><th>Status</th></tr></thead>
+              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Business</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="user-rows"></tbody>
             </table>
             <div id="users-empty" class="empty hidden"><div class="empty-emoji">👥</div><h3>No users</h3><p class="muted">Add a staff member or portal user.</p></div>
@@ -274,41 +276,36 @@
     </div>
   </div>
 
-  <!-- CUSTOMER MODAL -->
+  <!-- BUSINESS MODAL -->
   <div id="cust-modal" class="modal-overlay hidden">
     <div class="modal">
-      <div class="modal-head"><h2 id="cust-modal-title">New Customer</h2><button class="modal-x" id="cust-modal-close">×</button></div>
+      <div class="modal-head"><h2 id="cust-modal-title">New Business</h2><button class="modal-x" id="cust-modal-close">×</button></div>
       <form id="cust-form">
-        <label>Company name<input type="text" id="cf-company" required /></label>
-        <div class="form-row">
-          <label>Primary contact<input type="text" id="cf-contact" required /></label>
-          <label>Email<input type="email" id="cf-email" required /></label>
-        </div>
+        <label>Business name<input type="text" id="cf-company" required /></label>
+        <label>Location<input type="text" id="cf-location" placeholder="City, State" /></label>
         <div class="form-row">
           <label>Phone<input type="text" id="cf-phone" /></label>
-          <label>Website<input type="text" id="cf-website" placeholder="company.com" /></label>
+          <label>Ext<input type="text" id="cf-ext" placeholder="123" /></label>
         </div>
-        <div class="form-row">
-          <label>Status<select id="cf-active"><option value="true">Active</option><option value="false">Inactive</option></select></label>
-          <label>&nbsp;</label>
-        </div>
-        <label>Address<textarea id="cf-address" rows="2"></textarea></label>
+        <label>Website<input type="text" id="cf-website" placeholder="business.com" /></label>
+        <label>Notes<textarea id="cf-notes" rows="3"></textarea></label>
         <div id="cf-error" class="form-error"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="cf-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
       </form>
     </div>
   </div>
 
-  <!-- ADD PORTAL USER MODAL -->
+  <!-- ADD BUSINESS USER MODAL -->
   <div id="puser-modal" class="modal-overlay hidden">
     <div class="modal">
-      <div class="modal-head"><h2>Add Portal Login</h2><button class="modal-x" id="pu-close">×</button></div>
+      <div class="modal-head"><h2>Add User</h2><button class="modal-x" id="pu-close">×</button></div>
+      <p class="muted" style="margin:-6px 0 14px">A user associated with this business. They can sign in to the client portal.</p>
       <form id="pu-form">
         <label>Full name<input type="text" id="pu-name" required /></label>
         <label>Email<input type="email" id="pu-email" required /></label>
         <label>Temporary password<input type="text" id="pu-password" required placeholder="At least 8 characters" /></label>
         <div id="pu-error" class="form-error"></div>
-        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="pu-cancel">Cancel</button><button type="submit" class="btn btn-primary">Create login</button></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="pu-cancel">Cancel</button><button type="submit" class="btn btn-primary">Create user</button></div>
       </form>
     </div>
   </div>
@@ -331,27 +328,6 @@
     </div>
   </div>
 
-  <!-- CONTACT MODAL -->
-  <div id="contact-modal" class="modal-overlay hidden">
-    <div class="modal">
-      <div class="modal-head"><h2 id="contact-modal-title">Add Contact</h2><button class="modal-x" id="co-close">×</button></div>
-      <form id="contact-form">
-        <label>Full name<input type="text" id="co-name" required placeholder="Jim Smith" /></label>
-        <label>Job title<input type="text" id="co-title" placeholder="IT Manager" /></label>
-        <div class="form-row">
-          <label>Email<input type="email" id="co-email" placeholder="jim@company.com" /></label>
-          <label>Phone<input type="text" id="co-phone" placeholder="555-0123" /></label>
-        </div>
-        <div id="co-error" class="form-error"></div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" id="co-delete" style="margin-right:auto;display:none">Delete</button>
-          <button type="button" class="btn btn-ghost" id="co-cancel">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- USER MODAL -->
   <div id="user-modal" class="modal-overlay hidden">
     <div class="modal">
@@ -366,7 +342,7 @@
           <label>Role<select id="uf-roleSel"><option value="admin">Admin</option><option value="technician" selected>Technician</option><option value="client">Client (portal)</option></select></label>
           <label>Status<select id="uf-active"><option value="true">Active</option><option value="false">Inactive</option></select></label>
         </div>
-        <label id="uf-client-wrap">Company <span class="muted">(for portal users)</span><select id="uf-client"><option value="">— None —</option></select></label>
+        <label id="uf-client-wrap">Business <span class="muted">(for portal users)</span><select id="uf-client"><option value="">— None —</option></select></label>
         <label id="uf-pw-wrap">Password<input type="text" id="uf-password" placeholder="Set a password" /></label>
         <div id="uf-error" class="form-error"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="uf-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
@@ -377,11 +353,11 @@
   <!-- ===================== NEW TICKET MODAL ===================== -->
   <div id="new-modal" class="modal-overlay hidden">
     <div class="modal">
-      <div class="modal-head"><h2>New Ticket</h2><button class="modal-x" id="modal-close">×</button></div>
+      <div class="modal-head"><h2 id="nt-modal-title">New Ticket</h2><button class="modal-x" id="modal-close">×</button></div>
       <form id="new-form">
         <label>Subject<input type="text" id="nt-title" required placeholder="Short summary" /></label>
-        <label>Company<select id="nt-client" required></select></label>
-        <label>Contact<select id="nt-contact"><option value="">— None —</option></select></label>
+        <label>Business<select id="nt-client" required></select></label>
+        <label>User<select id="nt-contact"><option value="">— None —</option></select></label>
         <label>Board<select id="nt-board"><option value="">— None —</option></select></label>
         <label>Description<textarea id="nt-desc" rows="3" placeholder="Details…"></textarea></label>
         <div class="form-row">
@@ -390,7 +366,7 @@
         </div>
         <label>Assignee<select id="nt-assignee"><option value="">Unassigned</option></select></label>
         <div id="nt-error" class="form-error"></div>
-        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="nt-cancel">Cancel</button><button type="submit" class="btn btn-primary">Create ticket</button></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="nt-cancel">Cancel</button><button type="submit" class="btn btn-primary" id="nt-submit">Create ticket</button></div>
       </form>
     </div>
   </div>
@@ -417,6 +393,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=17"></script>
+  <script src="/static/staff.js?v=23"></script>
 </body>
 </html>

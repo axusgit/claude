@@ -8,8 +8,8 @@ from app.models.contact import Contact
 from app.models.user import User
 from app import graph
 
-REF_RE = re.compile(r"AXUS-(\d+)", re.I)
-REFERENCE_BASE = 1000  # keep in sync with routers/tickets.py
+# Match current 'A-123456' references and legacy 'AXUS-1001' ones in email subjects.
+REF_RE = re.compile(r"\b(A-\d+|AXUS-\d+)\b", re.I)
 UNMATCHED_COMPANY = "Unmatched Senders"
 SYS_EMAIL = "email-intake@axustechnologies.com"
 
@@ -49,7 +49,7 @@ def _resolve_sender(db, email, name):
 def _find_ticket(db, subject, conversation_id):
     m = REF_RE.search(subject or "")
     if m:
-        t = db.query(Ticket).filter(Ticket.reference == f"AXUS-{m.group(1)}").first()
+        t = db.query(Ticket).filter(Ticket.reference == m.group(1).upper()).first()
         if t:
             return t
     if conversation_id:
@@ -87,8 +87,9 @@ def _process_one(db, msg):
         email_conversation_id=conv, ticket_type=TicketType.standard,
     )
     db.add(ticket)
+    from app.routers.tickets import generate_ticket_reference
+    ticket.reference = generate_ticket_reference(db)
     db.flush()
-    ticket.reference = f"AXUS-{REFERENCE_BASE + ticket.id}"
     db.add(TicketActivity(ticket_id=ticket.id, user_id=sys_user.id,
                           action="created", detail=f"Created from email: {subject}"))
     db.commit()
@@ -117,22 +118,47 @@ def process_inbox():
 
 
 def notify_contact_reply(ticket_id: int, body: str, author_id: int | None = None):
-    """Email the ticket's contact a staff public reply (best effort, threaded by ref)."""
+    """Email everyone on the ticket a staff public reply.
+
+    Recipients: the reporter who opened it, every additional user, and any legacy
+    email-intake contact. Best effort, threaded by reference in the subject.
+    """
     if not graph.is_configured():
         return
+    from app.models.ticket_watcher import TicketWatcher
     db = SessionLocal()
     try:
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-        if not t or not t.contact_id:
+        if not t:
             return
-        c = db.query(Contact).filter(Contact.id == t.contact_id).first()
-        if not c or not c.email:
+        recipients = set()
+        # reporter who opened the ticket
+        if t.reporter_user_id:
+            r = db.query(User).filter(User.id == t.reporter_user_id).first()
+            if r and r.email:
+                recipients.add(r.email)
+        # additional users on the ticket
+        watcher_users = (
+            db.query(User)
+            .join(TicketWatcher, TicketWatcher.user_id == User.id)
+            .filter(TicketWatcher.ticket_id == ticket_id)
+            .all()
+        )
+        for u in watcher_users:
+            if u.email:
+                recipients.add(u.email)
+        # legacy email-intake contact
+        if t.contact_id:
+            c = db.query(Contact).filter(Contact.id == t.contact_id).first()
+            if c and c.email:
+                recipients.add(c.email)
+        if not recipients:
             return
         logo = None
         if author_id:
             author = db.query(User).filter(User.id == author_id).first()
             logo = author.signature_logo if author else None
-        graph.send_mail(c.email, f"[{t.reference}] {t.title}", body, logo_data_url=logo)
+        graph.send_mail(sorted(recipients), f"[{t.reference}] {t.title}", body, logo_data_url=logo)
     except Exception:
         pass
     finally:

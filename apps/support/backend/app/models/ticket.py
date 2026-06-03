@@ -41,7 +41,8 @@ class Ticket(Base):
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     board_id = Column(Integer, ForeignKey("boards.id"), nullable=True)       # service board / queue
-    contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)  # who reported it
+    contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)   # legacy: email-intake reporter
+    reporter_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # business user who reported it
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
@@ -54,6 +55,7 @@ class Ticket(Base):
     closed_at = Column(DateTime(timezone=True), nullable=True)
 
     client = relationship("Client", foreign_keys=[client_id])
+    reporter = relationship("User", foreign_keys=[reporter_user_id])
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
     time_entries = relationship("TimeEntry", back_populates="ticket")

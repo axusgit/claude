@@ -18,7 +18,7 @@ from app.models.attachment import Attachment
 from app.models.user import User, UserRole
 from app.auth import get_current_user
 from app.routers.tickets import (
-    REFERENCE_BASE, UPLOAD_DIR, MAX_ATTACHMENT_BYTES, _log_activity,
+    generate_ticket_reference, UPLOAD_DIR, MAX_ATTACHMENT_BYTES, _log_activity,
     TicketOut, CommentOut, AttachmentOut,
 )
 
@@ -96,8 +96,8 @@ def submit_ticket(
     from app.models.board import default_board_id
     ticket.board_id = default_board_id(db)
     db.add(ticket)
+    ticket.reference = generate_ticket_reference(db)
     db.flush()
-    ticket.reference = f"AXUS-{REFERENCE_BASE + ticket.id}"
     _log_activity(db, ticket.id, user.id, "created", f"Submitted via portal: {ticket.title}")
     db.commit()
     db.refresh(ticket)

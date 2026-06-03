@@ -202,7 +202,7 @@ const Staff = (() => {
   /* ---------- Column chooser ---------- */
   const COLUMNS = [
     { key: "ref", label: "Ref" }, { key: "subject", label: "Subject" },
-    { key: "company", label: "Company" }, { key: "board", label: "Board" },
+    { key: "company", label: "Business" }, { key: "board", label: "Board" },
     { key: "priority", label: "Priority" }, { key: "status", label: "Status" },
     { key: "assignee", label: "Assignee" }, { key: "updated", label: "Updated" },
   ];
@@ -240,14 +240,70 @@ const Staff = (() => {
     $("p-type").textContent = current.ticket_type === "sow" ? "SOW / Project" : "Standard";
     $("p-hours").textContent = (current.total_hours || 0) + " h";
     $("p-created").textContent = fmtDate(current.created_at);
-    // resolve reporting contact name
-    if (current.contact_id) {
-      try { const cs = await api(`/api/clients/${current.client_id}/contacts`); const ct = cs.find(x => x.id === current.contact_id); $("p-contact").textContent = ct ? ct.full_name : "—"; }
+    // resolve the reporting user's name
+    if (current.reporter_user_id) {
+      try { const us = await api(`/api/clients/${current.client_id}/portal-users`); const u = us.find(x => x.id === current.reporter_user_id); $("p-contact").textContent = u ? u.full_name : "—"; }
       catch (e) { $("p-contact").textContent = "—"; }
     } else { $("p-contact").textContent = "—"; }
     $("reply-internal").checked = false; $("reply-form").classList.remove("internal-mode");
     showDetail();
-    await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id)]);
+    await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id), loadWatchers(id)]);
+  }
+
+  /* ---------- Ticket users (reporter + up to 9 additional) ---------- */
+  const MAX_ADDITIONAL_USERS = 9;
+  async function loadWatchers(ticketId) {
+    const [watchers, businessUsers] = await Promise.all([
+      api(`/api/tickets/${ticketId}/watchers`),
+      api(`/api/clients/${current.client_id}/portal-users`).catch(() => []),
+    ]);
+    // reporter is shown first and is not removable
+    const reporter = current.reporter_user_id
+      ? businessUsers.find(u => u.id === current.reporter_user_id) : null;
+    let html = "";
+    if (reporter) {
+      html += `<div class="time-item"><span>${esc(reporter.full_name)} <span class="tu-tag">Opened</span><br>` +
+              `<span class="cell-muted">${esc(reporter.email)}</span></span></div>`;
+    }
+    html += watchers.map(w => `<div class="time-item"><span>${esc(w.full_name)}<br>` +
+      `<span class="cell-muted">${esc(w.email)}</span></span>` +
+      `<button class="btn btn-ghost btn-xs tu-remove" data-uid="${w.id}" title="Remove">Remove</button></div>`).join("");
+    if (!reporter && !watchers.length) html = `<div class="muted">No users on this ticket yet.</div>`;
+    $("tu-list").innerHTML = html;
+    $("tu-count").textContent = `(${watchers.length}/${MAX_ADDITIONAL_USERS} added)`;
+    $("tu-list").querySelectorAll(".tu-remove").forEach(b => {
+      b.onclick = async () => {
+        await api(`/api/tickets/${ticketId}/watchers/${b.dataset.uid}`, { method: "DELETE" });
+        await loadWatchers(ticketId); toast("User removed");
+      };
+    });
+    // eligible = business users who aren't the reporter and aren't already added
+    const taken = new Set([current.reporter_user_id, ...watchers.map(w => w.id)]);
+    const eligible = businessUsers.filter(u => !taken.has(u.id));
+    const atMax = watchers.length >= MAX_ADDITIONAL_USERS;
+    const wrap = $("tu-add-wrap");
+    if (atMax) {
+      wrap.innerHTML = `<p class="muted tu-hint">Maximum of ${MAX_ADDITIONAL_USERS} additional users reached.</p>`;
+    } else if (eligible.length) {
+      wrap.innerHTML = `<div class="tu-add"><select id="tu-select">` +
+        eligible.map(u => `<option value="${u.id}">${esc(u.full_name)} (${esc(u.email)})</option>`).join("") +
+        `</select><button type="button" class="btn btn-primary btn-xs" id="tu-add-btn">+ Add</button></div>`;
+      $("tu-add-btn").onclick = addWatcher;
+    } else {
+      // nobody left to add — point staff to where business users are created
+      wrap.innerHTML = `<p class="muted tu-hint">No other users in this business to add. ` +
+        `Create them under <a id="tu-goto-biz" class="tu-link">Business → Users</a>.</p>`;
+      const link = $("tu-goto-biz");
+      if (link) link.onclick = () => openCustomer(current.client_id);
+    }
+  }
+  async function addWatcher() {
+    const uid = $("tu-select").value;
+    if (!uid) return;
+    try {
+      await api(`/api/tickets/${current.id}/watchers`, { method: "POST", body: { user_id: parseInt(uid) } });
+      await loadWatchers(current.id); toast("User added");
+    } catch (e) { toast(e.message); }
   }
 
   async function loadThread(id) {
@@ -459,9 +515,9 @@ const Staff = (() => {
   function renderCustomers() {
     const q = ($("cust-search").value || "").toLowerCase();
     const rows = clientsData
-      .filter(c => !q || `${c.company_name} ${c.contact_name} ${c.email}`.toLowerCase().includes(q))
+      .filter(c => !q || `${c.company_name} ${c.location || ""} ${c.website || ""}`.toLowerCase().includes(q))
       .sort((a, b) => a.company_name.localeCompare(b.company_name));
-    $("cust-summary").textContent = `${clientsData.length} customer${clientsData.length === 1 ? "" : "s"}`;
+    $("cust-summary").textContent = `${clientsData.length} business${clientsData.length === 1 ? "" : "es"}`;
     const tbody = $("customer-rows"); tbody.innerHTML = "";
     $("customers-empty").classList.toggle("hidden", rows.length > 0);
     for (const c of rows) {
@@ -470,11 +526,10 @@ const Staff = (() => {
       tr.onclick = () => openCustomer(c.id);
       tr.innerHTML = `
         <td class="cell-subject">${esc(c.company_name)}</td>
-        <td>${esc(c.contact_name)}</td>
-        <td class="cell-muted">${esc(c.email)}</td>
-        <td class="cell-muted">${esc(c.phone || "—")}</td>
+        <td class="cell-muted">${esc(c.location || "—")}</td>
+        <td class="cell-muted">${esc(c.phone || "—")}${c.ext ? " x" + esc(c.ext) : ""}</td>
+        <td class="cell-muted">${esc(c.website || "—")}</td>
         <td>${tcount}</td>
-        <td><span class="badge ${c.is_active ? "resolved" : "closed"}">${c.is_active ? "Active" : "Inactive"}</span></td>
         <td class="cell-muted">${c.created_at ? fmtDate(c.created_at) : "—"}</td>`;
       tbody.appendChild(tr);
     }
@@ -486,14 +541,14 @@ const Staff = (() => {
     $("cd-name").textContent = c.company_name;
     $("cd-status").className = "badge " + (c.is_active ? "resolved" : "closed");
     $("cd-status").textContent = c.is_active ? "Active" : "Inactive";
-    $("cd-contact").textContent = c.contact_name;
-    $("cd-email").textContent = c.email;
+    $("cd-location").textContent = c.location || "—";
     $("cd-phone").textContent = c.phone || "—";
+    $("cd-ext").textContent = c.ext || "—";
     if (c.website) {
       const url = /^https?:\/\//i.test(c.website) ? c.website : "https://" + c.website;
       $("cd-website").innerHTML = `<a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--orange)">${esc(c.website)}</a>`;
     } else { $("cd-website").textContent = "—"; }
-    $("cd-address").textContent = c.address || "—";
+    $("cd-notes").textContent = c.notes || "—";
     $("cd-since").textContent = c.created_at ? fmtDate(c.created_at) : "—";
     // recent tickets for this customer (from already-loaded set)
     const theirs = tickets.filter(t => t.client_id === id)
@@ -508,79 +563,28 @@ const Staff = (() => {
       box.appendChild(row);
     });
     showCustomerDetail();
-    const [users, contacts] = await Promise.all([
-      api(`/api/clients/${id}/portal-users`),
-      api(`/api/clients/${id}/contacts`),
-    ]);
+    const users = await api(`/api/clients/${id}/portal-users`);
     $("cd-users").innerHTML = users.length
       ? users.map(u => `<div class="time-item"><span>${esc(u.full_name)}<br><span class="cell-muted">${esc(u.email)}</span></span>` +
           `<button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button></div>`).join("")
-      : `<div class="muted">No portal logins yet.</div>`;
+      : `<div class="muted">No users yet.</div>`;
     $("cd-users").querySelectorAll("[data-reset-pw]").forEach(b => {
-      b.onclick = () => showPwReset(Number(b.dataset.resetPw), b.dataset.resetName);
+      b.onclick = () => showPwReset(`/api/clients/${currentCustomer.id}/portal-users/${b.dataset.resetPw}/password`, b.dataset.resetName);
     });
-    renderContacts(contacts);
-  }
-
-  let contactEditId = null;
-  function renderContacts(contacts) {
-    const box = $("cd-contacts"); box.innerHTML = "";
-    if (!contacts.length) { box.innerHTML = `<div class="muted">No contacts yet.</div>`; return; }
-    contacts.forEach(c => {
-      const row = document.createElement("div");
-      row.className = "contact-item";
-      row.innerHTML = `<div class="contact-av">${initials(c.full_name)}</div>
-        <div class="contact-info">
-          <div class="contact-name">${esc(c.full_name)}${c.title ? ` · <span class="cell-muted" style="font-weight:500">${esc(c.title)}</span>` : ""}</div>
-          <div class="contact-meta">${esc(c.email || "")}${c.email && c.phone ? " · " : ""}${esc(c.phone || "")}</div>
-        </div>`;
-      row.onclick = () => showContactModal(c);
-      box.appendChild(row);
-    });
-  }
-  function showContactModal(c) {
-    $("co-error").textContent = "";
-    if (c) {
-      $("contact-modal-title").textContent = "Edit Contact";
-      $("co-name").value = c.full_name; $("co-title").value = c.title || "";
-      $("co-email").value = c.email || ""; $("co-phone").value = c.phone || "";
-      contactEditId = c.id; $("co-delete").style.display = "";
-    } else {
-      $("contact-modal-title").textContent = "Add Contact";
-      $("contact-form").reset(); contactEditId = null; $("co-delete").style.display = "none";
-    }
-    $("contact-modal").classList.remove("hidden");
-  }
-  const closeContactModal = () => $("contact-modal").classList.add("hidden");
-  async function saveContact() {
-    const payload = {
-      full_name: $("co-name").value.trim(),
-      title: $("co-title").value.trim() || null,
-      email: $("co-email").value.trim() || null,
-      phone: $("co-phone").value.trim() || null,
-    };
-    const cid = currentCustomer.id;
-    if (contactEditId) await api(`/api/clients/${cid}/contacts/${contactEditId}`, { method: "PUT", body: payload });
-    else await api(`/api/clients/${cid}/contacts`, { method: "POST", body: payload });
-    closeContactModal(); await openCustomer(cid); toast("Contact saved");
-  }
-  async function deleteContact() {
-    if (!contactEditId) return;
-    await api(`/api/clients/${currentCustomer.id}/contacts/${contactEditId}`, { method: "DELETE" });
-    closeContactModal(); await openCustomer(currentCustomer.id); toast("Contact removed");
   }
 
   function showCustModal(c) {
     $("cf-error").textContent = "";
     if (c) {
-      $("cust-modal-title").textContent = "Edit Customer";
-      $("cf-company").value = c.company_name; $("cf-contact").value = c.contact_name;
-      $("cf-email").value = c.email; $("cf-phone").value = c.phone || "";
+      $("cust-modal-title").textContent = "Edit Business";
+      $("cf-company").value = c.company_name;
+      $("cf-location").value = c.location || "";
+      $("cf-phone").value = c.phone || ""; $("cf-ext").value = c.ext || "";
       $("cf-website").value = c.website || "";
-      $("cf-address").value = c.address || ""; $("cf-active").value = String(c.is_active);
+      $("cf-notes").value = c.notes || "";
       custEditId = c.id;
     } else {
-      $("cust-modal-title").textContent = "New Customer";
+      $("cust-modal-title").textContent = "New Business";
       $("cust-form").reset(); custEditId = null;
     }
     $("cust-modal").classList.remove("hidden");
@@ -590,12 +594,12 @@ const Staff = (() => {
   async function saveCustomer() {
     const payload = {
       company_name: $("cf-company").value.trim(),
-      contact_name: $("cf-contact").value.trim(),
-      email: $("cf-email").value.trim(),
+      location: $("cf-location").value.trim() || null,
       phone: $("cf-phone").value.trim() || null,
+      ext: $("cf-ext").value.trim() || null,
       website: $("cf-website").value.trim() || null,
-      address: $("cf-address").value.trim() || null,
-      is_active: $("cf-active").value === "true",
+      notes: $("cf-notes").value.trim() || null,
+      is_active: true,
     };
     if (custEditId) await api(`/api/clients/${custEditId}`, { method: "PUT", body: payload });
     else await api("/api/clients/", { method: "POST", body: payload });
@@ -603,7 +607,7 @@ const Staff = (() => {
     await refreshClients();
     renderCustomers();
     if (custEditId && currentCustomer && currentCustomer.id === custEditId) await openCustomer(custEditId);
-    toast("Customer saved");
+    toast("Business saved");
   }
 
   async function addPortalUser() {
@@ -613,11 +617,11 @@ const Staff = (() => {
     });
     $("puser-modal").classList.add("hidden"); $("pu-form").reset();
     await openCustomer(currentCustomer.id);
-    toast("Portal login created");
+    toast("User created");
   }
 
-  /* ---------- Reset portal password (admin/technician) ---------- */
-  let pwResetUserId = null;
+  /* ---------- Reset password (works for business users and staff users) ---------- */
+  let pwResetUrl = null;
   function genPassword() {
     const a = "ABCDEFGHJKLMNPQRSTUVWXYZ", b = "abcdefghijkmnpqrstuvwxyz", n = "23456789", s = "!@#$%&*";
     const all = a + b + n + s; const rnd = x => x[Math.floor(Math.random() * x.length)];
@@ -625,18 +629,17 @@ const Staff = (() => {
     for (let i = 0; i < 8; i++) out.push(rnd(all));
     return out.sort(() => Math.random() - 0.5).join("");
   }
-  function showPwReset(userId, name) {
-    pwResetUserId = userId;
+  function showPwReset(url, name) {
+    pwResetUrl = url;
     $("pwr-who").textContent = name;
     $("pwr-password").value = ""; $("pwr-error").textContent = "";
     $("pwreset-modal").classList.remove("hidden");
     $("pwr-password").focus();
   }
-  async function resetPortalPassword() {
+  async function submitPwReset() {
     const pw = $("pwr-password").value.trim();
     if (pw.length < 8) { $("pwr-error").textContent = "Password must be at least 8 characters"; return; }
-    await api(`/api/clients/${currentCustomer.id}/portal-users/${pwResetUserId}/password`,
-      { method: "PUT", body: { password: pw } });
+    await api(pwResetUrl, { method: "PUT", body: { password: pw } });
     $("pwreset-modal").classList.add("hidden");
     toast("Password reset");
   }
@@ -671,7 +674,10 @@ const Staff = (() => {
         <td class="cell-muted">${esc(u.phone || "—")}</td>
         <td><span class="badge ${roleBadge[u.role] || "closed"}">${cap(u.role)}</span></td>
         <td class="cell-muted">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
-        <td><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>`;
+        <td><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>
+        <td><button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button></td>`;
+      const rb = tr.querySelector("[data-reset-pw]");
+      rb.onclick = (e) => { e.stopPropagation(); showPwReset(`/api/users/${rb.dataset.resetPw}/password`, rb.dataset.resetName); };
       tbody.appendChild(tr);
     }
   }
@@ -716,18 +722,48 @@ const Staff = (() => {
     toast("User saved");
   }
 
-  /* ---------- Modal ---------- */
-  const showNew = () => { $("new-modal").classList.remove("hidden"); $("nt-contact").innerHTML = `<option value="">— None —</option>`; $("nt-title").focus(); };
-  const closeNew = () => { $("new-modal").classList.add("hidden"); $("new-form").reset(); $("nt-error").textContent = ""; };
+  /* ---------- New / Edit ticket modal ---------- */
+  let ticketEditId = null;
+  const showNew = () => {
+    ticketEditId = null;
+    $("nt-modal-title").textContent = "New Ticket";
+    $("nt-submit").textContent = "Create ticket";
+    $("new-form").reset();
+    $("nt-error").textContent = "";
+    $("new-modal").classList.remove("hidden");
+    // load the Users for whichever Business is currently selected (onchange won't fire on open)
+    loadUsersInto($("nt-contact"), $("nt-client").value);
+    $("nt-title").focus();
+  };
+  async function showEditTicket() {
+    if (!current) return;
+    const t = current;
+    ticketEditId = t.id;
+    $("nt-modal-title").textContent = "Edit Ticket";
+    $("nt-submit").textContent = "Save changes";
+    $("nt-error").textContent = "";
+    $("nt-title").value = t.title || "";
+    $("nt-client").value = String(t.client_id);
+    $("nt-board").value = t.board_id ? String(t.board_id) : "";
+    $("nt-desc").value = t.description || "";
+    $("nt-category").value = t.category || "";
+    $("nt-priority").value = t.priority;
+    $("nt-assignee").value = t.assigned_to_id ? String(t.assigned_to_id) : "";
+    $("new-modal").classList.remove("hidden");
+    // load the business's users, then select the current reporter
+    await loadUsersInto($("nt-contact"), String(t.client_id));
+    $("nt-contact").value = t.reporter_user_id ? String(t.reporter_user_id) : "";
+  }
+  const closeNew = () => { $("new-modal").classList.add("hidden"); $("new-form").reset(); $("nt-error").textContent = ""; ticketEditId = null; };
 
-  async function loadContactsInto(selectEl, clientId) {
+  async function loadUsersInto(selectEl, clientId) {
     selectEl.innerHTML = `<option value="">— None —</option>`;
     if (!clientId) return;
     try {
-      const contacts = await api(`/api/clients/${clientId}/contacts`);
-      contacts.forEach(c => {
+      const users = await api(`/api/clients/${clientId}/portal-users`);
+      users.forEach(u => {
         const o = document.createElement("option");
-        o.value = c.id; o.textContent = c.full_name + (c.title ? ` (${c.title})` : "");
+        o.value = u.id; o.textContent = u.full_name + (u.email ? ` (${u.email})` : "");
         selectEl.appendChild(o);
       });
     } catch (e) { /* ignore */ }
@@ -777,6 +813,7 @@ const Staff = (() => {
     $("sig-logo-file").onchange = e => { onLogoPicked(e.target.files[0]); e.target.value = ""; };
     $("sig-logo-remove").onclick = () => { sigLogo = ""; renderSigLogo(); };
     $("new-ticket-btn").onclick = showNew;
+    $("edit-ticket-btn").onclick = () => showEditTicket();
     $("modal-close").onclick = closeNew; $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showQueue(); };
 
@@ -795,16 +832,10 @@ const Staff = (() => {
     $("pwr-close").onclick = () => $("pwreset-modal").classList.add("hidden");
     $("pwr-cancel").onclick = () => $("pwreset-modal").classList.add("hidden");
     $("pwr-gen").onclick = () => { $("pwr-password").value = genPassword(); };
-    $("pwr-form").onsubmit = async e => { e.preventDefault(); $("pwr-error").textContent = ""; try { await resetPortalPassword(); } catch (err) { $("pwr-error").textContent = err.message; } };
+    $("pwr-form").onsubmit = async e => { e.preventDefault(); $("pwr-error").textContent = ""; try { await submitPwReset(); } catch (err) { $("pwr-error").textContent = err.message; } };
 
-    // contacts
-    $("cd-addcontact-btn").onclick = () => showContactModal(null);
-    $("co-close").onclick = closeContactModal; $("co-cancel").onclick = closeContactModal;
-    $("contact-form").onsubmit = async e => { e.preventDefault(); $("co-error").textContent = ""; try { await saveContact(); } catch (err) { $("co-error").textContent = err.message; } };
-    $("co-delete").onclick = async () => { try { await deleteContact(); } catch (err) { $("co-error").textContent = err.message; } };
-
-    // ticket form: load contacts when company changes
-    $("nt-client").onchange = () => loadContactsInto($("nt-contact"), $("nt-client").value);
+    // ticket form: load users when business changes
+    $("nt-client").onchange = () => loadUsersInto($("nt-contact"), $("nt-client").value);
 
     // users
     $("user-search").oninput = renderUsers;
@@ -861,7 +892,7 @@ const Staff = (() => {
     $("new-form").onsubmit = async e => {
       e.preventDefault(); $("nt-error").textContent = "";
       const clientId = $("nt-client").value;
-      if (!clientId) { $("nt-error").textContent = "Please choose a company"; return; }
+      if (!clientId) { $("nt-error").textContent = "Please choose a business"; return; }
       const payload = {
         title: $("nt-title").value.trim(),
         description: $("nt-desc").value.trim() || null,
@@ -870,9 +901,17 @@ const Staff = (() => {
         client_id: parseInt(clientId),
       };
       const a = $("nt-assignee").value; if (a) payload.assigned_to_id = parseInt(a);
-      const ct = $("nt-contact").value; if (ct) payload.contact_id = parseInt(ct);
+      const ct = $("nt-contact").value; if (ct) payload.reporter_user_id = parseInt(ct);
       const bd = $("nt-board").value; if (bd) payload.board_id = parseInt(bd);
-      try { await createTicket(payload); } catch (err) { $("nt-error").textContent = err.message; }
+      try {
+        if (ticketEditId) {
+          await api(`/api/tickets/${ticketEditId}`, { method: "PUT", body: payload });
+          closeNew(); await loadTickets(); await openTicket(ticketEditId);
+          toast("Ticket updated");
+        } else {
+          await createTicket(payload);
+        }
+      } catch (err) { $("nt-error").textContent = err.message; }
     };
 
     // Try an existing session (stored JWT locally, or gateway identity in

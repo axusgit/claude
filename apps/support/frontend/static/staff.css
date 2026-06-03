@@ -226,10 +226,22 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
 .pm-danger:hover .pm-ico { color: #e5484d; }
 
 /* ===================== Reset portal password ===================== */
-.time-item .btn-xs { padding: 4px 10px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+.btn-xs { padding: 4px 10px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
 .pwr-row { display: flex; gap: 8px; align-items: stretch; }
 .pwr-row input { margin-top: 6px; }
 .pwr-row .btn { margin-top: 6px; white-space: nowrap; }
+
+/* ===================== Ticket users ===================== */
+.tu-add { display: flex; gap: 8px; margin-top: 10px; }
+.tu-add select { flex: 1; min-width: 0; margin-top: 0; }
+.tu-add .btn { margin-top: 0; }
+.tu-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: #16a34a; background: rgba(22,163,74,.12); padding: 1px 6px; border-radius: 999px; vertical-align: middle; }
+.tu-remove { color: var(--muted); }
+.tu-remove:hover { color: #e5484d; }
+.tu-hint { margin: 10px 0 0; font-size: 12px; }
+.tu-link { color: var(--orange); cursor: pointer; font-weight: 600; }
+.tu-link:hover { text-decoration: underline; }
 
 /* ===================== Signature logo ===================== */
 .sig-logo-row { display: flex; align-items: flex-start; gap: 14px; margin-top: 6px; }

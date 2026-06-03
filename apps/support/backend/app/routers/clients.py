@@ -13,23 +13,23 @@ router = APIRouter(prefix="/api/clients", tags=["clients"])
 
 
 class ClientIn(BaseModel):
-    company_name: str
-    contact_name: str
-    email: str
+    company_name: str                       # Business Name
+    location: Optional[str] = None          # stored in clients.address
     phone: Optional[str] = None
+    ext: Optional[str] = None
     website: Optional[str] = None
-    address: Optional[str] = None
+    notes: Optional[str] = None
     is_active: bool = True
 
 
 class ClientOut(BaseModel):
     id: int
     company_name: str
-    contact_name: str
-    email: str
+    location: Optional[str]
     phone: Optional[str]
+    ext: Optional[str]
     website: Optional[str]
-    address: Optional[str]
+    notes: Optional[str]
     is_active: bool
     created_at: Optional[datetime]
 
@@ -42,9 +42,20 @@ def list_clients(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return db.query(Client).filter(Client.is_active == True).order_by(Client.company_name).all()
 
 
+def _apply_business(client: Client, data: ClientIn) -> None:
+    client.company_name = data.company_name
+    client.address = data.location        # "Location" maps to the address column
+    client.phone = data.phone
+    client.ext = data.ext
+    client.website = data.website
+    client.notes = data.notes
+    client.is_active = data.is_active
+
+
 @router.post("/", response_model=ClientOut)
 def create_client(data: ClientIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    client = Client(**data.model_dump())
+    client = Client(contact_name="", email="")
+    _apply_business(client, data)
     db.add(client)
     db.commit()
     db.refresh(client)
@@ -64,8 +75,7 @@ def update_client(client_id: int, data: ClientIn, db: Session = Depends(get_db),
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    for key, value in data.model_dump().items():
-        setattr(client, key, value)
+    _apply_business(client, data)
     db.commit()
     db.refresh(client)
     return client

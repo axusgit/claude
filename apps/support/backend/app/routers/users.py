@@ -67,6 +67,25 @@ def create_user(data: UserCreateIn, db: Session = Depends(get_db), _=Depends(req
     return user
 
 
+class PasswordResetIn(BaseModel):
+    password: str
+
+
+@router.put("/{user_id}/password", response_model=UserOut)
+def reset_user_password(user_id: int, data: PasswordResetIn, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Admin resets any user's password."""
+    new_pw = (data.password or "").strip()
+    if len(new_pw) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.hashed_password = hash_password(new_pw)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @router.put("/{user_id}", response_model=UserOut)
 def update_user(user_id: int, data: UserUpdateIn, db: Session = Depends(get_db), _=Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
