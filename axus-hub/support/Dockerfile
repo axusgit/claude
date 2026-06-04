@@ -6,12 +6,12 @@ ENV PYTHONUNBUFFERED=1
 
 # Shared central-identity library + app dependencies
 COPY libs/auth /libs/auth
-COPY apps/support/backend/requirements.txt ./requirements.txt
+COPY axus-hub/support/backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir /libs/auth
 
 # App code + frontend (main.py expects ../frontend)
-COPY apps/support/backend ./backend
-COPY apps/support/frontend ./frontend
+COPY axus-hub/support/backend ./backend
+COPY axus-hub/support/frontend ./frontend
 
 WORKDIR /app/backend
 EXPOSE 8000

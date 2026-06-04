@@ -104,7 +104,7 @@ Never drop the production database.
 
 Each app runs standalone with `AUTH_MODE=local`:
 ```bash
-cd apps/support/backend   # or apps/hub/backend
+cd axus-hub/support/backend   # or axus-hub/hub/backend
 python -m venv venv && ./venv/Scripts/pip install -r requirements.txt
 ./venv/Scripts/pip install -e ../../../libs/auth
 # support only: ./venv/Scripts/alembic upgrade head

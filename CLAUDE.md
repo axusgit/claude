@@ -10,17 +10,17 @@ This is the **Axus Technologies platform monorepo**. Axus Hub is the central pla
 
 | Path | Description |
 |------|-------------|
-| `apps/hub/` | **Central platform**: dashboard, app launcher, profile, monitoring, admin. OIDC/forward-auth client of Authentik. |
-| `apps/support/` | **Support** platform (ticketing, service desk, customer portal) — `support.hub.axustechnologies.com`. Formerly mislabeled "Axus Hub". Live in prod. |
-| `apps/accounting/` | **Accounting** (billing/invoicing) — `accounting.hub.axustechnologies.com:8443` (internal). Own DB; feeds the Hub command center. |
-| `apps/rmm/` | RMM scaffold (future) — `rmm.hub.axustechnologies.com`. |
+| `axus-hub/hub/` | **Central platform**: dashboard, app launcher, profile, monitoring, admin. OIDC/forward-auth client of Authentik. |
+| `axus-hub/support/` | **Support** platform (ticketing, service desk, customer portal) — `support.hub.axustechnologies.com`. Formerly mislabeled "Axus Hub". Live in prod. |
+| `axus-hub/accounting/` | **Accounting** (billing/invoicing) — `accounting.hub.axustechnologies.com:8443` (internal). Own DB; feeds the Hub command center. |
+| `axus-hub/rmm/` | RMM scaffold (future) — `rmm.hub.axustechnologies.com`. |
 | `infra/` | Docker Compose stack: Traefik (reverse proxy + TLS), Authentik (IdP), Postgres, Redis. |
 | `libs/auth/` | Shared central-identity module (reads Authentik forward-auth headers; dev fallback). |
 | `Chess/`, `Hangman/`, `Tic Tac Toe/` | Unrelated standalone toys. |
 
 ## Conventions
 
-- Each app lives under `apps/<name>/` and is independently runnable + deployable as a container.
+- Each app lives under `axus-hub/<name>/` and is independently runnable + deployable as a container.
 - Python apps use a local `venv/` (gitignored) and their own `requirements.txt`; schema is managed by **Alembic** (`alembic upgrade head`), never `create_all`.
 - Apps trust **Axus Hub / Authentik** as the single identity & authorization authority — no per-app login systems (a local dev fallback exists for running without Authentik).
 - Secrets live in environment `.env` files (gitignored), never committed.

@@ -91,18 +91,18 @@ Three independent layers protect the platform:
 
 | Path | What |
 |------|------|
-| `apps/hub` | Central dashboard/launcher (FastAPI + static SPA) |
-| `apps/support` | Support/ticketing (live app, formerly "Axus Hub") |
-| `apps/rmm` | RMM scaffold (future) |
+| `axus-hub/hub` | Central dashboard/launcher (FastAPI + static SPA) |
+| `axus-hub/support` | Support/ticketing (live app, formerly "Axus Hub") |
+| `axus-hub/rmm` | RMM scaffold (future) |
 | `libs/auth` | Shared `axus_auth` identity package |
 | `infra/` | `docker-compose.yml`, Traefik config, Authentik blueprints, `.env.example` |
 
 ## Adding a new app (the pattern)
 
-1. Create `apps/<name>` (use `libs/auth` for identity).
+1. Create `axus-hub/<name>` (use `libs/auth` for identity).
 2. Add a service + Traefik labels in `infra/docker-compose.yml` (Host rule +
    `authentik@file` middleware).
-3. Add `<name>` to the Hub `APP_CATALOG` (`apps/hub/backend/main.py`) with its
+3. Add `<name>` to the Hub `APP_CATALOG` (`axus-hub/hub/backend/main.py`) with its
    `app-<name>` group.
 4. Add an A record `<name>.hub.axustechnologies.com → 52.22.69.65` at Hover.
 5. In Authentik: create the `app-<name>` group + application/provider; assign users.

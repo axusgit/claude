@@ -1,15 +1,15 @@
-# Axus Accounting — build context is the repo root (so we can COPY libs/auth).
+# Axus Hub — build context is the repo root (so we can COPY libs/auth).
 FROM python:3.12-slim
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 
 COPY libs/auth /libs/auth
-COPY apps/accounting/backend/requirements.txt ./requirements.txt
+COPY axus-hub/hub/backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir /libs/auth
 
-COPY apps/accounting/backend ./backend
-COPY apps/accounting/frontend ./frontend
+COPY axus-hub/hub/backend ./backend
+COPY axus-hub/hub/frontend ./frontend
 
 WORKDIR /app/backend
 EXPOSE 8000

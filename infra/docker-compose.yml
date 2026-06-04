@@ -109,7 +109,7 @@ services:
   hub:
     build:
       context: ..
-      dockerfile: apps/hub/Dockerfile
+      dockerfile: axus-hub/hub/Dockerfile
     restart: unless-stopped
     environment:
       AUTH_MODE: central
@@ -131,7 +131,7 @@ services:
   support:
     build:
       context: ..
-      dockerfile: apps/support/Dockerfile
+      dockerfile: axus-hub/support/Dockerfile
     restart: unless-stopped
     environment:
       AUTH_MODE: central
@@ -152,7 +152,7 @@ services:
   accounting:
     build:
       context: ..
-      dockerfile: apps/accounting/Dockerfile
+      dockerfile: axus-hub/accounting/Dockerfile
     restart: unless-stopped
     environment:
       AUTH_MODE: central

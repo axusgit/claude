@@ -30,3 +30,6 @@ geo_policy.json
 Thumbs.db
 .idea/
 .vscode/
+
+# Standalone projects with their own git repo (NOT part of this monorepo)
+On Call AI Agent/
