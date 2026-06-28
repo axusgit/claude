@@ -33,3 +33,5 @@ Thumbs.db
 
 # Standalone projects with their own git repo (NOT part of this monorepo)
 On Call AI Agent/
+axus-backups/
+axus-insights/
