@@ -41,6 +41,7 @@ YELLOW, YELLOW_ACTIVE = "#f9a825", "#f57f17"   # Pause / Resume
 
 # "Delete older than" presets -> age in days (insertion order = dropdown order)
 RETENTION_OPTIONS = {
+    "1 minute": 1 / (24 * 60),
     "1 hour": 1 / 24,
     "1 day": 1, "3 days": 3, "7 days": 7,
     "2 weeks": 14, "4 weeks": 28,
