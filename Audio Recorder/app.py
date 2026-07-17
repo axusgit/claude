@@ -1,0 +1,717 @@
+#!/usr/bin/env python3
+"""
+Audio Recorder + Diarized Transcript
+
+- Records ONLY the computer's own audio (system/loopback — what's playing through
+  the speakers), not the microphone.
+- Transcribes it with faster-whisper.
+- Separates speakers with pyannote.audio and labels each segment (Speaker 1/2/3...).
+- Lets you rename speakers, then exports a .txt transcript.
+
+Everything runs locally. pyannote needs a free HuggingFace token (one-time setup)
+and license acceptance — see README.md.
+"""
+import json
+import queue
+import threading
+import time
+import wave
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+
+APP_DIR = Path(__file__).resolve().parent
+RECORDINGS_DIR = APP_DIR / "recordings"
+TRANSCRIPTS_DIR = APP_DIR / "transcripts"
+CONFIG_PATH = APP_DIR / "config.json"
+SAMPLE_RATE = 48000  # native-ish; whisper/pyannote resample internally
+
+RECORDINGS_DIR.mkdir(exist_ok=True)
+TRANSCRIPTS_DIR.mkdir(exist_ok=True)
+
+
+# --------------------------------------------------------------------------- #
+# Config (stores the HuggingFace token)
+# --------------------------------------------------------------------------- #
+def load_config() -> dict:
+    if CONFIG_PATH.exists():
+        try:
+            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def save_config(cfg: dict) -> None:
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# Microphone device discovery
+# --------------------------------------------------------------------------- #
+def list_input_devices() -> list[tuple[int, str]]:
+    """Return [(index, 'Name (Host API)')] for every input-capable device."""
+    import sounddevice as sd
+    apis = sd.query_hostapis()
+    out = []
+    for i, d in enumerate(sd.query_devices()):
+        if d.get("max_input_channels", 0) > 0:
+            api = apis[d["hostapi"]]["name"]
+            out.append((i, f"{d['name']} ({api})"))
+    return out
+
+
+def resolve_input_index(label: str):
+    """Map a saved label back to a current device index (None if not found)."""
+    if not label:
+        return None
+    for i, lbl in list_input_devices():
+        if lbl == label:
+            return i
+    return None
+
+
+def default_input_label():
+    """Label of the system default input device (or None)."""
+    import sounddevice as sd
+    try:
+        di = sd.default.device[0]
+        if di is None or di < 0:
+            return None
+        d = sd.query_devices()[di]
+        api = sd.query_hostapis()[d["hostapi"]]["name"]
+        return f"{d['name']} ({api})"
+    except Exception:
+        return None
+
+
+# --------------------------------------------------------------------------- #
+# Loopback recorder (records the computer's output audio)
+# --------------------------------------------------------------------------- #
+class ConversationRecorder:
+    """Records the computer's output audio (loopback) and, optionally, the
+    microphone at the same time, then mixes them into one WAV — so both sides
+    of a conversation are captured."""
+
+    def __init__(self, samplerate: int = SAMPLE_RATE, include_mic: bool = True,
+                 mic_device=None):
+        self.samplerate = samplerate
+        self.include_mic = include_mic
+        self.mic_device = mic_device            # sounddevice index, or None = default
+        self._sys_frames: list[np.ndarray] = []
+        self._mic_frames: list[np.ndarray] = []
+        self._mic_sr = samplerate
+        self._recording = False
+        self._threads: list[threading.Thread] = []
+        self._sys_error: str | None = None
+        self._mic_error: str | None = None
+        self._mic_warning: str | None = None
+        self._paused = False
+
+    def start(self) -> None:
+        self._sys_frames = []
+        self._mic_frames = []
+        self._sys_error = None
+        self._mic_error = None
+        self._mic_warning = None
+        self._paused = False
+        self._recording = True
+        self._threads = [threading.Thread(target=self._record_loopback, daemon=True)]
+        if self.include_mic:
+            self._threads.append(threading.Thread(target=self._record_mic, daemon=True))
+        for t in self._threads:
+            t.start()
+
+    def pause(self) -> None:
+        self._paused = True
+
+    def resume(self) -> None:
+        self._paused = False
+
+    def _record_loopback(self) -> None:
+        # soundcard's WASAPI loopback uses COM, which must be initialized in THIS
+        # thread. A fresh thread per recording isn't initialized by default, which
+        # can make a later recording fail with 0x800401F0 (CO_E_NOTINITIALIZED).
+        com_ready = False
+        try:
+            import ctypes
+            ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # COINIT_APARTMENTTHREADED
+            com_ready = True
+        except Exception:
+            pass
+        try:
+            import soundcard as sc
+            speaker = sc.default_speaker()
+            loopback = sc.get_microphone(id=str(speaker.name), include_loopback=True)
+            with loopback.recorder(samplerate=self.samplerate, channels=1) as rec:
+                block = self.samplerate // 10  # 100 ms
+                while self._recording:
+                    data = rec.record(numframes=block)  # keep draining the buffer
+                    if not self._paused:                # ...but drop it while paused
+                        self._sys_frames.append(data.copy())
+        except Exception as e:
+            self._sys_error = f"{type(e).__name__}: {e}"
+        finally:
+            if com_ready:
+                try:
+                    import ctypes
+                    ctypes.windll.ole32.CoUninitialize()
+                except Exception:
+                    pass
+
+    def _record_mic(self) -> None:
+        # soundcard can't open most real mics on Windows (it asserts a specific
+        # WASAPI format), so use sounddevice/PortAudio for the microphone.
+        try:
+            self._open_mic_stream(self.mic_device)
+        except Exception as e:
+            # A specific device can refuse to open (exclusive/host quirks).
+            # Fall back to the system default mic so the voice is still captured.
+            if self.mic_device is not None:
+                try:
+                    self._mic_frames = []
+                    self._open_mic_stream(None)
+                    self._mic_warning = (
+                        f"Selected mic couldn't be opened ({type(e).__name__}); "
+                        "recorded with the default microphone instead.")
+                    return
+                except Exception as e2:
+                    self._mic_error = f"{type(e2).__name__}: {e2}"
+            else:
+                self._mic_error = f"{type(e).__name__}: {e}"
+
+    def _open_mic_stream(self, device) -> None:
+        import sounddevice as sd
+        # Record at the device's native rate; resample at mix time.
+        info = (sd.query_devices(device, "input")
+                if device is not None else sd.query_devices(kind="input"))
+        self._mic_sr = int(info["default_samplerate"])
+
+        def callback(indata, frames_count, time_info, status):
+            if self._recording and not self._paused:
+                self._mic_frames.append(indata.copy())
+
+        with sd.InputStream(samplerate=self._mic_sr, channels=1, dtype="float32",
+                            device=device, callback=callback):
+            while self._recording:
+                time.sleep(0.05)
+
+    @staticmethod
+    def _resample(x: np.ndarray, sr_from: int, sr_to: int) -> np.ndarray:
+        if x.size == 0 or sr_from == sr_to:
+            return x
+        n_to = int(round(x.size * sr_to / sr_from))
+        t_from = np.linspace(0.0, 1.0, x.size, endpoint=False)
+        t_to = np.linspace(0.0, 1.0, n_to, endpoint=False)
+        return np.interp(t_to, t_from, x).astype(np.float32)
+
+    @staticmethod
+    def _flatten(frames: list[np.ndarray]) -> np.ndarray:
+        if not frames:
+            return np.zeros(0, dtype=np.float32)
+        return np.concatenate(frames, axis=0).reshape(-1).astype(np.float32)
+
+    def stop(self):
+        """Stop, mix the streams, write a WAV.
+
+        Returns (wav_path | None, warning | None)."""
+        self._recording = False
+        for t in self._threads:
+            t.join(timeout=5)
+
+        # Loopback failing is fatal; mic failing is a warning (keep system audio).
+        if self._sys_error and not self._sys_frames:
+            raise RuntimeError(f"System-audio capture failed: {self._sys_error}")
+
+        sys_a = self._flatten(self._sys_frames)
+        mic_a = self._flatten(self._mic_frames) if self.include_mic else np.zeros(0, np.float32)
+        # match the mic to the loopback sample rate before mixing
+        mic_a = self._resample(mic_a, self._mic_sr, self.samplerate)
+
+        warning = None
+        if self.include_mic:
+            if self._mic_error and mic_a.size == 0:
+                warning = f"Microphone capture failed ({self._mic_error}); saved system audio only."
+            elif self._mic_warning:
+                warning = self._mic_warning
+
+        if sys_a.size and mic_a.size:
+            n = min(sys_a.size, mic_a.size)          # align to shorter stream
+            mixed = sys_a[:n] + mic_a[:n]
+        elif sys_a.size:
+            mixed = sys_a
+        elif mic_a.size:
+            mixed = mic_a
+            if not warning:
+                warning = "No system audio captured; saved microphone only."
+        else:
+            return None, warning
+
+        peak = float(np.max(np.abs(mixed))) if mixed.size else 0.0
+        if peak > 1.0:                                # prevent clipping after the sum
+            mixed = mixed / peak
+        pcm16 = (np.clip(mixed, -1.0, 1.0) * 32767).astype(np.int16)
+
+        # millisecond-precise, plus a guard, so every recording is its own file
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%f")[:-3]
+        out = RECORDINGS_DIR / f"recording_{ts}.wav"
+        counter = 1
+        while out.exists():
+            out = RECORDINGS_DIR / f"recording_{ts}_{counter}.wav"
+            counter += 1
+        with wave.open(str(out), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(self.samplerate)
+            wf.writeframes(pcm16.tobytes())
+        return out, warning
+
+
+# --------------------------------------------------------------------------- #
+# Transcription + diarization pipeline (runs in a worker thread)
+# --------------------------------------------------------------------------- #
+def _extract_wav16k(src: Path) -> Path:
+    """ffmpeg -> temp 16 kHz mono WAV. Normalizes any input (wav/mp4/m4a...)."""
+    import subprocess, tempfile
+    tmp = Path(tempfile.gettempdir()) / f"arec_{int(time.time()*1000)}.wav"
+    cmd = ["ffmpeg", "-y", "-i", str(src), "-vn", "-ac", "1",
+           "-ar", "16000", "-c:a", "pcm_s16le", str(tmp)]
+    # CREATE_NO_WINDOW (0x08000000) keeps ffmpeg from flashing a console window
+    # when the app is launched with pythonw.exe.
+    no_window = 0x08000000 if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+    r = subprocess.run(cmd, capture_output=True, text=True, creationflags=no_window)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {r.stderr[-500:]}")
+    return tmp
+
+
+def _load_waveform(wav_path: Path):
+    """Load a 16 kHz mono WAV into pyannote's in-memory format.
+
+    Avoids torchaudio/torchcodec file decoding (whose native DLLs don't load
+    with this torch build on Windows)."""
+    import torch
+    with wave.open(str(wav_path), "rb") as wf:
+        sr = wf.getframerate()
+        n = wf.getnframes()
+        ch = wf.getnchannels()
+        raw = wf.readframes(n)
+    data = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    if ch > 1:
+        data = data.reshape(-1, ch).mean(axis=1)
+    waveform = torch.from_numpy(data).unsqueeze(0)  # (channel=1, time)
+    return {"waveform": waveform, "sample_rate": sr}
+
+
+def run_pipeline(wav_path: Path, model_size: str, hf_token: str,
+                 num_speakers, log) -> list[dict]:
+    """
+    Returns a list of segments: {start, end, speaker, text}.
+    `log(msg)` posts progress to the GUI. `num_speakers` may be None (auto) or int.
+    """
+    # Normalize input to a clean 16 kHz mono WAV first.
+    log("Extracting audio...")
+    work_wav = _extract_wav16k(Path(wav_path))
+
+    # 1) Transcribe -------------------------------------------------------- #
+    log(f"Loading transcription model '{model_size}'...")
+    from faster_whisper import WhisperModel
+    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+
+    log("Transcribing audio...")
+    segments_iter, info = model.transcribe(str(work_wav), vad_filter=True)
+    whisper_segs = [
+        {"start": s.start, "end": s.end, "text": s.text.strip()}
+        for s in segments_iter if s.text.strip()
+    ]
+    log(f"Detected language: {info.language}. {len(whisper_segs)} segments.")
+    if not whisper_segs:
+        return []
+
+    # 2) Diarize ----------------------------------------------------------- #
+    turns = []
+    if hf_token:
+        try:
+            log("Loading speaker-diarization model (first run downloads it)...")
+            from pyannote.audio import Pipeline
+            import torch
+            pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1", use_auth_token=hf_token
+            )
+            pipeline.to(torch.device("cpu"))
+
+            log("Identifying speakers...")
+            kwargs = {}
+            if num_speakers:
+                kwargs["num_speakers"] = int(num_speakers)
+            audio_in = _load_waveform(work_wav)
+            diarization = pipeline(audio_in, **kwargs)
+            for turn, _, spk in diarization.itertracks(yield_label=True):
+                turns.append((turn.start, turn.end, spk))
+            log(f"Found {len({t[2] for t in turns})} distinct speaker(s).")
+        except Exception as e:
+            log(f"Diarization failed ({type(e).__name__}: {e}).")
+            log("Falling back to transcript without speaker labels.")
+            turns = []
+    else:
+        log("No HuggingFace token set — skipping speaker separation.")
+
+    # 3) Assign a speaker to each transcript segment ----------------------- #
+    # normalize pyannote labels (SPEAKER_00 -> "Speaker 1") in first-seen order
+    label_map: dict[str, str] = {}
+
+    def speaker_for(seg) -> str:
+        if not turns:
+            return "Speaker 1"
+        mid = (seg["start"] + seg["end"]) / 2
+        best, best_overlap = None, 0.0
+        for ts, te, spk in turns:
+            overlap = min(seg["end"], te) - max(seg["start"], ts)
+            if overlap > best_overlap:
+                best_overlap, best = overlap, spk
+        if best is None:  # midpoint fallback
+            for ts, te, spk in turns:
+                if ts <= mid <= te:
+                    best = spk
+                    break
+        if best is None:
+            best = turns[0][2]
+        if best not in label_map:
+            label_map[best] = f"Speaker {len(label_map) + 1}"
+        return label_map[best]
+
+    for seg in whisper_segs:
+        seg["speaker"] = speaker_for(seg)
+
+    try:
+        work_wav.unlink(missing_ok=True)
+    except Exception:
+        pass
+    return whisper_segs
+
+
+def render_transcript(segments: list[dict], name_map: dict[str, str]) -> str:
+    """Group consecutive same-speaker segments into readable blocks."""
+    lines, cur_spk, buf = [], None, []
+
+    def flush():
+        if buf:
+            display = name_map.get(cur_spk, cur_spk)
+            lines.append(f"{display}: {' '.join(buf)}")
+
+    for seg in segments:
+        spk = seg["speaker"]
+        if spk != cur_spk:
+            flush()
+            cur_spk, buf = spk, []
+        buf.append(seg["text"])
+    flush()
+    return "\n\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------- #
+# GUI
+# --------------------------------------------------------------------------- #
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Audio Recorder + Diarized Transcript")
+        self.geometry("760x680")
+        self.minsize(680, 600)
+
+        self.cfg = load_config()
+        self.recorder: ConversationRecorder | None = None
+        self.msg_q: queue.Queue = queue.Queue()
+        self.segments: list[dict] = []
+        self.last_wav: Path | None = None
+        self.is_recording = False
+        self.is_paused = False
+        self._elapsed_base = 0.0     # recorded seconds before the current segment
+        self._segment_start = 0.0    # time the current running segment began
+        self.speaker_name_vars: dict[str, tk.StringVar] = {}
+
+        self._build_ui()
+        self.after(100, self._drain_queue)
+        self.after(200, self._tick_timer)
+
+    # ---- UI layout --------------------------------------------------------
+    def _build_ui(self):
+        pad = {"padx": 10, "pady": 6}
+
+        # Recording controls
+        rec_frame = ttk.LabelFrame(self, text="1. Record computer audio")
+        rec_frame.pack(fill="x", **pad)
+
+        top = ttk.Frame(rec_frame)
+        top.pack(fill="x")
+        self.record_btn = ttk.Button(top, text="● Start Recording",
+                                     command=self.toggle_record)
+        self.record_btn.pack(side="left", padx=10, pady=10)
+        self.pause_btn = ttk.Button(top, text="Pause", command=self.toggle_pause,
+                                    state="disabled")
+        self.pause_btn.pack(side="left", padx=(0, 6))
+        self.timer_lbl = ttk.Label(top, text="00:00", font=("Segoe UI", 16))
+        self.timer_lbl.pack(side="left", padx=10)
+        self.rec_status = ttk.Label(top, text="Idle")
+        self.rec_status.pack(side="left", padx=10)
+
+        # Microphone selection row
+        mic_row = ttk.Frame(rec_frame)
+        mic_row.pack(fill="x", padx=10, pady=(0, 8))
+        self.mic_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(mic_row, text="Record my mic:",
+                        variable=self.mic_var).pack(side="left")
+        self.mic_label_var = tk.StringVar()
+        self.mic_combo = ttk.Combobox(mic_row, textvariable=self.mic_label_var,
+                                      state="readonly", width=48)
+        self.mic_combo.pack(side="left", padx=6)
+        self.mic_combo.bind("<<ComboboxSelected>>", self._on_mic_selected)
+        ttk.Button(mic_row, text="Refresh", width=8,
+                   command=self._populate_mics).pack(side="left")
+        self._populate_mics()
+
+        # Options
+        opt_frame = ttk.LabelFrame(self, text="2. Options")
+        opt_frame.pack(fill="x", **pad)
+        ttk.Label(opt_frame, text="Accuracy:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
+        self.model_var = tk.StringVar(value="base")
+        ttk.Combobox(opt_frame, textvariable=self.model_var, width=12, state="readonly",
+                     values=["tiny", "base", "small", "medium", "large-v3"]
+                     ).grid(row=0, column=1, sticky="w", padx=8)
+        ttk.Label(opt_frame, text="# Speakers (blank = auto):").grid(row=0, column=2, sticky="w", padx=8)
+        self.speakers_var = tk.StringVar(value="")
+        ttk.Entry(opt_frame, textvariable=self.speakers_var, width=6
+                  ).grid(row=0, column=3, sticky="w", padx=8)
+
+        ttk.Label(opt_frame, text="HuggingFace token:").grid(row=1, column=0, sticky="w", padx=8, pady=6)
+        self.token_var = tk.StringVar(value=self.cfg.get("hf_token", ""))
+        ttk.Entry(opt_frame, textvariable=self.token_var, width=42, show="•"
+                  ).grid(row=1, column=1, columnspan=2, sticky="w", padx=8)
+        ttk.Button(opt_frame, text="Save token", command=self.save_token
+                   ).grid(row=1, column=3, sticky="w", padx=8)
+
+        # Process
+        proc_frame = ttk.LabelFrame(self, text="3. Transcribe + identify speakers")
+        proc_frame.pack(fill="x", **pad)
+        self.process_btn = ttk.Button(proc_frame, text="Transcribe last recording",
+                                      command=self.start_processing, state="disabled")
+        self.process_btn.pack(side="left", padx=10, pady=10)
+        ttk.Button(proc_frame, text="Choose a WAV/MP4 file...",
+                   command=self.pick_file).pack(side="left", padx=6)
+        ttk.Button(proc_frame, text="Open output folder",
+                   command=self.open_output).pack(side="left", padx=6)
+
+        # Speaker renaming
+        self.rename_frame = ttk.LabelFrame(self, text="4. Rename speakers, then export")
+        self.rename_frame.pack(fill="x", **pad)
+        self.rename_inner = ttk.Frame(self.rename_frame)
+        self.rename_inner.pack(fill="x", padx=8, pady=6)
+        ttk.Label(self.rename_frame,
+                  text="(Transcribe something to list detected speakers here.)"
+                  ).pack(anchor="w", padx=8)
+        self.export_btn = ttk.Button(self.rename_frame, text="Apply names & export .txt",
+                                     command=self.export_txt, state="disabled")
+        self.export_btn.pack(anchor="w", padx=8, pady=8)
+
+        # Log
+        log_frame = ttk.LabelFrame(self, text="Log / transcript preview")
+        log_frame.pack(fill="both", expand=True, **pad)
+        self.log_txt = tk.Text(log_frame, height=10, wrap="word")
+        self.log_txt.pack(fill="both", expand=True, padx=6, pady=6)
+
+    # ---- helpers ----------------------------------------------------------
+    def log(self, msg: str):
+        self.msg_q.put(("log", msg))
+
+    def _drain_queue(self):
+        try:
+            while True:
+                kind, payload = self.msg_q.get_nowait()
+                if kind == "log":
+                    self.log_txt.insert("end", payload + "\n")
+                    self.log_txt.see("end")
+                elif kind == "done":
+                    self._on_processing_done(payload)
+                elif kind == "error":
+                    messagebox.showerror("Error", payload)
+                    self.process_btn.config(state="normal")
+        except queue.Empty:
+            pass
+        self.after(100, self._drain_queue)
+
+    def _elapsed(self) -> float:
+        """Recorded seconds so far, excluding any paused time."""
+        running = 0.0 if (self.is_paused or not self.is_recording) \
+            else time.time() - self._segment_start
+        return self._elapsed_base + running
+
+    def _tick_timer(self):
+        if self.is_recording:
+            secs = int(self._elapsed())
+            suffix = "  (paused)" if self.is_paused else ""
+            self.timer_lbl.config(text=f"{secs // 60:02d}:{secs % 60:02d}{suffix}")
+        self.after(200, self._tick_timer)
+
+    # ---- microphone selection --------------------------------------------
+    def _populate_mics(self):
+        """Fill the mic dropdown and restore the saved selection."""
+        try:
+            devices = list_input_devices()
+        except Exception as e:
+            self.log(f"Could not list microphones: {e}")
+            devices = []
+        labels = [lbl for _, lbl in devices]
+        self.mic_combo["values"] = labels
+
+        saved = self.cfg.get("mic_label", "")
+        if saved and saved in labels:
+            self.mic_label_var.set(saved)
+        else:
+            default_lbl = default_input_label()
+            self.mic_label_var.set(default_lbl if default_lbl in labels
+                                   else (labels[0] if labels else ""))
+
+    def _on_mic_selected(self, _event=None):
+        self.cfg["mic_label"] = self.mic_label_var.get()
+        save_config(self.cfg)
+        self.log(f"Microphone set to: {self.mic_label_var.get()}")
+
+    # ---- recording --------------------------------------------------------
+    def toggle_pause(self):
+        if not self.is_recording or self.recorder is None:
+            return
+        if not self.is_paused:
+            # bank the time recorded in this segment, then pause
+            self._elapsed_base += time.time() - self._segment_start
+            self.is_paused = True
+            self.recorder.pause()
+            self.pause_btn.config(text="Resume")
+            self.rec_status.config(text="Paused")
+            self.log("Recording paused.")
+        else:
+            self._segment_start = time.time()
+            self.is_paused = False
+            self.recorder.resume()
+            self.pause_btn.config(text="Pause")
+            self.rec_status.config(text="Recording...")
+            self.log("Recording resumed.")
+
+    def toggle_record(self):
+        if not self.is_recording:
+            include_mic = self.mic_var.get()
+            mic_index = resolve_input_index(self.mic_label_var.get()) if include_mic else None
+            self.recorder = ConversationRecorder(include_mic=include_mic,
+                                                 mic_device=mic_index)
+            self.recorder.start()
+            self.is_recording = True
+            self.is_paused = False
+            self._elapsed_base = 0.0
+            self._segment_start = time.time()
+            self.record_btn.config(text="■ Stop Recording")
+            self.pause_btn.config(text="Pause", state="normal")
+            src = "system audio + microphone" if include_mic else "system audio"
+            self.rec_status.config(text=f"Recording {src}...")
+            self.log(f"Recording started ({src}).")
+        else:
+            self.is_recording = False
+            self.is_paused = False
+            self.record_btn.config(text="● Start Recording")
+            self.pause_btn.config(text="Pause", state="disabled")
+            try:
+                wav, warning = self.recorder.stop()
+            except Exception as e:
+                self.rec_status.config(text="Recording error")
+                messagebox.showerror("Recording failed", str(e))
+                return
+            if warning:
+                self.log("Warning: " + warning)
+            if wav is None:
+                self.rec_status.config(text="No audio captured")
+                self.log("No audio captured (was anything playing / mic muted?).")
+                return
+            self.last_wav = wav
+            self.rec_status.config(text=f"Saved: {wav.name}")
+            self.log(f"Recording saved: {wav}")
+            self.process_btn.config(state="normal")
+
+    # ---- token ------------------------------------------------------------
+    def save_token(self):
+        self.cfg["hf_token"] = self.token_var.get().strip()
+        save_config(self.cfg)
+        self.log("HuggingFace token saved.")
+
+    # ---- processing -------------------------------------------------------
+    def pick_file(self):
+        path = filedialog.askopenfilename(
+            title="Choose audio/video",
+            filetypes=[("Audio/Video", "*.wav *.mp4 *.m4a *.mp3 *.mkv *.mov"), ("All", "*.*")])
+        if path:
+            self.last_wav = Path(path)
+            self.process_btn.config(state="normal")
+            self.log(f"Selected: {path}")
+
+    def start_processing(self):
+        if not self.last_wav or not Path(self.last_wav).exists():
+            messagebox.showwarning("No file", "Record or choose a file first.")
+            return
+        self.process_btn.config(state="disabled")
+        self.export_btn.config(state="disabled")
+        token = self.token_var.get().strip()
+        model = self.model_var.get()
+        num = self.speakers_var.get().strip() or None
+        wav = self.last_wav
+        threading.Thread(target=self._process_worker,
+                         args=(wav, model, token, num), daemon=True).start()
+
+    def _process_worker(self, wav, model, token, num):
+        try:
+            segs = run_pipeline(Path(wav), model, token, num, self.log)
+            self.msg_q.put(("done", segs))
+        except Exception as e:
+            self.msg_q.put(("error", f"{type(e).__name__}: {e}"))
+
+    def _on_processing_done(self, segments):
+        self.process_btn.config(state="normal")
+        self.segments = segments
+        if not segments:
+            self.log("No speech found.")
+            return
+        # build rename fields for each detected speaker
+        for w in self.rename_inner.winfo_children():
+            w.destroy()
+        self.speaker_name_vars = {}
+        speakers = []
+        for s in segments:
+            if s["speaker"] not in speakers:
+                speakers.append(s["speaker"])
+        for i, spk in enumerate(speakers):
+            ttk.Label(self.rename_inner, text=spk + " →").grid(row=i, column=0, sticky="e", padx=4, pady=3)
+            var = tk.StringVar(value=spk)
+            self.speaker_name_vars[spk] = var
+            ttk.Entry(self.rename_inner, textvariable=var, width=28).grid(row=i, column=1, padx=4, pady=3)
+        self.export_btn.config(state="normal")
+
+        preview = render_transcript(segments, {k: k for k in self.speaker_name_vars})
+        self.log("\n----- PREVIEW -----\n" + preview)
+
+    def export_txt(self):
+        if not self.segments:
+            return
+        name_map = {k: v.get().strip() or k for k, v in self.speaker_name_vars.items()}
+        text = render_transcript(self.segments, name_map)
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        out = TRANSCRIPTS_DIR / f"transcript_{ts}.txt"
+        out.write_text(text, encoding="utf-8")
+        self.log(f"\nTranscript exported: {out}")
+        messagebox.showinfo("Exported", f"Transcript saved to:\n{out}")
+
+    def open_output(self):
+        import os
+        os.startfile(TRANSCRIPTS_DIR)
+
+
+if __name__ == "__main__":
+    App().mainloop()
