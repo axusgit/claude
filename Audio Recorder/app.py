@@ -106,6 +106,49 @@ _MUTEX_HANDLE = None
 
 
 # --------------------------------------------------------------------------- #
+# Auto-start at Windows login (a shortcut in the user's Startup folder)
+# --------------------------------------------------------------------------- #
+def _startup_lnk() -> Path:
+    import os
+    return (Path(os.environ["APPDATA"]) / "Microsoft" / "Windows"
+            / "Start Menu" / "Programs" / "Startup" / "Audio Recorder.lnk")
+
+
+def autostart_enabled() -> bool:
+    try:
+        return _startup_lnk().exists()
+    except Exception:
+        return False
+
+
+def set_autostart(enable: bool) -> bool:
+    """Create/remove the login shortcut. Returns the resulting state."""
+    lnk = _startup_lnk()
+    try:
+        if enable:
+            vbs = APP_DIR / "Launch Audio Recorder.vbs"
+            ps = (
+                "$w=New-Object -ComObject WScript.Shell;"
+                f"$s=$w.CreateShortcut('{lnk}');"
+                "$s.TargetPath='wscript.exe';"
+                f"$s.Arguments='\"{vbs}\"';"
+                f"$s.WorkingDirectory='{APP_DIR}';"
+                f"$s.IconLocation='{ICON_PATH}';"
+                "$s.Description='Audio Recorder';$s.Save()"
+            )
+            import subprocess
+            no_window = 0x08000000
+            subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                            "-Command", ps], capture_output=True, creationflags=no_window)
+        else:
+            if lnk.exists():
+                lnk.unlink()
+    except Exception:
+        pass
+    return autostart_enabled()
+
+
+# --------------------------------------------------------------------------- #
 # Config (stores the HuggingFace token)
 # --------------------------------------------------------------------------- #
 def load_config() -> dict:
@@ -574,10 +617,78 @@ class App(tk.Tk):
         self._elapsed_base = 0.0     # recorded seconds before the current segment
         self._segment_start = 0.0    # time the current running segment began
         self.speaker_name_vars: dict[str, tk.StringVar] = {}
+        self.tray_icon = None
+        self._tray_notified = False
 
         self._build_ui()
         self.after(100, self._drain_queue)
         self.after(200, self._tick_timer)
+
+        # Live in the system tray: closing the window hides it there instead of
+        # quitting, so the app is always running and one click away.
+        self._setup_tray()
+        self.protocol("WM_DELETE_WINDOW", self.hide_to_tray)
+
+    # ---- system tray ------------------------------------------------------
+    def _setup_tray(self):
+        try:
+            import pystray
+            from PIL import Image
+        except Exception:
+            self.tray_icon = None
+            return
+        image = None
+        try:
+            if ICON_PATH.exists():
+                # load into memory and CLOSE the file so it isn't left locked
+                # (a held handle would block "Package for sharing").
+                with Image.open(ICON_PATH) as im:
+                    image = im.convert("RGBA").copy()
+        except Exception:
+            image = None
+        if image is None:
+            image = Image.new("RGBA", (64, 64), (200, 0, 0, 255))
+        menu = pystray.Menu(
+            pystray.MenuItem("Open Audio Recorder", self._tray_show, default=True),
+            pystray.MenuItem("Quit", self._tray_quit),
+        )
+        self.tray_icon = pystray.Icon("AxusAudioRecorder", image, WINDOW_TITLE, menu)
+        threading.Thread(target=self.tray_icon.run, daemon=True).start()
+
+    def _tray_show(self, icon=None, item=None):
+        self.after(0, self._show_window)
+
+    def _show_window(self):
+        self.deiconify()
+        self.state("normal")
+        self.lift()
+        self.attributes("-topmost", True)
+        self.attributes("-topmost", False)
+        self.focus_force()
+
+    def _tray_quit(self, icon=None, item=None):
+        def _do():
+            try:
+                if self.tray_icon is not None:
+                    self.tray_icon.stop()
+            except Exception:
+                pass
+            self.destroy()
+        self.after(0, _do)
+
+    def hide_to_tray(self):
+        if self.tray_icon is not None:
+            self.withdraw()
+            if not self._tray_notified:
+                self._tray_notified = True
+                try:
+                    self.tray_icon.notify(
+                        "Still running here — click this icon to reopen.",
+                        "Audio Recorder")
+                except Exception:
+                    pass
+        else:
+            self.destroy()
 
     # ---- UI layout --------------------------------------------------------
     def _build_ui(self):
@@ -634,6 +745,12 @@ class App(tk.Tk):
                   ).grid(row=1, column=1, columnspan=2, sticky="w", padx=8)
         ttk.Button(opt_frame, text="Save token", command=self.save_token
                    ).grid(row=1, column=3, sticky="w", padx=8)
+
+        self.autostart_var = tk.BooleanVar(value=autostart_enabled())
+        ttk.Checkbutton(opt_frame,
+                        text="Start automatically at Windows login (stays in the system tray)",
+                        variable=self.autostart_var, command=self._toggle_autostart
+                        ).grid(row=2, column=0, columnspan=4, sticky="w", padx=8, pady=(2, 8))
 
         # Process
         proc_frame = ttk.LabelFrame(self, text="3. Transcribe + identify speakers")
@@ -784,6 +901,12 @@ class App(tk.Tk):
         self.cfg["hf_token"] = self.token_var.get().strip()
         save_config(self.cfg)
         self.log("HuggingFace token saved.")
+
+    # ---- auto-start -------------------------------------------------------
+    def _toggle_autostart(self):
+        state = set_autostart(self.autostart_var.get())
+        self.autostart_var.set(state)   # reflect the real result
+        self.log("Auto-start at login: " + ("ON" if state else "OFF"))
 
     # ---- processing -------------------------------------------------------
     def pick_file(self):

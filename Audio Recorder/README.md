@@ -12,6 +12,21 @@ A desktop app that:
 
 Everything runs locally on your machine.
 
+## Installing on another PC (for colleagues)
+
+1. Copy the app folder to the new PC (or use **`Package for sharing.bat`** on the
+   original PC — it builds a clean `AudioRecorder_share.zip` on the Desktop that
+   **excludes** personal data: your HuggingFace token, recordings, and transcripts).
+2. On the new PC, double-click **`Setup.bat`**. It installs Python and ffmpeg (via
+   `winget`, if missing) and all required Python packages. First run is a large
+   download (PyTorch + models) — allow several minutes. If it says Python was just
+   installed, close the window and run `Setup.bat` once more.
+3. Launch with **`Launch Audio Recorder.vbs`**.
+4. For speaker names, paste a HuggingFace token into the app (see the token section
+   below). Tip: use one **shared team HuggingFace account/token** so each colleague
+   doesn't have to create their own — whoever's token you use must have accepted the
+   three model licenses once.
+
 ## Running it
 
 Double-click **`Launch Audio Recorder.vbs`** — it opens the GUI with **no console
@@ -22,6 +37,17 @@ The app has a **red bold "R"** taskbar/title-bar icon so it's easy to spot.
 **Only one session can run at a time.** If you try to open it while it's already
 running, a dialog says so and the existing window's taskbar button **flashes** so you
 can find it.
+
+### Always-on system tray
+
+The app lives in the **system tray** (the "icon box" by the clock) as a red **R**:
+
+- **Closing the window doesn't quit** — it hides to the tray and keeps running.
+- **Click the tray icon** to reopen the window; **right-click → Quit** to exit fully.
+- **Auto-start at login:** tick **"Start automatically at Windows login"** in the app
+  (section 2, Options) — the simplest way. It takes effect immediately and the box
+  shows the current state each time you open the app. (The **`Enable/Disable
+  auto-start.bat`** files do the same thing without opening the app.)
 
 To run with a visible console for debugging:
 
