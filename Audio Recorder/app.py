@@ -27,10 +27,82 @@ APP_DIR = Path(__file__).resolve().parent
 RECORDINGS_DIR = APP_DIR / "recordings"
 TRANSCRIPTS_DIR = APP_DIR / "transcripts"
 CONFIG_PATH = APP_DIR / "config.json"
+ICON_PATH = APP_DIR / "recorder_icon.ico"
 SAMPLE_RATE = 48000  # native-ish; whisper/pyannote resample internally
+
+WINDOW_TITLE = "Audio Recorder + Diarized Transcript"
+APP_ID = "Axus.AudioRecorder"          # taskbar identity
+MUTEX_NAME = "Axus.AudioRecorder.Singleton"
 
 RECORDINGS_DIR.mkdir(exist_ok=True)
 TRANSCRIPTS_DIR.mkdir(exist_ok=True)
+
+
+# --------------------------------------------------------------------------- #
+# Taskbar icon (red bold "R") + single-instance helpers
+# --------------------------------------------------------------------------- #
+def ensure_icon() -> Path | None:
+    """Generate a red-bold-'R' .ico for the taskbar/title bar (cached on disk)."""
+    if ICON_PATH.exists():
+        return ICON_PATH
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        base = 256
+        img = Image.new("RGBA", (base, base), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        m = 10
+        d.rounded_rectangle([m, m, base - m, base - m], radius=46,
+                            fill=(255, 255, 255, 255),
+                            outline=(150, 150, 150, 255), width=5)
+        try:
+            font = ImageFont.truetype("arialbd.ttf", 200)
+        except Exception:
+            font = ImageFont.load_default()
+        bbox = d.textbbox((0, 0), "R", font=font)
+        x = (base - (bbox[2] - bbox[0])) / 2 - bbox[0]
+        y = (base - (bbox[3] - bbox[1])) / 2 - bbox[1]
+        d.text((x, y), "R", font=font, fill=(200, 0, 0, 255))  # bold red R
+        img.save(ICON_PATH, format="ICO",
+                 sizes=[(s, s) for s in (256, 128, 64, 48, 32, 16)])
+        return ICON_PATH
+    except Exception:
+        return None
+
+
+def flash_existing_window() -> None:
+    """Blink the taskbar button of the already-running instance."""
+    try:
+        import ctypes
+        ctypes.windll.user32.FindWindowW.restype = ctypes.c_void_p
+        hwnd = ctypes.windll.user32.FindWindowW(None, WINDOW_TITLE)
+        if not hwnd:
+            return
+
+        class FLASHWINFO(ctypes.Structure):
+            _fields_ = [("cbSize", ctypes.c_uint), ("hwnd", ctypes.c_void_p),
+                        ("dwFlags", ctypes.c_uint), ("uCount", ctypes.c_uint),
+                        ("dwTimeout", ctypes.c_uint)]
+
+        FLASHW_ALL, FLASHW_TIMERNOFG = 0x3, 0xC   # flash until user focuses it
+        info = FLASHWINFO(ctypes.sizeof(FLASHWINFO), hwnd,
+                          FLASHW_ALL | FLASHW_TIMERNOFG, 0, 0)
+        ctypes.windll.user32.FlashWindowEx(ctypes.byref(info))
+    except Exception:
+        pass
+
+
+def already_running() -> bool:
+    """True if another instance holds the named mutex. Keeps the handle alive."""
+    try:
+        import ctypes
+        global _MUTEX_HANDLE
+        _MUTEX_HANDLE = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
+        return ctypes.windll.kernel32.GetLastError() == 183  # ERROR_ALREADY_EXISTS
+    except Exception:
+        return False
+
+
+_MUTEX_HANDLE = None
 
 
 # --------------------------------------------------------------------------- #
@@ -52,15 +124,49 @@ def save_config(cfg: dict) -> None:
 # --------------------------------------------------------------------------- #
 # Microphone device discovery
 # --------------------------------------------------------------------------- #
+# Host-API preference (lower = preferred). MME first: reliable and it doesn't
+# contend with the WASAPI loopback the way a WASAPI mic can. WDM-KS and other
+# exotic/exclusive back-ends are hidden entirely.
+_API_RANK = {"MME": 0, "Windows DirectSound": 1, "Windows WASAPI": 2}
+# Generic/virtual "devices" that aren't a real microphone.
+_EXCLUDE_SUBSTR = ("sound mapper", "primary sound capture", "stereo mix", "pc speaker")
+_GROUP_KEY_LEN = 18  # enough to merge a truncated MME name with its full WASAPI twin
+
+
+def _device_group_key(name: str) -> str:
+    return name.strip().lower()[:_GROUP_KEY_LEN]
+
+
 def list_input_devices() -> list[tuple[int, str]]:
-    """Return [(index, 'Name (Host API)')] for every input-capable device."""
+    """One clean entry per physical microphone: [(index, 'Clean Name')].
+
+    Collapses the same mic exposed through several host APIs into a single row,
+    picking a reliable back-end under the hood and the fullest available name for
+    display. Hides low-level (WDM-KS) and generic mapper devices."""
     import sounddevice as sd
     apis = sd.query_hostapis()
-    out = []
+    groups: dict[str, dict] = {}
     for i, d in enumerate(sd.query_devices()):
-        if d.get("max_input_channels", 0) > 0:
-            api = apis[d["hostapi"]]["name"]
-            out.append((i, f"{d['name']} ({api})"))
+        if d.get("max_input_channels", 0) <= 0:
+            continue
+        api = apis[d["hostapi"]]["name"]
+        if api not in _API_RANK:                       # skip WDM-KS etc.
+            continue
+        name = d["name"].strip()
+        if any(s in name.lower() for s in _EXCLUDE_SUBSTR):
+            continue
+        rank = _API_RANK[api]
+        key = _device_group_key(name)
+        g = groups.get(key)
+        if g is None:
+            groups[key] = {"rank": rank, "index": i, "display": name}
+        else:
+            if rank < g["rank"]:                       # more reliable back-end
+                g["rank"], g["index"] = rank, i
+            if len(name) > len(g["display"]):          # fuller name for display
+                g["display"] = name
+    out = [(g["index"], g["display"]) for g in groups.values()]
+    out.sort(key=lambda t: t[1].lower())
     return out
 
 
@@ -75,15 +181,17 @@ def resolve_input_index(label: str):
 
 
 def default_input_label():
-    """Label of the system default input device (or None)."""
+    """Display name (from the curated list) of the system default input, or None."""
     import sounddevice as sd
     try:
         di = sd.default.device[0]
         if di is None or di < 0:
             return None
-        d = sd.query_devices()[di]
-        api = sd.query_hostapis()[d["hostapi"]]["name"]
-        return f"{d['name']} ({api})"
+        key = _device_group_key(sd.query_devices()[di]["name"])
+        for _, disp in list_input_devices():
+            if _device_group_key(disp) == key:
+                return disp
+        return None
     except Exception:
         return None
 
@@ -338,9 +446,22 @@ def run_pipeline(wav_path: Path, model_size: str, hf_token: str,
             log("Loading speaker-diarization model (first run downloads it)...")
             from pyannote.audio import Pipeline
             import torch
-            pipeline = Pipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1", use_auth_token=hf_token
-            )
+            # pyannote.audio 4.x ships the self-contained "community-1" pipeline;
+            # 3.x used "speaker-diarization-3.1". Try the modern one, fall back.
+            last_err = None
+            pipeline = None
+            for model_id in ("pyannote/speaker-diarization-community-1",
+                             "pyannote/speaker-diarization-3.1"):
+                try:
+                    try:                            # newer pyannote/hf API
+                        pipeline = Pipeline.from_pretrained(model_id, token=hf_token)
+                    except TypeError:               # older API
+                        pipeline = Pipeline.from_pretrained(model_id, use_auth_token=hf_token)
+                    break
+                except Exception as ex:
+                    last_err = ex
+            if pipeline is None:
+                raise last_err
             pipeline.to(torch.device("cpu"))
 
             log("Identifying speakers...")
@@ -348,13 +469,26 @@ def run_pipeline(wav_path: Path, model_size: str, hf_token: str,
             if num_speakers:
                 kwargs["num_speakers"] = int(num_speakers)
             audio_in = _load_waveform(work_wav)
-            diarization = pipeline(audio_in, **kwargs)
-            for turn, _, spk in diarization.itertracks(yield_label=True):
+            result = pipeline(audio_in, **kwargs)
+            # 4.x returns a DiarizeOutput wrapping the annotation; 3.x returns the
+            # annotation itself.
+            annotation = getattr(result, "speaker_diarization", result)
+            for turn, _, spk in annotation.itertracks(yield_label=True):
                 turns.append((turn.start, turn.end, spk))
             log(f"Found {len({t[2] for t in turns})} distinct speaker(s).")
         except Exception as e:
-            log(f"Diarization failed ({type(e).__name__}: {e}).")
-            log("Falling back to transcript without speaker labels.")
+            msg = str(e).lower()
+            if "gated" in type(e).__name__.lower() or "restricted" in msg \
+                    or "403" in msg or "awaiting" in msg:
+                log("Speaker labeling needs one-time access approval on HuggingFace.")
+                log("Sign in at https://huggingface.co and click 'Agree'/'Accept' on:")
+                log("     https://huggingface.co/pyannote/speaker-diarization-community-1")
+                log("     https://huggingface.co/pyannote/speaker-diarization-3.1")
+                log("     https://huggingface.co/pyannote/segmentation-3.0")
+                log("Approval is usually instant; then transcribe again.")
+            else:
+                log(f"Diarization failed ({type(e).__name__}: {e}).")
+            log("Saved transcript without speaker labels for now.")
             turns = []
     else:
         log("No HuggingFace token set — skipping speaker separation.")
@@ -418,15 +552,23 @@ def render_transcript(segments: list[dict], name_map: dict[str, str]) -> str:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Audio Recorder + Diarized Transcript")
+        self.title(WINDOW_TITLE)
         self.geometry("760x680")
         self.minsize(680, 600)
+
+        icon = ensure_icon()
+        if icon:
+            try:
+                self.iconbitmap(default=str(icon))   # title bar + taskbar icon
+            except Exception:
+                pass
 
         self.cfg = load_config()
         self.recorder: ConversationRecorder | None = None
         self.msg_q: queue.Queue = queue.Queue()
         self.segments: list[dict] = []
         self.last_wav: Path | None = None
+        self.current_transcript_path: Path | None = None
         self.is_recording = False
         self.is_paused = False
         self._elapsed_base = 0.0     # recorded seconds before the current segment
@@ -499,7 +641,7 @@ class App(tk.Tk):
         self.process_btn = ttk.Button(proc_frame, text="Transcribe last recording",
                                       command=self.start_processing, state="disabled")
         self.process_btn.pack(side="left", padx=10, pady=10)
-        ttk.Button(proc_frame, text="Choose a WAV/MP4 file...",
+        ttk.Button(proc_frame, text="Transcribe a WAV/MP4 file",
                    command=self.pick_file).pack(side="left", padx=6)
         ttk.Button(proc_frame, text="Open output folder",
                    command=self.open_output).pack(side="left", padx=6)
@@ -646,12 +788,13 @@ class App(tk.Tk):
     # ---- processing -------------------------------------------------------
     def pick_file(self):
         path = filedialog.askopenfilename(
-            title="Choose audio/video",
+            title="Choose a WAV/MP4 file to transcribe",
             filetypes=[("Audio/Video", "*.wav *.mp4 *.m4a *.mp3 *.mkv *.mov"), ("All", "*.*")])
         if path:
             self.last_wav = Path(path)
             self.process_btn.config(state="normal")
             self.log(f"Selected: {path}")
+            self.start_processing()   # transcription starts right after selecting
 
     def start_processing(self):
         if not self.last_wav or not Path(self.last_wav).exists():
@@ -697,16 +840,33 @@ class App(tk.Tk):
         preview = render_transcript(segments, {k: k for k in self.speaker_name_vars})
         self.log("\n----- PREVIEW -----\n" + preview)
 
+        # Auto-save immediately so a transcript always exists, even before renaming.
+        self.current_transcript_path = self._transcript_path_for(self.last_wav)
+        self._write_transcript({k: k for k in self.speaker_name_vars})
+        self.log(f"\nTranscript saved: {self.current_transcript_path}"
+                 "\n(Rename speakers above and click 'Apply names & export' to update it.)")
+
+    def _transcript_path_for(self, source) -> Path:
+        """A transcript path named after the source recording (collision-guarded)."""
+        stem = Path(source).stem if source else datetime.now().strftime("transcript_%Y-%m-%d_%H-%M-%S_%f")
+        out = TRANSCRIPTS_DIR / f"{stem}.txt"
+        counter = 1
+        while out.exists():
+            out = TRANSCRIPTS_DIR / f"{stem}_{counter}.txt"
+            counter += 1
+        return out
+
+    def _write_transcript(self, name_map: dict) -> None:
+        text = render_transcript(self.segments, name_map)
+        self.current_transcript_path.write_text(text, encoding="utf-8")
+
     def export_txt(self):
-        if not self.segments:
+        if not self.segments or self.current_transcript_path is None:
             return
         name_map = {k: v.get().strip() or k for k, v in self.speaker_name_vars.items()}
-        text = render_transcript(self.segments, name_map)
-        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        out = TRANSCRIPTS_DIR / f"transcript_{ts}.txt"
-        out.write_text(text, encoding="utf-8")
-        self.log(f"\nTranscript exported: {out}")
-        messagebox.showinfo("Exported", f"Transcript saved to:\n{out}")
+        self._write_transcript(name_map)   # update the same file with the names
+        self.log(f"\nTranscript updated with names: {self.current_transcript_path}")
+        messagebox.showinfo("Saved", f"Transcript saved to:\n{self.current_transcript_path}")
 
     def open_output(self):
         import os
@@ -714,4 +874,30 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    import sys
+
+    # Give the app its own taskbar identity so Windows shows OUR icon (the red "R")
+    # rather than the generic pythonw icon, and groups it as its own app.
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+    except Exception:
+        pass
+
+    # Only one session allowed. A second launch flashes the running window's
+    # taskbar button and tells the user it's already open, then exits.
+    if already_running():
+        flash_existing_window()
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "Audio Recorder is already running.\n\n"
+                "Look for the flashing red \"R\" icon on your taskbar.",
+                "Audio Recorder — already open",
+                0x30)  # MB_ICONWARNING | MB_OK
+        except Exception:
+            pass
+        sys.exit(0)
+
     App().mainloop()
