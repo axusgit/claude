@@ -34,6 +34,11 @@ WINDOW_TITLE = "Audio Recorder + Diarized Transcript"
 APP_ID = "Axus.AudioRecorder"          # taskbar identity
 MUTEX_NAME = "Axus.AudioRecorder.Singleton"
 
+# Action-button colours (base, pressed/active)
+GREEN,  GREEN_ACTIVE  = "#2e7d32", "#1b5e20"   # Start Recording
+RED,    RED_ACTIVE    = "#c62828", "#8e0000"   # Stop Recording
+YELLOW, YELLOW_ACTIVE = "#f9a825", "#f57f17"   # Pause / Resume
+
 RECORDINGS_DIR.mkdir(exist_ok=True)
 TRANSCRIPTS_DIR.mkdir(exist_ok=True)
 
@@ -619,6 +624,7 @@ class App(tk.Tk):
         self.speaker_name_vars: dict[str, tk.StringVar] = {}
         self.tray_icon = None
         self._tray_notified = False
+        self._link_counter = 0
 
         self._build_ui()
         self.after(100, self._drain_queue)
@@ -700,11 +706,19 @@ class App(tk.Tk):
 
         top = ttk.Frame(rec_frame)
         top.pack(fill="x")
-        self.record_btn = ttk.Button(top, text="● Start Recording",
-                                     command=self.toggle_record)
+        btn_font = ("Segoe UI", 9, "bold")
+        self.record_btn = tk.Button(top, text="● Start Recording",
+                                    command=self.toggle_record,
+                                    bg=GREEN, fg="white", activebackground=GREEN_ACTIVE,
+                                    activeforeground="white", font=btn_font,
+                                    relief="raised", bd=2, padx=10, pady=4, cursor="hand2")
         self.record_btn.pack(side="left", padx=10, pady=10)
-        self.pause_btn = ttk.Button(top, text="Pause", command=self.toggle_pause,
-                                    state="disabled")
+        self.pause_btn = tk.Button(top, text="Pause", command=self.toggle_pause,
+                                   state="disabled",
+                                   bg=YELLOW, fg="black", activebackground=YELLOW_ACTIVE,
+                                   activeforeground="black", disabledforeground="#7a7a7a",
+                                   font=btn_font, relief="raised", bd=2, padx=10, pady=4,
+                                   cursor="hand2")
         self.pause_btn.pack(side="left", padx=(0, 6))
         self.timer_lbl = ttk.Label(top, text="00:00", font=("Segoe UI", 16))
         self.timer_lbl.pack(side="left", padx=10)
@@ -785,6 +799,10 @@ class App(tk.Tk):
     def log(self, msg: str):
         self.msg_q.put(("log", msg))
 
+    def log_file(self, prefix: str, path):
+        """Log a line whose file path is a clickable link that opens the file."""
+        self.msg_q.put(("link", (prefix, str(path))))
+
     def _drain_queue(self):
         try:
             while True:
@@ -792,6 +810,8 @@ class App(tk.Tk):
                 if kind == "log":
                     self.log_txt.insert("end", payload + "\n")
                     self.log_txt.see("end")
+                elif kind == "link":
+                    self._insert_link(*payload)
                 elif kind == "done":
                     self._on_processing_done(payload)
                 elif kind == "error":
@@ -800,6 +820,29 @@ class App(tk.Tk):
         except queue.Empty:
             pass
         self.after(100, self._drain_queue)
+
+    def _insert_link(self, prefix: str, path: str):
+        """Insert 'prefix<clickable path>' into the log; clicking opens the file."""
+        self.log_txt.insert("end", prefix)
+        tag = f"link{self._link_counter}"
+        self._link_counter += 1
+        self.log_txt.insert("end", path, (tag,))
+        self.log_txt.insert("end", "\n")
+        self.log_txt.tag_config(tag, foreground="#1a73e8", underline=True)
+        self.log_txt.tag_bind(tag, "<Button-1>", lambda e, p=path: self._open_path(p))
+        self.log_txt.tag_bind(tag, "<Enter>", lambda e: self.log_txt.config(cursor="hand2"))
+        self.log_txt.tag_bind(tag, "<Leave>", lambda e: self.log_txt.config(cursor=""))
+        self.log_txt.see("end")
+
+    def _open_path(self, p: str):
+        import os
+        if os.path.exists(p):
+            try:
+                os.startfile(p)
+            except Exception as e:
+                messagebox.showerror("Open failed", str(e))
+        else:
+            messagebox.showwarning("Not found", f"File no longer exists:\n{p}")
 
     def _elapsed(self) -> float:
         """Recorded seconds so far, excluding any paused time."""
@@ -869,7 +912,8 @@ class App(tk.Tk):
             self.is_paused = False
             self._elapsed_base = 0.0
             self._segment_start = time.time()
-            self.record_btn.config(text="■ Stop Recording")
+            self.record_btn.config(text="■ Stop Recording",
+                                   bg=RED, activebackground=RED_ACTIVE)
             self.pause_btn.config(text="Pause", state="normal")
             src = "system audio + microphone" if include_mic else "system audio"
             self.rec_status.config(text=f"Recording {src}...")
@@ -877,7 +921,8 @@ class App(tk.Tk):
         else:
             self.is_recording = False
             self.is_paused = False
-            self.record_btn.config(text="● Start Recording")
+            self.record_btn.config(text="● Start Recording",
+                                   bg=GREEN, activebackground=GREEN_ACTIVE)
             self.pause_btn.config(text="Pause", state="disabled")
             try:
                 wav, warning = self.recorder.stop()
@@ -893,7 +938,7 @@ class App(tk.Tk):
                 return
             self.last_wav = wav
             self.rec_status.config(text=f"Saved: {wav.name}")
-            self.log(f"Recording saved: {wav}")
+            self.log_file("Recording saved (click to open): ", wav)
             self.process_btn.config(state="normal")
 
     # ---- token ------------------------------------------------------------
@@ -916,7 +961,7 @@ class App(tk.Tk):
         if path:
             self.last_wav = Path(path)
             self.process_btn.config(state="normal")
-            self.log(f"Selected: {path}")
+            self.log_file("Selected (click to open): ", path)
             self.start_processing()   # transcription starts right after selecting
 
     def start_processing(self):
@@ -966,8 +1011,9 @@ class App(tk.Tk):
         # Auto-save immediately so a transcript always exists, even before renaming.
         self.current_transcript_path = self._transcript_path_for(self.last_wav)
         self._write_transcript({k: k for k in self.speaker_name_vars})
-        self.log(f"\nTranscript saved: {self.current_transcript_path}"
-                 "\n(Rename speakers above and click 'Apply names & export' to update it.)")
+        self.log("")
+        self.log_file("Transcript saved (click to open): ", self.current_transcript_path)
+        self.log("(Rename speakers above and click 'Apply names & export' to update it.)")
 
     def _transcript_path_for(self, source) -> Path:
         """A transcript path named after the source recording (collision-guarded)."""
@@ -988,7 +1034,9 @@ class App(tk.Tk):
             return
         name_map = {k: v.get().strip() or k for k, v in self.speaker_name_vars.items()}
         self._write_transcript(name_map)   # update the same file with the names
-        self.log(f"\nTranscript updated with names: {self.current_transcript_path}")
+        self.log("")
+        self.log_file("Transcript updated with names (click to open): ",
+                      self.current_transcript_path)
         messagebox.showinfo("Saved", f"Transcript saved to:\n{self.current_transcript_path}")
 
     def open_output(self):
