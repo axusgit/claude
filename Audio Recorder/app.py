@@ -39,6 +39,14 @@ GREEN,  GREEN_ACTIVE  = "#2e7d32", "#1b5e20"   # Start Recording
 RED,    RED_ACTIVE    = "#c62828", "#8e0000"   # Stop Recording
 YELLOW, YELLOW_ACTIVE = "#f9a825", "#f57f17"   # Pause / Resume
 
+# "Delete older than" presets -> age in days (insertion order = dropdown order)
+RETENTION_OPTIONS = {
+    "1 hour": 1 / 24,
+    "1 day": 1, "3 days": 3, "7 days": 7,
+    "2 weeks": 14, "4 weeks": 28,
+    "1 month": 30, "3 months": 90, "6 months": 180, "12 months": 365,
+}
+
 RECORDINGS_DIR.mkdir(exist_ok=True)
 TRANSCRIPTS_DIR.mkdir(exist_ok=True)
 
@@ -601,8 +609,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(WINDOW_TITLE)
-        self.geometry("760x680")
-        self.minsize(680, 600)
+        self.geometry("800x740")
+        self.minsize(740, 640)
 
         icon = ensure_icon()
         if icon:
@@ -625,8 +633,12 @@ class App(tk.Tk):
         self.tray_icon = None
         self._tray_notified = False
         self._link_counter = 0
+        self._hist_rows: dict[str, tuple] = {}
+        self._last_click_row = None
+        self._last_click_t = 0.0
 
         self._build_ui()
+        self._refresh_history()
         self.after(100, self._drain_queue)
         self.after(200, self._tick_timer)
 
@@ -684,6 +696,10 @@ class App(tk.Tk):
 
     def hide_to_tray(self):
         if self.tray_icon is not None:
+            try:
+                self.log_window.withdraw()   # hide the log window too
+            except Exception:
+                pass
             self.withdraw()
             if not self._tray_notified:
                 self._tray_notified = True
@@ -776,6 +792,8 @@ class App(tk.Tk):
                    command=self.pick_file).pack(side="left", padx=6)
         ttk.Button(proc_frame, text="Open output folder",
                    command=self.open_output).pack(side="left", padx=6)
+        ttk.Button(proc_frame, text="Show log / preview",
+                   command=self._show_log).pack(side="left", padx=6)
 
         # Speaker renaming
         self.rename_frame = ttk.LabelFrame(self, text="4. Rename speakers, then export")
@@ -789,11 +807,59 @@ class App(tk.Tk):
                                      command=self.export_txt, state="disabled")
         self.export_btn.pack(anchor="w", padx=8, pady=8)
 
-        # Log
-        log_frame = ttk.LabelFrame(self, text="Log / transcript preview")
-        log_frame.pack(fill="both", expand=True, **pad)
-        self.log_txt = tk.Text(log_frame, height=10, wrap="word")
-        self.log_txt.pack(fill="both", expand=True, padx=6, pady=6)
+        # History (recording <-> matching transcript)
+        hist_frame = ttk.LabelFrame(self, text="5. History — recordings and matching transcripts")
+        hist_frame.pack(fill="both", expand=True, **pad)
+        ttk.Label(hist_frame, foreground="#555",
+                  text="Newest on top. Click a Recording or Transcript to open it."
+                  ).pack(anchor="w", padx=8, pady=(4, 0))
+
+        tree_wrap = ttk.Frame(hist_frame)
+        tree_wrap.pack(fill="both", expand=True, padx=8, pady=(4, 2))
+        cols = ("recording", "transcript")
+        self.hist_tree = ttk.Treeview(tree_wrap, columns=cols, show="headings", height=6)
+        self.hist_tree.heading("recording", text="Recording")
+        self.hist_tree.heading("transcript", text="Transcript")
+        self.hist_tree.column("recording", width=340, anchor="w")
+        self.hist_tree.column("transcript", width=340, anchor="w")
+        vsb = ttk.Scrollbar(tree_wrap, orient="vertical", command=self.hist_tree.yview)
+        self.hist_tree.configure(yscrollcommand=vsb.set)
+        self.hist_tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+        self.hist_tree.bind("<ButtonRelease-1>", self._on_hist_click)
+
+        ctrl = ttk.Frame(hist_frame)
+        ctrl.pack(fill="x", padx=8, pady=(2, 8))
+        ttk.Button(ctrl, text="Open recording",
+                   command=self._open_selected_recording).pack(side="left")
+        ttk.Button(ctrl, text="Open transcript",
+                   command=self._open_selected_transcript).pack(side="left", padx=6)
+        ttk.Button(ctrl, text="Delete selected",
+                   command=self._delete_selected).pack(side="left")
+        ttk.Button(ctrl, text="Refresh",
+                   command=self._refresh_history).pack(side="left", padx=6)
+        ttk.Label(ctrl, text="    Delete older than:").pack(side="left")
+        self.retention_var = tk.StringVar(value="3 months")
+        ttk.Combobox(ctrl, textvariable=self.retention_var, state="readonly", width=10,
+                     values=list(RETENTION_OPTIONS.keys())).pack(side="left", padx=4)
+        ttk.Button(ctrl, text="Delete",
+                   command=self._delete_older_than).pack(side="left")
+
+        # Log / transcript preview lives in its own window (opened via a button),
+        # not on the main screen. Kept hidden until requested.
+        self.log_window = tk.Toplevel(self)
+        self.log_window.withdraw()                      # hide before it can flash
+        self.log_window.title("Log / transcript preview")
+        self.log_window.geometry("640x460")
+        log_wrap = ttk.Frame(self.log_window)
+        log_wrap.pack(fill="both", expand=True)
+        self.log_txt = tk.Text(log_wrap, wrap="word")
+        log_vsb = ttk.Scrollbar(log_wrap, orient="vertical", command=self.log_txt.yview)
+        self.log_txt.configure(yscrollcommand=log_vsb.set)
+        self.log_txt.pack(side="left", fill="both", expand=True, padx=(6, 0), pady=6)
+        log_vsb.pack(side="right", fill="y", pady=6)
+        # Closing the log window just hides it (the app keeps logging to it).
+        self.log_window.protocol("WM_DELETE_WINDOW", self.log_window.withdraw)
 
     # ---- helpers ----------------------------------------------------------
     def log(self, msg: str):
@@ -808,8 +874,8 @@ class App(tk.Tk):
             while True:
                 kind, payload = self.msg_q.get_nowait()
                 if kind == "log":
-                    self.log_txt.insert("end", payload + "\n")
-                    self.log_txt.see("end")
+                    self.log_txt.insert("1.0", payload + "\n")   # newest on top
+                    self.log_txt.see("1.0")
                 elif kind == "link":
                     self._insert_link(*payload)
                 elif kind == "done":
@@ -822,17 +888,18 @@ class App(tk.Tk):
         self.after(100, self._drain_queue)
 
     def _insert_link(self, prefix: str, path: str):
-        """Insert 'prefix<clickable path>' into the log; clicking opens the file."""
-        self.log_txt.insert("end", prefix)
+        """Prepend 'prefix<clickable path>' at the top of the log (newest first);
+        clicking the path opens the file."""
         tag = f"link{self._link_counter}"
         self._link_counter += 1
-        self.log_txt.insert("end", path, (tag,))
-        self.log_txt.insert("end", "\n")
+        self.log_txt.insert("1.0", prefix + path + "\n")     # newest on top
+        # tag only the path portion on line 1
+        self.log_txt.tag_add(tag, f"1.{len(prefix)}", f"1.{len(prefix) + len(path)}")
         self.log_txt.tag_config(tag, foreground="#1a73e8", underline=True)
         self.log_txt.tag_bind(tag, "<Button-1>", lambda e, p=path: self._open_path(p))
         self.log_txt.tag_bind(tag, "<Enter>", lambda e: self.log_txt.config(cursor="hand2"))
         self.log_txt.tag_bind(tag, "<Leave>", lambda e: self.log_txt.config(cursor=""))
-        self.log_txt.see("end")
+        self.log_txt.see("1.0")
 
     def _open_path(self, p: str):
         import os
@@ -843,6 +910,125 @@ class App(tk.Tk):
                 messagebox.showerror("Open failed", str(e))
         else:
             messagebox.showwarning("Not found", f"File no longer exists:\n{p}")
+
+    # ---- history table ----------------------------------------------------
+    def _refresh_history(self):
+        """Rebuild the recording<->transcript table, newest first."""
+        rows: dict[str, list] = {}
+        for w in RECORDINGS_DIR.glob("*.wav"):
+            rows.setdefault(w.stem, [None, None])[0] = w
+        for t in TRANSCRIPTS_DIR.glob("*.txt"):
+            rows.setdefault(t.stem, [None, None])[1] = t
+
+        def newest(pair):
+            times = [p.stat().st_mtime for p in pair if p and p.exists()]
+            return max(times) if times else 0.0
+
+        ordered = sorted(rows.items(), key=lambda kv: newest(kv[1]), reverse=True)
+        self.hist_tree.delete(*self.hist_tree.get_children())
+        self._hist_rows = {}
+        for stem, (rec, txt) in ordered:
+            self.hist_tree.insert("", "end", iid=stem,
+                                  values=(rec.name if rec else "—",
+                                          txt.name if txt else "(not transcribed)"))
+            self._hist_rows[stem] = (rec, txt)
+
+    def _on_hist_click(self, event):
+        """Single click on a cell opens that file (recording or transcript)."""
+        if self.hist_tree.identify_region(event.x, event.y) != "cell":
+            return
+        row = self.hist_tree.identify_row(event.y)
+        col = self.hist_tree.identify_column(event.x)
+        if not row:
+            return
+        now = time.time()
+        if row == self._last_click_row and (now - self._last_click_t) < 0.6:
+            return  # ignore the 2nd click of a double-click (avoid opening twice)
+        self._last_click_row, self._last_click_t = row, now
+        rec, txt = self._hist_rows.get(row, (None, None))
+        if col == "#2" and txt:
+            self._open_path(str(txt))
+        elif col == "#1" and rec:
+            self._open_path(str(rec))
+
+    def _show_log(self):
+        self.log_window.deiconify()
+        self.log_window.lift()
+        self.log_window.focus_force()
+
+    def _selected_pair(self):
+        sel = self.hist_tree.selection()
+        if not sel:
+            return None, None, None
+        rec, txt = self._hist_rows.get(sel[0], (None, None))
+        return sel[0], rec, txt
+
+    def _open_selected_recording(self):
+        _, rec, _ = self._selected_pair()
+        if rec:
+            self._open_path(str(rec))
+        else:
+            messagebox.showinfo("No recording", "Select a row that has a recording.")
+
+    def _open_selected_transcript(self):
+        _, _, txt = self._selected_pair()
+        if txt:
+            self._open_path(str(txt))
+        else:
+            messagebox.showinfo("No transcript", "That item hasn't been transcribed yet.")
+
+    def _delete_files(self, *paths) -> int:
+        n = 0
+        for p in paths:
+            try:
+                if p and Path(p).exists():
+                    Path(p).unlink()
+                    n += 1
+            except Exception as e:
+                self.log(f"Could not delete {p}: {e}")
+        return n
+
+    def _delete_selected(self):
+        stem, rec, txt = self._selected_pair()
+        if not stem:
+            messagebox.showinfo("Nothing selected", "Select a row to delete.")
+            return
+        names = [p.name for p in (rec, txt) if p]
+        if messagebox.askyesno(
+                "Delete",
+                "Permanently delete:\n\n" + "\n".join(names) +
+                "\n\nThis cannot be undone."):
+            self._delete_files(rec, txt)
+            self._refresh_history()
+            self.log(f"Deleted: {', '.join(names)}")
+
+    def _delete_older_than(self):
+        label = self.retention_var.get()
+        days = RETENTION_OPTIONS.get(label)
+        if not days:
+            return
+        cutoff = time.time() - days * 86400
+        victims = []
+        for stem, (rec, txt) in self._hist_rows.items():
+            times = [Path(p).stat().st_mtime for p in (rec, txt)
+                     if p and Path(p).exists()]
+            if times and max(times) < cutoff:
+                victims.append((rec, txt))
+        if not victims:
+            messagebox.showinfo("Delete history",
+                                f"Nothing is older than {label}.")
+            return
+        if messagebox.askyesno(
+                "Delete history",
+                f"Delete {len(victims)} item(s) older than {label}?\n\n"
+                "Each recording AND its matching transcript will be permanently "
+                "deleted. This cannot be undone."):
+            total = 0
+            for rec, txt in victims:
+                total += self._delete_files(rec, txt)
+            self._refresh_history()
+            self.log(f"Deleted {len(victims)} item(s) older than {label} "
+                     f"({total} files).")
 
     def _elapsed(self) -> float:
         """Recorded seconds so far, excluding any paused time."""
@@ -939,6 +1125,7 @@ class App(tk.Tk):
             self.last_wav = wav
             self.rec_status.config(text=f"Saved: {wav.name}")
             self.log_file("Recording saved (click to open): ", wav)
+            self._refresh_history()
             self.process_btn.config(state="normal")
 
     # ---- token ------------------------------------------------------------
@@ -1014,6 +1201,7 @@ class App(tk.Tk):
         self.log("")
         self.log_file("Transcript saved (click to open): ", self.current_transcript_path)
         self.log("(Rename speakers above and click 'Apply names & export' to update it.)")
+        self._refresh_history()
 
     def _transcript_path_for(self, source) -> Path:
         """A transcript path named after the source recording (collision-guarded)."""
@@ -1037,6 +1225,7 @@ class App(tk.Tk):
         self.log("")
         self.log_file("Transcript updated with names (click to open): ",
                       self.current_transcript_path)
+        self._refresh_history()
         messagebox.showinfo("Saved", f"Transcript saved to:\n{self.current_transcript_path}")
 
     def open_output(self):

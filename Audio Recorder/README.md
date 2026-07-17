@@ -95,6 +95,21 @@ Outputs:
 - Recordings → `recordings\`
 - Transcripts → `transcripts\`
 
+## History (section 5)
+
+A two-column table pairs each **Recording** with its matching **Transcript**
+(newest on top). **Click** a Recording or Transcript cell to open that file directly,
+or select a row and use **Open recording** / **Open transcript**.
+
+The live log and transcript preview are no longer on the main screen — open them
+anytime with the **Show log / preview** button (section 3). That window keeps logging
+in the background even when hidden.
+
+Clean up old files with **Delete older than → [1 day, 3 days, 7 days, 2 weeks,
+4 weeks, 1 month, 3 months, 6 months, 12 months] → Delete** — it removes each old
+recording **and its matching transcript** together (with a confirmation). Or select a
+row and click **Delete selected**. Deletions are permanent.
+
 ## Notes
 - Speaker separation ("diarization") groups voices; it can't magically know names,
   so you assign them once per recording. Set **# Speakers** if you know the count —
