@@ -34,9 +34,10 @@ WINDOW_TITLE = "Audio Recorder + Diarized Transcript"
 APP_ID = "Axus.AudioRecorder"          # taskbar identity
 MUTEX_NAME = "Axus.AudioRecorder.Singleton"
 
-# Special mic option: always use whatever Windows' current default input is
-# (resolved at record time). Tracks device changes like plugging in a headset.
+# Special "follow Windows default" options, resolved live at record time so device
+# changes (e.g. a headset that became active for a Teams call) are picked up.
 DEFAULT_MIC_LABEL = "Default microphone (follows Windows)"
+DEFAULT_OUTPUT_LABEL = "Default speaker (follows Windows)"
 
 # Action-button colours (base, pressed/active)
 GREEN,  GREEN_ACTIVE  = "#2e7d32", "#1b5e20"   # Start Recording
@@ -257,6 +258,20 @@ def default_input_label():
         return None
 
 
+def list_output_devices() -> list[str]:
+    """Playback devices whose audio can be captured via loopback (one per device)."""
+    try:
+        import soundcard as sc
+        seen, out = set(), []
+        for s in sc.all_speakers():
+            if s.name not in seen:
+                seen.add(s.name)
+                out.append(s.name)
+        return out
+    except Exception:
+        return []
+
+
 # --------------------------------------------------------------------------- #
 # Loopback recorder (records the computer's output audio)
 # --------------------------------------------------------------------------- #
@@ -266,10 +281,11 @@ class ConversationRecorder:
     of a conversation are captured."""
 
     def __init__(self, samplerate: int = SAMPLE_RATE, include_mic: bool = True,
-                 mic_device=None):
+                 mic_device=None, loopback_name=None):
         self.samplerate = samplerate
         self.include_mic = include_mic
         self.mic_device = mic_device            # sounddevice index, or None = default
+        self.loopback_name = loopback_name      # speaker name to capture, or None = default
         self._sys_frames: list[np.ndarray] = []
         self._mic_frames: list[np.ndarray] = []
         self._mic_sr = samplerate
@@ -313,7 +329,12 @@ class ConversationRecorder:
             pass
         try:
             import soundcard as sc
-            speaker = sc.default_speaker()
+            speaker = None
+            if self.loopback_name:
+                speaker = next((s for s in sc.all_speakers()
+                                if s.name == self.loopback_name), None)
+            if speaker is None:
+                speaker = sc.default_speaker()      # live Windows default
             loopback = sc.get_microphone(id=str(speaker.name), include_loopback=True)
             with loopback.recorder(samplerate=self.samplerate, channels=1) as rec:
                 block = self.samplerate // 10  # 100 ms
@@ -407,22 +428,37 @@ class ConversationRecorder:
             elif self._mic_warning:
                 warning = self._mic_warning
 
+        # When we have BOTH streams, save STEREO: left = mic (you), right = system
+        # (the call). Keeping them on separate channels lets the transcriber tell
+        # who's who reliably (you vs the other participants) instead of guessing by
+        # voice alone. One stream -> mono.
         if sys_a.size and mic_a.size:
             n = min(sys_a.size, mic_a.size)          # align to shorter stream
-            mixed = sys_a[:n] + mic_a[:n]
-        elif sys_a.size:
-            mixed = sys_a
-        elif mic_a.size:
-            mixed = mic_a
-            if not warning:
-                warning = "No system audio captured; saved microphone only."
+            left, right = mic_a[:n].copy(), sys_a[:n].copy()
+            peak = float(max(np.max(np.abs(left)) if left.size else 0.0,
+                             np.max(np.abs(right)) if right.size else 0.0))
+            if peak > 1.0:
+                left /= peak
+                right /= peak
+            inter = np.empty(n * 2, dtype=np.float32)
+            inter[0::2] = np.clip(left, -1.0, 1.0)   # channel 0 = mic
+            inter[1::2] = np.clip(right, -1.0, 1.0)  # channel 1 = system
+            pcm16 = (inter * 32767).astype(np.int16)
+            n_channels = 2
         else:
-            return None, warning
-
-        peak = float(np.max(np.abs(mixed))) if mixed.size else 0.0
-        if peak > 1.0:                                # prevent clipping after the sum
-            mixed = mixed / peak
-        pcm16 = (np.clip(mixed, -1.0, 1.0) * 32767).astype(np.int16)
+            if sys_a.size:
+                mono = sys_a
+            elif mic_a.size:
+                mono = mic_a
+                if not warning:
+                    warning = "No system audio captured; saved microphone only."
+            else:
+                return None, warning
+            peak = float(np.max(np.abs(mono))) if mono.size else 0.0
+            if peak > 1.0:
+                mono = mono / peak
+            pcm16 = (np.clip(mono, -1.0, 1.0) * 32767).astype(np.int16)
+            n_channels = 1
 
         # millisecond-precise, plus a guard, so every recording is its own file
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%f")[:-3]
@@ -432,7 +468,7 @@ class ConversationRecorder:
             out = RECORDINGS_DIR / f"recording_{ts}_{counter}.wav"
             counter += 1
         with wave.open(str(out), "wb") as wf:
-            wf.setnchannels(1)
+            wf.setnchannels(n_channels)
             wf.setsampwidth(2)
             wf.setframerate(self.samplerate)
             wf.writeframes(pcm16.tobytes())
@@ -475,87 +511,193 @@ def _load_waveform(wav_path: Path):
     return {"waveform": waveform, "sample_rate": sr}
 
 
+def _load_pyannote(hf_token: str):
+    """Load the pyannote diarization pipeline (4.x community-1, or 3.1)."""
+    from pyannote.audio import Pipeline
+    import torch
+    last_err = None
+    for model_id in ("pyannote/speaker-diarization-community-1",
+                     "pyannote/speaker-diarization-3.1"):
+        try:
+            try:
+                pipeline = Pipeline.from_pretrained(model_id, token=hf_token)
+            except TypeError:
+                pipeline = Pipeline.from_pretrained(model_id, use_auth_token=hf_token)
+            pipeline.to(torch.device("cpu"))
+            return pipeline
+        except Exception as ex:
+            last_err = ex
+    raise last_err
+
+
+def _diarize_waveform(pipeline, samples: np.ndarray, sr: int, num_speakers):
+    """Run a loaded pipeline on mono samples; return [(start, end, label)]."""
+    import torch
+    wf = {"waveform": torch.from_numpy(np.ascontiguousarray(samples, dtype=np.float32)).unsqueeze(0),
+          "sample_rate": int(sr)}
+    kwargs = {"num_speakers": int(num_speakers)} if num_speakers else {}
+    result = pipeline(wf, **kwargs)
+    annotation = getattr(result, "speaker_diarization", result)
+    return [(t.start, t.end, spk) for t, _, spk in annotation.itertracks(yield_label=True)]
+
+
+def _log_diarization_error(e, log) -> None:
+    msg = str(e).lower()
+    if "gated" in type(e).__name__.lower() or "restricted" in msg \
+            or "403" in msg or "awaiting" in msg:
+        log("Speaker labeling needs one-time access approval on HuggingFace.")
+        log("Sign in at https://huggingface.co and click 'Agree'/'Accept' on:")
+        log("     https://huggingface.co/pyannote/speaker-diarization-community-1")
+        log("     https://huggingface.co/pyannote/speaker-diarization-3.1")
+        log("     https://huggingface.co/pyannote/segmentation-3.0")
+        log("Approval is usually instant; then transcribe again.")
+    else:
+        log(f"Diarization note ({type(e).__name__}: {e}).")
+
+
+def _read_stereo(wav_path: Path):
+    """Return (mic_channel, system_channel, sr) if the WAV is 2-channel, else None."""
+    try:
+        with wave.open(str(wav_path), "rb") as w:
+            if w.getnchannels() != 2:
+                return None
+            sr = w.getframerate()
+            data = np.frombuffer(w.readframes(w.getnframes()), np.int16)
+        data = data.astype(np.float32).reshape(-1, 2) / 32768.0
+        return data[:, 0], data[:, 1], sr      # left = mic, right = system
+    except Exception:
+        return None
+
+
+def _transcribe_samples(model, samples: np.ndarray, sr: int):
+    """Transcribe a single mono channel. Returns list of {start, end, text}.
+
+    Skips a channel that's essentially silent so Whisper can't hallucinate on it."""
+    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
+    if peak < 0.01:
+        return []
+    norm = (samples / peak * 0.9).astype(np.float32)   # gentle normalize for quiet lines
+    pcm = (np.clip(norm, -1.0, 1.0) * 32767).astype(np.int16)
+    import tempfile
+    tmp = Path(tempfile.gettempdir()) / f"arec_ch_{int(time.time()*1e6)}.wav"
+    with wave.open(str(tmp), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(int(sr))
+        w.writeframes(pcm.tobytes())
+    try:
+        seg_iter, _ = model.transcribe(str(tmp), vad_filter=True, language="en")
+        return [{"start": s.start, "end": s.end, "text": s.text.strip()}
+                for s in seg_iter if s.text.strip()]
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _label_far_segments(sys_segs, sys_turns) -> None:
+    """Assign 'Speaker 2'+ to call-side segments, split by sys_turns when present."""
+    far_map: dict = {}
+
+    def far_label(seg) -> str:
+        key = None
+        if sys_turns:
+            best, best_ov = None, 0.0
+            for ts, te, spk in sys_turns:
+                ov = min(seg["end"], te) - max(seg["start"], ts)
+                if ov > best_ov:
+                    best_ov, best = ov, spk
+            key = best if best is not None else sys_turns[0][2]
+        if key is None:
+            key = "SYS"
+        if key not in far_map:
+            far_map[key] = f"Speaker {2 + len(far_map)}"
+        return far_map[key]
+
+    for seg in sys_segs:
+        seg["speaker"] = far_label(seg)
+
+
 def run_pipeline(wav_path: Path, model_size: str, hf_token: str,
                  num_speakers, log) -> list[dict]:
     """
     Returns a list of segments: {start, end, speaker, text}.
     `log(msg)` posts progress to the GUI. `num_speakers` may be None (auto) or int.
     """
-    # Normalize input to a clean 16 kHz mono WAV first.
-    log("Extracting audio...")
-    work_wav = _extract_wav16k(Path(wav_path))
-
-    # 1) Transcribe -------------------------------------------------------- #
     log(f"Loading transcription model '{model_size}'...")
     from faster_whisper import WhisperModel
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
 
+    stereo = _read_stereo(Path(wav_path))
+
+    if stereo is not None:
+        # -- Stereo call: transcribe EACH channel on its own, then merge by time.
+        #    Because your mic (left) and the call (right) are transcribed
+        #    separately, overlapping speech is attributed correctly — the other
+        #    person's words never get swept into your line.
+        mic_ch, sys_ch, sr0 = stereo
+        log("Transcribing your mic channel...")
+        mic_segs = _transcribe_samples(model, mic_ch, sr0)
+        for s in mic_segs:
+            s["speaker"] = "Speaker 1"
+
+        log("Transcribing the call channel...")
+        sys_segs = _transcribe_samples(model, sys_ch, sr0)
+
+        sys_turns = []
+        if hf_token and sys_segs:
+            try:
+                log("Splitting call-side speakers...")
+                pipeline = _load_pyannote(hf_token)
+                sys_turns = _diarize_waveform(pipeline, sys_ch, sr0, num_speakers)
+            except Exception as e:
+                _log_diarization_error(e, log)
+                sys_turns = []
+        _label_far_segments(sys_segs, sys_turns)
+
+        whisper_segs = sorted(mic_segs + sys_segs, key=lambda s: s["start"])
+        speakers = len({s["speaker"] for s in whisper_segs})
+        log(f"Done. {len(whisper_segs)} segments, {speakers} speaker(s) "
+            "(Speaker 1 = your mic).")
+        if not whisper_segs:
+            return []
+        return whisper_segs
+
+    # -- Mono file (no channel info): transcribe the mix + voice-clustering. --
+    log("Extracting audio...")
+    work_wav = _extract_wav16k(Path(wav_path))
     log("Transcribing audio...")
-    segments_iter, info = model.transcribe(str(work_wav), vad_filter=True)
+    segments_iter, info = model.transcribe(str(work_wav), vad_filter=True, language="en")
     whisper_segs = [
         {"start": s.start, "end": s.end, "text": s.text.strip()}
         for s in segments_iter if s.text.strip()
     ]
     log(f"Detected language: {info.language}. {len(whisper_segs)} segments.")
     if not whisper_segs:
+        try:
+            work_wav.unlink(missing_ok=True)
+        except Exception:
+            pass
         return []
 
-    # 2) Diarize ----------------------------------------------------------- #
     turns = []
     if hf_token:
         try:
             log("Loading speaker-diarization model (first run downloads it)...")
-            from pyannote.audio import Pipeline
-            import torch
-            # pyannote.audio 4.x ships the self-contained "community-1" pipeline;
-            # 3.x used "speaker-diarization-3.1". Try the modern one, fall back.
-            last_err = None
-            pipeline = None
-            for model_id in ("pyannote/speaker-diarization-community-1",
-                             "pyannote/speaker-diarization-3.1"):
-                try:
-                    try:                            # newer pyannote/hf API
-                        pipeline = Pipeline.from_pretrained(model_id, token=hf_token)
-                    except TypeError:               # older API
-                        pipeline = Pipeline.from_pretrained(model_id, use_auth_token=hf_token)
-                    break
-                except Exception as ex:
-                    last_err = ex
-            if pipeline is None:
-                raise last_err
-            pipeline.to(torch.device("cpu"))
-
+            pipeline = _load_pyannote(hf_token)
             log("Identifying speakers...")
-            kwargs = {}
-            if num_speakers:
-                kwargs["num_speakers"] = int(num_speakers)
-            audio_in = _load_waveform(work_wav)
-            result = pipeline(audio_in, **kwargs)
-            # 4.x returns a DiarizeOutput wrapping the annotation; 3.x returns the
-            # annotation itself.
-            annotation = getattr(result, "speaker_diarization", result)
-            for turn, _, spk in annotation.itertracks(yield_label=True):
-                turns.append((turn.start, turn.end, spk))
+            wf = _load_waveform(work_wav)
+            turns = _diarize_waveform(pipeline, wf["waveform"].numpy()[0],
+                                      wf["sample_rate"], num_speakers)
             log(f"Found {len({t[2] for t in turns})} distinct speaker(s).")
         except Exception as e:
-            msg = str(e).lower()
-            if "gated" in type(e).__name__.lower() or "restricted" in msg \
-                    or "403" in msg or "awaiting" in msg:
-                log("Speaker labeling needs one-time access approval on HuggingFace.")
-                log("Sign in at https://huggingface.co and click 'Agree'/'Accept' on:")
-                log("     https://huggingface.co/pyannote/speaker-diarization-community-1")
-                log("     https://huggingface.co/pyannote/speaker-diarization-3.1")
-                log("     https://huggingface.co/pyannote/segmentation-3.0")
-                log("Approval is usually instant; then transcribe again.")
-            else:
-                log(f"Diarization failed ({type(e).__name__}: {e}).")
+            _log_diarization_error(e, log)
             log("Saved transcript without speaker labels for now.")
             turns = []
     else:
         log("No HuggingFace token set — skipping speaker separation.")
 
-    # 3) Assign a speaker to each transcript segment ----------------------- #
-    # normalize pyannote labels (SPEAKER_00 -> "Speaker 1") in first-seen order
     label_map: dict[str, str] = {}
 
     def speaker_for(seg) -> str:
@@ -567,7 +709,7 @@ def run_pipeline(wav_path: Path, model_size: str, hf_token: str,
             overlap = min(seg["end"], te) - max(seg["start"], ts)
             if overlap > best_overlap:
                 best_overlap, best = overlap, spk
-        if best is None:  # midpoint fallback
+        if best is None:
             for ts, te, spk in turns:
                 if ts <= mid <= te:
                     best = spk
@@ -614,8 +756,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(WINDOW_TITLE)
-        self.geometry("800x740")
-        self.minsize(740, 640)
+        self.geometry("800x780")
+        self.minsize(740, 680)
 
         icon = ensure_icon()
         if icon:
@@ -761,6 +903,21 @@ class App(tk.Tk):
         ttk.Button(mic_row, text="Refresh", width=8,
                    command=self._populate_mics).pack(side="left")
         self._populate_mics()
+
+        # System-audio source row (which speaker's output to capture — e.g. the
+        # headset the call plays through). Follows the Windows default by default.
+        out_row = ttk.Frame(rec_frame)
+        out_row.pack(fill="x", padx=10, pady=(0, 8))
+        ttk.Label(out_row, text="System audio from:").pack(side="left")
+        self.output_label_var = tk.StringVar()
+        self.output_combo = ttk.Combobox(out_row, textvariable=self.output_label_var,
+                                         state="readonly", width=48,
+                                         postcommand=self._populate_outputs)
+        self.output_combo.pack(side="left", padx=6)
+        self.output_combo.bind("<<ComboboxSelected>>", self._on_output_selected)
+        ttk.Button(out_row, text="Refresh", width=8,
+                   command=self._populate_outputs).pack(side="left")
+        self._populate_outputs()
 
         # Options
         opt_frame = ttk.LabelFrame(self, text="2. Options")
@@ -1076,6 +1233,29 @@ class App(tk.Tk):
         save_config(self.cfg)
         self.log(f"Microphone set to: {self.mic_label_var.get()}")
 
+    def _populate_outputs(self):
+        """(Re)build the system-audio source dropdown live, keeping the selection."""
+        try:
+            devices = list_output_devices()
+        except Exception as e:
+            self.log(f"Could not list outputs: {e}")
+            devices = []
+        labels = [DEFAULT_OUTPUT_LABEL] + devices
+        self.output_combo["values"] = labels
+        current = self.output_label_var.get()
+        saved = self.cfg.get("output_label", "")
+        if current and current in labels:
+            self.output_label_var.set(current)
+        elif saved and saved in labels:
+            self.output_label_var.set(saved)
+        else:
+            self.output_label_var.set(DEFAULT_OUTPUT_LABEL)
+
+    def _on_output_selected(self, _event=None):
+        self.cfg["output_label"] = self.output_label_var.get()
+        save_config(self.cfg)
+        self.log(f"System audio source: {self.output_label_var.get()}")
+
     # ---- recording --------------------------------------------------------
     def toggle_pause(self):
         if not self.is_recording or self.recorder is None:
@@ -1108,12 +1288,17 @@ class App(tk.Tk):
                 mic_index = resolve_input_index(label)
                 if mic_index is None:     # saved device no longer present
                     self.log(f"Mic '{label}' not available now; using Windows default.")
+            out_label = self.output_label_var.get()
+            loopback_name = (None if (out_label == DEFAULT_OUTPUT_LABEL or not out_label)
+                             else out_label)
             self.recorder = ConversationRecorder(include_mic=include_mic,
-                                                 mic_device=mic_index)
+                                                 mic_device=mic_index,
+                                                 loopback_name=loopback_name)
             self.recorder.start()
             if include_mic:
-                src_name = ("Windows default" if mic_index is None else label)
-                self.log(f"Microphone: {src_name}")
+                self.log(f"Microphone: {'Windows default' if mic_index is None else label}")
+            self.log(f"System audio from: "
+                     f"{'Windows default' if loopback_name is None else loopback_name}")
             self.is_recording = True
             self.is_paused = False
             self._elapsed_base = 0.0

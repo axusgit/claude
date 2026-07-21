@@ -6,9 +6,12 @@ A desktop app that:
    the far end of a call, a video, a webinar) **and your microphone**, mixed into one
    file. The mic can be turned off with the checkbox to capture system audio only.
 2. **Transcribes** it with faster-whisper.
-3. **Separates speakers** with pyannote.audio and labels each segment
-   `Speaker 1`, `Speaker 2`, … You then **rename** them once (e.g. Speaker 1 → "Andy")
-   and export a `.txt` transcript.
+3. **Separates speakers** and labels each segment `Speaker 1`, `Speaker 2`, …
+   For a call it records in **stereo** (your mic on the left channel, the call audio on
+   the right) and tells speakers apart **by channel** — `Speaker 1` is always you, and
+   the call side is `Speaker 2`+ (further split by voice with pyannote when several
+   people are on the call). This is far more reliable than guessing voices from a single
+   mixed track. You then **rename** them once and export a `.txt` transcript.
 
 Everything runs locally on your machine.
 
@@ -70,7 +73,22 @@ Without a token the app still records and transcribes — it just won't label sp
 
 ## Choosing a microphone
 
-Section 1 has a **microphone dropdown** showing **one clean entry per physical mic**
+### Picking devices for a call (Teams/Zoom)
+
+Section 1 has two dropdowns, both of which **refresh live when you open them** and offer
+a **"follows Windows"** default:
+
+- **Record my mic** — your voice. Pick your headset here (or leave it on
+  "Default microphone (follows Windows)").
+- **System audio from** — which speaker's output to capture (the *other* people on the
+  call). Pick the device the call plays through (e.g. the headset earphone).
+
+For a Teams/Zoom call, set **both** to your headset to guarantee both sides are
+recorded. Because the lists refresh when opened and devices are re-checked at record
+time, a headset that becomes active *after* the app started is picked up — no restart
+needed.
+
+Section 1's **microphone dropdown** shows **one clean entry per physical mic**
 (a **Refresh** button re-scans for newly plugged-in devices). Windows normally lists
 each mic several times through different sound back-ends; the app collapses those into
 a single row, picks a reliable back-end under the hood, and hides low-level/virtual
