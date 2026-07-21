@@ -34,6 +34,10 @@ WINDOW_TITLE = "Audio Recorder + Diarized Transcript"
 APP_ID = "Axus.AudioRecorder"          # taskbar identity
 MUTEX_NAME = "Axus.AudioRecorder.Singleton"
 
+# Special mic option: always use whatever Windows' current default input is
+# (resolved at record time). Tracks device changes like plugging in a headset.
+DEFAULT_MIC_LABEL = "Default microphone (follows Windows)"
+
 # Action-button colours (base, pressed/active)
 GREEN,  GREEN_ACTIVE  = "#2e7d32", "#1b5e20"   # Start Recording
 RED,    RED_ACTIVE    = "#c62828", "#8e0000"   # Stop Recording
@@ -750,7 +754,8 @@ class App(tk.Tk):
                         variable=self.mic_var).pack(side="left")
         self.mic_label_var = tk.StringVar()
         self.mic_combo = ttk.Combobox(mic_row, textvariable=self.mic_label_var,
-                                      state="readonly", width=48)
+                                      state="readonly", width=48,
+                                      postcommand=self._populate_mics)  # refresh on open
         self.mic_combo.pack(side="left", padx=6)
         self.mic_combo.bind("<<ComboboxSelected>>", self._on_mic_selected)
         ttk.Button(mic_row, text="Refresh", width=8,
@@ -1046,22 +1051,25 @@ class App(tk.Tk):
 
     # ---- microphone selection --------------------------------------------
     def _populate_mics(self):
-        """Fill the mic dropdown and restore the saved selection."""
+        """(Re)build the mic dropdown live. Keeps the current selection if it's
+        still valid, so opening the dropdown never yanks your choice away."""
         try:
             devices = list_input_devices()
         except Exception as e:
             self.log(f"Could not list microphones: {e}")
             devices = []
-        labels = [lbl for _, lbl in devices]
+        # "follow Windows default" always on top, then the real devices
+        labels = [DEFAULT_MIC_LABEL] + [lbl for _, lbl in devices]
         self.mic_combo["values"] = labels
 
+        current = self.mic_label_var.get()
         saved = self.cfg.get("mic_label", "")
-        if saved and saved in labels:
-            self.mic_label_var.set(saved)
+        if current and current in labels:
+            self.mic_label_var.set(current)          # preserve live selection
+        elif saved and saved in labels:
+            self.mic_label_var.set(saved)            # restore saved choice
         else:
-            default_lbl = default_input_label()
-            self.mic_label_var.set(default_lbl if default_lbl in labels
-                                   else (labels[0] if labels else ""))
+            self.mic_label_var.set(DEFAULT_MIC_LABEL)  # sensible default: follow Windows
 
     def _on_mic_selected(self, _event=None):
         self.cfg["mic_label"] = self.mic_label_var.get()
@@ -1091,10 +1099,21 @@ class App(tk.Tk):
     def toggle_record(self):
         if not self.is_recording:
             include_mic = self.mic_var.get()
-            mic_index = resolve_input_index(self.mic_label_var.get()) if include_mic else None
+            label = self.mic_label_var.get()
+            # Resolve the mic fresh at record time so device changes (e.g. a
+            # headset that became active for a Teams call) are picked up.
+            if not include_mic or label == DEFAULT_MIC_LABEL or not label:
+                mic_index = None          # None = current Windows default input
+            else:
+                mic_index = resolve_input_index(label)
+                if mic_index is None:     # saved device no longer present
+                    self.log(f"Mic '{label}' not available now; using Windows default.")
             self.recorder = ConversationRecorder(include_mic=include_mic,
                                                  mic_device=mic_index)
             self.recorder.start()
+            if include_mic:
+                src_name = ("Windows default" if mic_index is None else label)
+                self.log(f"Microphone: {src_name}")
             self.is_recording = True
             self.is_paused = False
             self._elapsed_base = 0.0
