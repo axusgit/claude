@@ -90,6 +90,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .btn.ghost:hover{background:#f9fafb;color:var(--text)}
 .btn.danger{background:#fff;color:var(--err);border:1px solid var(--border)}
 .btn.danger:hover{background:#fef2f2;color:var(--err)}
+.actions{display:flex;gap:6px;align-items:center}
+.actions form{display:inline;margin:0}
+.btn.pill{border-radius:999px;padding:6px 14px;font-size:12px;font-weight:600}
+.btn.enable{background:var(--ok);color:#fff}
+.btn.enable:hover{background:#15803d;color:#fff}
+.btn.disable{background:#fff;color:var(--muted);border:1px solid var(--border)}
+.btn.disable:hover{background:#fef2f2;color:var(--err);border-color:#fecaca}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:top}
 th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.03em}
@@ -170,13 +177,21 @@ function linkRow(link, baseUrl, statusOf) {
   <td>${esc(limit)} file(s)</td>
   <td>${link.expiresAt ? fmtDate(link.expiresAt) : 'No expiry'}</td>
   <td style="white-space:nowrap">
-    ${
-      link.revoked
-        ? ''
-        : `<form method="post" action="/admin/links/${esc(link.id)}/revoke" style="display:inline" onsubmit="return confirm('Disable this link? Uploaders will no longer be able to use it.')">
-             <button class="btn sm danger" type="submit">Disable</button>
-           </form>`
-    }
+    <div class="actions">
+      ${
+        link.revoked
+          ? `<form method="post" action="/admin/links/${esc(link.id)}/enable">
+               <button class="btn pill enable" type="submit">Enable</button>
+             </form>`
+          : `<form method="post" action="/admin/links/${esc(link.id)}/revoke">
+               <button class="btn pill disable" type="submit">Disable</button>
+             </form>`
+      }
+      <a class="btn sm ghost" href="/admin/links/${esc(link.id)}/edit">Edit</a>
+      <form method="post" action="/admin/links/${esc(link.id)}/delete" onsubmit="return confirm('Delete this link and all files uploaded through it? This cannot be undone.')">
+        <button class="btn sm danger" type="submit">Del</button>
+      </form>
+    </div>
   </td>
 </tr>`;
 }
@@ -288,6 +303,54 @@ function copyLink(id,btn){
   }).catch(function(){document.execCommand('copy');});
 }`;
   return layout({ title: 'Admin', body, extraJs: js });
+}
+
+function editPage({ link, flash }) {
+  const currentExpiry = link.expiresAt ? fmtDate(link.expiresAt) : 'No expiry';
+  const body = `
+<div class="wrap narrow">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+    <div class="brand" style="margin:0"><span class="dot"></span>${esc(BRAND)}</div>
+    <a class="btn ghost sm" href="/admin">Back</a>
+  </div>
+  ${flash ? `<div class="flash ${flash.type === 'err' ? 'err' : 'ok'}">${esc(flash.msg)}</div>` : ''}
+  <div class="card">
+    <h1>Edit link</h1>
+    <p class="muted">Current expiry: ${esc(currentExpiry)} · ${link.uploads.length} file(s) received so far.</p>
+    <form method="post" action="/admin/links/${esc(link.id)}/edit">
+      <label>Label</label>
+      <input type="text" name="label" value="${esc(link.label || '')}" required>
+
+      <div class="row">
+        <div>
+          <label>Expiry</label>
+          <select name="expiresIn">
+            <option value="keep" selected>Keep current (${esc(currentExpiry)})</option>
+            <option value="none">No expiry</option>
+            <option value="1">1 hour from now</option>
+            <option value="24">24 hours from now</option>
+            <option value="72">3 days from now</option>
+            <option value="168">7 days from now</option>
+            <option value="720">30 days from now</option>
+          </select>
+        </div>
+        <div>
+          <label>Max files <span class="muted">(blank = unlimited)</span></label>
+          <input type="number" name="maxUses" min="1" value="${link.maxUses ? esc(link.maxUses) : ''}" placeholder="Unlimited">
+        </div>
+      </div>
+
+      <label>Note to uploader <span class="muted">(optional)</span></label>
+      <input type="text" name="note" value="${esc(link.note || '')}" placeholder="Shown on the upload page">
+
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn" type="submit">Save changes</button>
+        <a class="btn ghost" href="/admin">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>`;
+  return layout({ title: 'Edit link', body });
 }
 
 function uploadPage({ link, status, baseUrl, maxUploadMb }) {
@@ -413,4 +476,4 @@ render();
   return layout({ title: 'Upload files', body, extraCss: css, extraJs: js });
 }
 
-module.exports = { loginPage, adminPage, uploadPage, esc, fmtBytes, BRAND };
+module.exports = { loginPage, adminPage, editPage, uploadPage, esc, fmtBytes, BRAND };

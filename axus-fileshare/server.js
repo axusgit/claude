@@ -190,6 +190,56 @@ app.post('/admin/links/:id/revoke', requireAdmin, (req, res) => {
   res.redirect('/admin');
 });
 
+app.post('/admin/links/:id/enable', requireAdmin, (req, res) => {
+  const link = store.findById(req.params.id);
+  if (link) {
+    store.update(link.id, { revoked: false });
+    req.session.flash = { type: 'ok', msg: 'Link enabled.' };
+  }
+  res.redirect('/admin');
+});
+
+app.post('/admin/links/:id/delete', requireAdmin, (req, res) => {
+  const link = store.findById(req.params.id);
+  if (link) {
+    const dir = path.join(UPLOAD_DIR, link.token);
+    fs.rm(dir, { recursive: true, force: true }, () => {});
+    store.remove(link.id);
+    req.session.flash = { type: 'ok', msg: 'Link deleted.' };
+  }
+  res.redirect('/admin');
+});
+
+app.get('/admin/links/:id/edit', requireAdmin, (req, res) => {
+  const link = store.findById(req.params.id);
+  if (!link) return res.redirect('/admin');
+  const flash = req.session.flash;
+  if (flash) req.session.flash = null;
+  res.send(views.editPage({ link, flash }));
+});
+
+app.post('/admin/links/:id/edit', requireAdmin, (req, res) => {
+  const link = store.findById(req.params.id);
+  if (!link) return res.redirect('/admin');
+  const { label, note, expiresIn, maxUses } = req.body;
+  const patch = {
+    label: (label || '').trim().slice(0, 120) || 'Untitled link',
+    note: (note || '').trim().slice(0, 300),
+  };
+  // Expiry: 'keep' leaves it, 'none' clears it, a number sets hours from now.
+  if (expiresIn === 'none') {
+    patch.expiresAt = null;
+  } else if (expiresIn && expiresIn !== 'keep') {
+    const h = parseInt(expiresIn, 10);
+    if (Number.isFinite(h) && h > 0) patch.expiresAt = Date.now() + h * 3600 * 1000;
+  }
+  const max = parseInt(maxUses, 10);
+  patch.maxUses = Number.isFinite(max) && max > 0 ? max : null;
+  store.update(link.id, patch);
+  req.session.flash = { type: 'ok', msg: 'Link updated.' };
+  res.redirect('/admin');
+});
+
 // Download a received file
 app.get('/admin/files/:token/:stored', requireAdmin, (req, res) => {
   const link = store.findByToken(req.params.token);

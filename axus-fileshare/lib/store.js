@@ -52,6 +52,13 @@ class Store {
     return link;
   }
 
+  remove(id) {
+    const before = this.data.links.length;
+    this.data.links = this.data.links.filter((l) => l.id !== id);
+    if (this.data.links.length !== before) this._save();
+    return before !== this.data.links.length;
+  }
+
   update(id, patch) {
     const link = this.findById(id);
     if (!link) return null;
