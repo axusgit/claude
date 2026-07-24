@@ -1,0 +1,20 @@
+{
+  "name": "axus-fileshare",
+  "version": "1.0.0",
+  "description": "Secure file-upload portal — admin generates one-time/expiring links, uploaders drop files, admin browses/downloads them.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cookie-session": "^2.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^2.0.1"
+  }
+}
