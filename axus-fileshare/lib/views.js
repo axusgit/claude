@@ -313,6 +313,7 @@ function adminPage({ links, sends = [], baseUrl, statusOf, sendStatusOf, flash, 
             <option value="72">3 days</option>
             <option value="168">7 days</option>
             <option value="720">30 days</option>
+            <option value="8760">365 days</option>
           </select>
         </div>
         <div>
@@ -362,6 +363,7 @@ function adminPage({ links, sends = [], baseUrl, statusOf, sendStatusOf, flash, 
             <option value="72" selected>3 days</option>
             <option value="168">7 days</option>
             <option value="720">30 days</option>
+            <option value="8760">365 days</option>
           </select>
         </div>
         <div>
@@ -519,6 +521,7 @@ function editPage({ link, flash }) {
             <option value="72">3 days from now</option>
             <option value="168">7 days from now</option>
             <option value="720">30 days from now</option>
+            <option value="8760">365 days from now</option>
           </select>
         </div>
         <div>
