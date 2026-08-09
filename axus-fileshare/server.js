@@ -20,7 +20,7 @@ const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const MAX_UPLOAD_MB = parseInt(process.env.MAX_UPLOAD_MB || '2048', 10); // 2 GB default
+const MAX_UPLOAD_MB = parseInt(process.env.MAX_UPLOAD_MB || '0', 10); // 0 = unlimited
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, ''); // optional override
@@ -94,6 +94,12 @@ function sanitizeName(name) {
 // ---------------------------------------------------------------------------
 // Multer (per-token disk storage)
 // ---------------------------------------------------------------------------
+// No file-size or file-count caps by default. Files stream straight to disk
+// (diskStorage), so large uploads don't buffer in memory. Set MAX_UPLOAD_MB in
+// .env to reinstate a per-file cap; leave it 0/unset for unlimited.
+const uploadLimits = {};
+if (MAX_UPLOAD_MB > 0) uploadLimits.fileSize = MAX_UPLOAD_MB * 1024 * 1024;
+
 const upload = multer({
   storage: multer.diskStorage({
     destination(req, file, cb) {
@@ -107,8 +113,8 @@ const upload = multer({
       cb(null, `${stamp}__${safe}`);
     },
   }),
-  limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024, files: 50 },
-}).array('files', 50);
+  limits: uploadLimits,
+}).array('files'); // no cap on number of files (folder uploads)
 
 // ---------------------------------------------------------------------------
 // Public: landing
@@ -299,7 +305,7 @@ app.post('/u/:token', (req, res) => {
   upload(req, res, (err) => {
     if (err) {
       const msg =
-        err.code === 'LIMIT_FILE_SIZE'
+        err.code === 'LIMIT_FILE_SIZE' && MAX_UPLOAD_MB > 0
           ? `A file exceeds the ${MAX_UPLOAD_MB} MB limit.`
           : 'Upload failed. Please try again.';
       return res.status(400).json({ error: msg });

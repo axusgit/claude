@@ -20,7 +20,8 @@ Live: **https://sp.axustechnologies.com** on `axus-server01` (SSH alias `sra`).
 - Admin area is password-protected (session cookie, HTTPS only).
 - Upload links are unguessable tokens; expire by time and/or file count; revocable.
 - Uploaders never see the admin side and never need a password.
-- Filenames sanitized; path traversal blocked; per-file size cap (`MAX_UPLOAD_MB`).
+- Filenames sanitized; path traversal blocked. No file-size or file-count limit
+  by default (unlimited uploads); set `MAX_UPLOAD_MB` to reinstate a per-file cap.
 - Change the admin password anytime by editing `.env` on the box and
   `sudo systemctl restart axus-fileshare`.
 

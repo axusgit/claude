@@ -290,7 +290,7 @@ function adminPage({ links, baseUrl, statusOf, flash, maxUploadMb }) {
     </table>
   </div>
 
-  <div class="foot">Max upload size: ${maxUploadMb} MB per file · ${esc(BRAND)}</div>
+  <div class="foot">${maxUploadMb > 0 ? `Max upload size: ${maxUploadMb} MB per file · ` : 'No upload size limit · '}${esc(BRAND)}</div>
 </div>`;
 
   const js = `
@@ -399,7 +399,7 @@ function uploadPage({ link, status, baseUrl, maxUploadMb }) {
     <div id="prog" class="progwrap" style="display:none"><div id="bar" class="progbar"></div></div>
     <div id="msg"></div>
   </div>
-  <div class="foot">Max ${maxUploadMb} MB per file · ${esc(BRAND)}</div>
+  <div class="foot">${maxUploadMb > 0 ? `Max ${maxUploadMb} MB per file · ` : ''}${esc(BRAND)}</div>
 </div>`;
 
   const css = `
@@ -428,7 +428,7 @@ function fmt(n){var u=['B','KB','MB','GB'],i=0;while(n>=1024&&i<3){n/=1024;i++;}
 function render(){
   list.innerHTML='';
   picked.forEach(function(f,idx){
-    var over=f.size>maxBytes;
+    var over=maxBytes>0&&f.size>maxBytes;
     var row=document.createElement('div');row.className='filerow';
     row.innerHTML='<span>'+f.name.replace(/[<>&]/g,'')+' <span class="muted">'+fmt(f.size)+(over?' — too large':'')+'</span></span>';
     var rm=document.createElement('span');rm.className='rm';rm.textContent='Remove';
@@ -437,7 +437,7 @@ function render(){
     if(over)row.style.color='var(--err)';
     list.appendChild(row);
   });
-  var anyOver=picked.some(function(f){return f.size>maxBytes;});
+  var anyOver=maxBytes>0&&picked.some(function(f){return f.size>maxBytes;});
   go.disabled=picked.length===0||anyOver;
 }
 function addFiles(fl){for(var i=0;i<fl.length;i++)picked.push(fl[i]);render();}
