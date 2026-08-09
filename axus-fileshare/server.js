@@ -22,7 +22,8 @@ const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const MAX_UPLOAD_MB = parseInt(process.env.MAX_UPLOAD_MB || '0', 10); // 0 = unlimited
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
+const UPLOAD_DIR = path.join(DATA_DIR, 'uploads'); // inbound: files people send TO admin
+const SEND_DIR = path.join(DATA_DIR, 'sends'); // outbound: files admin shares OUT
 const BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, ''); // optional override
 
 if (!ADMIN_PASSWORD) {
@@ -33,6 +34,7 @@ if (!ADMIN_PASSWORD) {
 }
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(SEND_DIR, { recursive: true });
 const store = new Store(path.join(DATA_DIR, 'db.json'));
 
 const app = express();
@@ -59,6 +61,10 @@ function baseUrl(req) {
 
 function statusOf(link) {
   return store.linkStatus(link);
+}
+
+function sendStatusOf(send) {
+  return store.sendStatus(send);
 }
 
 function requireAdmin(req, res, next) {
@@ -116,6 +122,24 @@ const upload = multer({
   limits: uploadLimits,
 }).array('files'); // no cap on number of files (folder uploads)
 
+// Admin-side uploader for outbound "send" links. Token is generated before this
+// runs and stashed on req.sendToken so files land in data/sends/<token>/.
+const sendUpload = multer({
+  storage: multer.diskStorage({
+    destination(req, file, cb) {
+      const dir = path.join(SEND_DIR, req.sendToken);
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename(req, file, cb) {
+      const safe = sanitizeName(file.originalname);
+      const stamp = Date.now() + '-' + crypto.randomBytes(3).toString('hex');
+      cb(null, `${stamp}__${safe}`);
+    },
+  }),
+  limits: uploadLimits,
+}).array('files');
+
 // ---------------------------------------------------------------------------
 // Public: landing
 // ---------------------------------------------------------------------------
@@ -159,12 +183,22 @@ app.get('/admin', requireAdmin, (req, res) => {
   res.send(
     views.adminPage({
       links: store.links(),
+      sends: store.sends(),
       baseUrl: baseUrl(req),
       statusOf,
+      sendStatusOf,
       flash,
       maxUploadMb: MAX_UPLOAD_MB,
     })
   );
+});
+
+app.get('/admin/manual', requireAdmin, (req, res) => {
+  res.send(views.manualPage());
+});
+
+app.get('/admin/architecture', requireAdmin, (req, res) => {
+  res.send(views.architecturePage());
 });
 
 app.post('/admin/links', requireAdmin, (req, res) => {
@@ -271,6 +305,168 @@ app.post('/admin/files/:token/:stored/delete', requireAdmin, (req, res) => {
     }
   }
   res.redirect('/admin');
+});
+
+// Re-share a received file: copy it into a new outbound download (/d/) link so
+// it can be handed out without re-uploading. The original stays in Received files.
+app.post('/admin/files/:token/:stored/share', requireAdmin, (req, res) => {
+  const link = store.findByToken(req.params.token);
+  const up = link && link.uploads.find((u) => u.storedName === req.params.stored);
+  if (!up) {
+    req.session.flash = { type: 'err', msg: 'File not found.' };
+    return res.redirect('/admin');
+  }
+  const srcPath = path.join(UPLOAD_DIR, link.token, up.storedName);
+  if (!srcPath.startsWith(path.join(UPLOAD_DIR, link.token))) {
+    return res.status(400).send('Bad path');
+  }
+  const token = newToken();
+  const destDir = path.join(SEND_DIR, token);
+  fs.mkdirSync(destDir, { recursive: true });
+  const destPath = path.join(destDir, up.storedName);
+
+  const finish = (err) => {
+    if (err) {
+      fs.rm(destDir, { recursive: true, force: true }, () => {});
+      req.session.flash = { type: 'err', msg: 'Could not share that file. Please try again.' };
+      return res.redirect('/admin');
+    }
+    store.addSend({
+      id: newId(),
+      token,
+      label: `Shared: ${up.originalName}`.slice(0, 120),
+      note: '',
+      createdAt: Date.now(),
+      expiresAt: null,
+      maxDownloads: null,
+      revoked: false,
+      downloadCount: 0,
+      files: [
+        {
+          storedName: up.storedName,
+          originalName: up.originalName,
+          size: up.size,
+          addedAt: Date.now(),
+        },
+      ],
+    });
+    req.session.flash = {
+      type: 'ok',
+      msg: `Download link created: ${baseUrl(req)}/d/${token} — copy it from "Download links" below.`,
+    };
+    res.redirect('/admin');
+  };
+
+  // Hardlink the file rather than copying it: instant and uses no extra disk,
+  // since uploads/ and sends/ share one filesystem. Deleting the received file
+  // OR the share link leaves the other intact (independent hardlinks). Only if
+  // the two ever land on different filesystems (EXDEV) do we fall back to a copy.
+  fs.link(srcPath, destPath, (linkErr) => {
+    if (linkErr && linkErr.code === 'EXDEV') return fs.copyFile(srcPath, destPath, finish);
+    finish(linkErr);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Admin: outbound "send" (download) links — admin uploads files, shares a link
+// ---------------------------------------------------------------------------
+app.post('/admin/sends', requireAdmin, (req, res) => {
+  req.sendToken = newToken();
+  sendUpload(req, res, (err) => {
+    if (err) {
+      fs.rm(path.join(SEND_DIR, req.sendToken), { recursive: true, force: true }, () => {});
+      const msg =
+        err.code === 'LIMIT_FILE_SIZE' && MAX_UPLOAD_MB > 0
+          ? `A file exceeds the ${MAX_UPLOAD_MB} MB limit.`
+          : 'Upload failed. Please try again.';
+      return res.status(400).json({ error: msg });
+    }
+    const files = req.files || [];
+    if (!files.length) {
+      return res.status(400).json({ error: 'Add at least one file to share.' });
+    }
+    const { label, note, expiresIn, maxDownloads } = req.body;
+    const hours = parseInt(expiresIn, 10);
+    const max = parseInt(maxDownloads, 10);
+    const send = {
+      id: newId(),
+      token: req.sendToken,
+      label: (label || '').trim().slice(0, 120) || 'Shared files',
+      note: (note || '').trim().slice(0, 300),
+      createdAt: Date.now(),
+      expiresAt:
+        Number.isFinite(hours) && hours > 0 ? Date.now() + hours * 3600 * 1000 : null,
+      maxDownloads: Number.isFinite(max) && max > 0 ? max : null,
+      revoked: false,
+      downloadCount: 0,
+      files: files.map((f) => ({
+        storedName: f.filename,
+        originalName: f.originalname,
+        size: f.size,
+        addedAt: Date.now(),
+      })),
+    };
+    store.addSend(send);
+    res.json({ ok: true, url: `${baseUrl(req)}/d/${send.token}`, count: files.length });
+  });
+});
+
+app.post('/admin/sends/:id/revoke', requireAdmin, (req, res) => {
+  const send = store.findSendById(req.params.id);
+  if (send) {
+    store.updateSend(send.id, { revoked: true });
+    req.session.flash = { type: 'ok', msg: 'Download link disabled.' };
+  }
+  res.redirect('/admin');
+});
+
+app.post('/admin/sends/:id/enable', requireAdmin, (req, res) => {
+  const send = store.findSendById(req.params.id);
+  if (send) {
+    store.updateSend(send.id, { revoked: false });
+    req.session.flash = { type: 'ok', msg: 'Download link enabled.' };
+  }
+  res.redirect('/admin');
+});
+
+app.post('/admin/sends/:id/delete', requireAdmin, (req, res) => {
+  const send = store.findSendById(req.params.id);
+  if (send) {
+    const dir = path.join(SEND_DIR, send.token);
+    fs.rm(dir, { recursive: true, force: true }, () => {});
+    store.removeSend(send.id);
+    req.session.flash = { type: 'ok', msg: 'Download link deleted.' };
+  }
+  res.redirect('/admin');
+});
+
+// ---------------------------------------------------------------------------
+// Public download (recipient side of a "send" link)
+// ---------------------------------------------------------------------------
+app.get('/d/:token', (req, res) => {
+  const send = store.findSendByToken(req.params.token);
+  const status = store.sendStatus(send);
+  res.send(
+    views.downloadPage({
+      send: send || { token: req.params.token },
+      status,
+      baseUrl: baseUrl(req),
+    })
+  );
+});
+
+app.get('/d/:token/:stored', (req, res) => {
+  const send = store.findSendByToken(req.params.token);
+  const status = store.sendStatus(send);
+  if (!status.ok) return res.status(403).send('This download link is no longer available.');
+  const f = send.files.find((x) => x.storedName === req.params.stored);
+  if (!f) return res.status(404).send('Not found');
+  const filePath = path.join(SEND_DIR, send.token, f.storedName);
+  if (!filePath.startsWith(path.join(SEND_DIR, send.token))) {
+    return res.status(400).send('Bad path');
+  }
+  store.incrementSendDownload(send.token);
+  res.download(filePath, f.originalName);
 });
 
 // ---------------------------------------------------------------------------
