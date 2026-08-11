@@ -3,3 +3,4 @@ node_modules/
 state.json
 watcher.log
 *.log
+config.json

@@ -42,6 +42,7 @@ const CFG = {
 
   stateFile: env('STATE_FILE', path.join(__dirname, 'state.json')),
   userAgent: env('USER_AGENT', 'bahia-cabin-watcher/1.0 (personal availability alert)'),
+  httpTimeoutMs: intEnv('HTTP_TIMEOUT_MS', 20000), // abort any request that hangs
   quiet: boolEnv('QUIET', false),          // suppress the "nothing available" log line
 
   // channels
@@ -66,25 +67,73 @@ const CFG = {
   smsTo: env('SMS_TO', ''),
 };
 
+// Search parameters can also come from config.json (written by the GUI). These
+// override the .env defaults for the fields present. Secrets stay in .env only.
+applyConfigJson(path.join(__dirname, 'config.json'));
+
+function applyConfigJson(file) {
+  let cfg;
+  try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return; }
+  const map = {
+    minNights: 'int', monthsAhead: 'int', startOffsetDays: 'int',
+    watchStart: 'str', watchEnd: 'str', weekendsOnly: 'bool',
+  };
+  for (const [k, type] of Object.entries(map)) {
+    if (cfg[k] == null || cfg[k] === '') { if (type === 'str' && cfg[k] === '') CFG[k] = ''; continue; }
+    CFG[k] = type === 'int' ? parseInt(cfg[k], 10) : type === 'bool' ? !!cfg[k] : String(cfg[k]);
+  }
+}
+
+// Their SPA routes are positional (:page/:park/:facility) — no literal "facility"
+// segment — so the cabins deep-link is #!park/<placeId>/<facilityId>.
 const BOOK_URL =
-  `https://reserve.floridastateparks.org/Web/#!park/${CFG.placeId}/facility/${CFG.facilityId}`;
+  `https://reserve.floridastateparks.org/Web/#!park/${CFG.placeId}/${CFG.facilityId}`;
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+const JSON_OUT = process.argv.includes('--json');
+const DRY = JSON_OUT || process.argv.includes('--dry') || boolEnv('DRY_RUN', false);
+
 (async function main() {
   try {
     const openings = await scanOpenings();
-    const state = loadState();
-    const seen = new Set(state.seen || []);
 
-    const fresh = openings.filter((o) => !seen.has(o.key));
+    // --json: print current openings + effective config, notify nothing. Used
+    // by the GUI's "Check now". --dry: run everything but don't notify/persist.
+    if (JSON_OUT) {
+      process.stdout.write(JSON.stringify({
+        checkedAt: nowIso(),
+        config: {
+          minNights: CFG.minNights, monthsAhead: CFG.monthsAhead,
+          startOffsetDays: CFG.startOffsetDays, watchStart: CFG.watchStart,
+          watchEnd: CFG.watchEnd, weekendsOnly: CFG.weekendsOnly,
+        },
+        openings,
+      }));
+      return;
+    }
+
+    const state = loadState();
+    // We dedupe at the individual free-night level: a key is `unitId|date`.
+    // An opening is "new" only if it contains at least one free night we haven't
+    // already alerted on. This means a window shrinking (a night gets booked)
+    // never re-alerts, and only genuinely newly-freed nights trigger a ping.
+    const seen = new Set(state.seenNights || []);
+    const nightKey = (o, d) => `${o.unitId}|${d}`;
+
+    const fresh = openings.filter((o) => o.nightDates.some((d) => !seen.has(nightKey(o, d))));
 
     if (openings.length === 0) {
       if (!CFG.quiet) log('No cabin availability found.');
     } else {
       log(`${openings.length} open cabin window(s) found` +
-          (fresh.length ? `, ${fresh.length} NEW.` : `, none new.`));
+          (fresh.length ? `, ${fresh.length} with new nights.` : `, nothing new.`));
+    }
+
+    if (DRY) {
+      log(`DRY RUN: would ${fresh.length ? 'notify about ' + fresh.length + ' opening(s)' : 'send nothing'}; state unchanged.`);
+      return;
     }
 
     let alertedOk = false;
@@ -92,15 +141,22 @@ const BOOK_URL =
       alertedOk = await notifyAll(fresh);
     }
 
-    // Persist state so we only alert once per opening. Rules:
-    //  - keep keys that were already seen AND are still open;
-    //  - add fresh keys ONLY if the alert actually got out (so a failed push is
-    //    retried on the next run rather than silently swallowed);
-    //  - openings that vanished drop out, so a later re-opening re-alerts.
-    const keep = openings
-      .filter((o) => seen.has(o.key) || alertedOk)
-      .map((o) => o.key);
-    saveState({ seen: keep, updated: nowIso() });
+    // Persist the set of free nights we've accounted for. Rules:
+    //  - keep nights that were already seen AND are still open (stable memory);
+    //  - add a fresh opening's nights ONLY if the alert actually got out (so a
+    //    failed send is retried next run, never silently dropped);
+    //  - nights that are no longer free drop out, so if they reopen we re-alert.
+    const keep = new Set();
+    for (const o of openings) {
+      for (const d of o.nightDates) {
+        const k = nightKey(o, d);
+        if (seen.has(k)) keep.add(k);
+      }
+    }
+    if (alertedOk) {
+      for (const o of fresh) for (const d of o.nightDates) keep.add(nightKey(o, d));
+    }
+    saveState({ seenNights: [...keep], updated: nowIso() });
   } catch (err) {
     log('ERROR: ' + (err && err.stack ? err.stack : err));
     process.exitCode = 1;
@@ -172,6 +228,7 @@ async function scanOpenings() {
         checkIn,
         checkOut,
         nights: nightsAvail,
+        nightDates: run, // the individual free-night ISO dates (for night-level dedup)
         minStay,
       });
     }
@@ -194,7 +251,7 @@ async function fetchGrid(startDate) {
     IsADA: false,
     WebOnly: true,
   };
-  const res = await fetch(CFG.apiBase + 'search/grid', {
+  const res = await fetchT(CFG.apiBase + 'search/grid', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -268,6 +325,18 @@ async function withRetry(fn, attempts = 3, delayMs = 4000) {
 }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// fetch with a hard timeout so a hung request can't stall a run (important at a
+// 30s poll cadence where stalled runs would otherwise overlap).
+async function fetchT(url, opts) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), CFG.httpTimeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: ac.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 function formatMessages(openings) {
   const n = openings.length;
   const title = `🏝️ ${CFG.parkName} cabin${n > 1 ? 's' : ''} available! (${n} opening${n > 1 ? 's' : ''})`;
@@ -314,7 +383,7 @@ async function notifyNtfy(title, body) {
   };
   if (CFG.ntfyToken) headers.Authorization = `Bearer ${CFG.ntfyToken}`;
   await withRetry(async () => {
-    const res = await fetch(`${CFG.ntfyServer.replace(/\/$/, '')}/${CFG.ntfyTopic}`, {
+    const res = await fetchT(`${CFG.ntfyServer.replace(/\/$/, '')}/${CFG.ntfyTopic}`, {
       method: 'POST',
       headers,
       body,
@@ -334,6 +403,9 @@ function makeTransport() {
     port: CFG.smtpPort,
     secure: CFG.smtpSecure,
     auth: CFG.smtpUser ? { user: CFG.smtpUser, pass: CFG.smtpPass } : undefined,
+    connectionTimeout: CFG.httpTimeoutMs,
+    greetingTimeout: CFG.httpTimeoutMs,
+    socketTimeout: CFG.httpTimeoutMs,
   });
 }
 
@@ -368,7 +440,7 @@ async function notifySms(smsBody) {
   const recipients = CFG.smsTo.split(',').map((s) => s.trim()).filter(Boolean);
   for (const to of recipients) {
     const form = new URLSearchParams({ To: to, From: CFG.twilioFrom, Body: smsBody });
-    const res = await fetch(url, {
+    const res = await fetchT(url, {
       method: 'POST',
       headers: {
         Authorization: 'Basic ' + Buffer.from(`${CFG.twilioSid}:${CFG.twilioToken}`).toString('base64'),

@@ -10,19 +10,24 @@ instant a bookable opening appears. Talks directly to the Florida State Parks
 - **Cabins:** facility `12` ("Loop BAYC") — the 6 duplex cabin units (Cabin #001–#006)
 - **Rule:** 2-night minimum. It scans the next `MONTHS_AHEAD` months and reports
   any cabin with a run of consecutive free nights ≥ the minimum.
-- Alerts **only once per opening**, and only after a notification actually sends
-  (a failed send is retried on the next run — never silently dropped). If an
-  opening disappears and later comes back, it alerts again.
+- Alerts **only once per newly-freed night** (dedup is tracked per cabin-night in
+  `state.json`), and only after a notification actually sends (a failed send is
+  retried next run — never silently dropped). A window shrinking never re-alerts;
+  a night that reopens after being booked does. So no repeat pings for the same
+  availability.
 
 ## How it runs (production)
 
 Deployed on **axus-server01** (`98.88.111.130`) at `~/bahia-cabin-watcher`,
-via cron every 3 minutes:
+via cron **every 30 seconds**. Cron's floor is 1 minute, so two entries give the
+30s cadence; `flock` prevents overlapping runs if one ever runs long:
 
 ```
-*/3 * * * * cd /home/ubuntu/bahia-cabin-watcher && /usr/bin/node watcher.js >> /home/ubuntu/bahia-cabin-watcher/watcher.log 2>&1
+* * * * * flock -n /tmp/bahia-watcher.lock /usr/bin/node /home/ubuntu/bahia-cabin-watcher/watcher.js >> /home/ubuntu/bahia-cabin-watcher/watcher.log 2>&1
+* * * * * sleep 30; flock -n /tmp/bahia-watcher.lock /usr/bin/node /home/ubuntu/bahia-cabin-watcher/watcher.js >> /home/ubuntu/bahia-cabin-watcher/watcher.log 2>&1
 ```
 
+Requests have a 20s timeout (`HTTP_TIMEOUT_MS`) so a hung call can't stall a run.
 Logs: `~/bahia-cabin-watcher/watcher.log` (quiet by default — only logs when
 cabins are available or on error).
 
@@ -36,7 +41,25 @@ Configured in `.env`. Any channel you fill in fires; the rest are skipped.
 2. **Email:** set `SMTP_*` + `EMAIL_TO`.
 3. **SMS (Twilio):** set `TWILIO_SID` / `TWILIO_TOKEN` / `TWILIO_FROM` / `SMS_TO`.
 
-## Config knobs (`.env`)
+## Control panel (GUI)
+
+Easiest way to change what it watches — no editing files by hand:
+
+```bash
+npm run gui       # or double-click gui.bat
+```
+
+Opens a form at `http://127.0.0.1:8787` to set minimum nights, how far ahead to
+scan, earliest check-in, an optional specific date window, and weekends-only.
+
+- **Save & deploy** writes `config.json` to the box over your `axus-server01`
+  SSH alias; the next cron run (≤30s) uses it — no restart needed.
+- **Check availability now** previews live openings without sending any alert.
+
+`config.json` (search parameters) overrides the `.env` defaults; secrets stay in
+`.env` only.
+
+## Config knobs
 
 | Key | Meaning | Default |
 |-----|---------|---------|

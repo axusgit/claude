@@ -1,0 +1,8 @@
+{
+  "minNights": 2,
+  "monthsAhead": 6,
+  "startOffsetDays": 0,
+  "watchStart": "",
+  "watchEnd": "",
+  "weekendsOnly": false
+}
