@@ -43,6 +43,10 @@ const CFG = {
   stateFile: env('STATE_FILE', path.join(__dirname, 'state.json')),
   userAgent: env('USER_AGENT', 'bahia-cabin-watcher/1.0 (personal availability alert)'),
   httpTimeoutMs: intEnv('HTTP_TIMEOUT_MS', 20000), // abort any request that hangs
+  // Once alerted about a cabin-night, don't alert again for it unless it has been
+  // genuinely gone this long and then reopened (a real book-then-cancel). Shorter
+  // disappearances are transient cart-holds/API blips and must NOT re-alert.
+  reopenGapMs: intEnv('REOPEN_GAP_MS', 6 * 60 * 60 * 1000), // 6 hours
   quiet: boolEnv('QUIET', false),          // suppress the "nothing available" log line
 
   // channels
@@ -95,7 +99,7 @@ const BOOK_URL =
 const JSON_OUT = process.argv.includes('--json');
 const DRY = JSON_OUT || process.argv.includes('--dry') || boolEnv('DRY_RUN', false);
 
-(async function main() {
+async function main() {
   try {
     const openings = await scanOpenings();
 
@@ -115,20 +119,18 @@ const DRY = JSON_OUT || process.argv.includes('--dry') || boolEnv('DRY_RUN', fal
     }
 
     const state = loadState();
-    // We dedupe at the individual free-night level: a key is `unitId|date`.
-    // An opening is "new" only if it contains at least one free night we haven't
-    // already alerted on. This means a window shrinking (a night gets booked)
-    // never re-alerts, and only genuinely newly-freed nights trigger a ping.
-    const seen = new Set(state.seenNights || []);
-    const nightKey = (o, d) => `${o.unitId}|${d}`;
+    const nowMs = Date.now();
+    const todayIso = isoOf(startOfDay(new Date()));
+    // Sticky per-night memory: seen = { "unitId|date": lastSeenFreeEpochMs }.
+    const prevSeen = loadSeen(state, nowMs);
 
-    const fresh = openings.filter((o) => o.nightDates.some((d) => !seen.has(nightKey(o, d))));
+    const { fresh, buildSeen } = reconcile(openings, prevSeen, nowMs, CFG.reopenGapMs, todayIso);
 
     if (openings.length === 0) {
       if (!CFG.quiet) log('No cabin availability found.');
     } else {
       log(`${openings.length} open cabin window(s) found` +
-          (fresh.length ? `, ${fresh.length} with new nights.` : `, nothing new.`));
+          (fresh.length ? `, ${fresh.length} NEW.` : `, nothing new.`));
     }
 
     if (DRY) {
@@ -141,27 +143,19 @@ const DRY = JSON_OUT || process.argv.includes('--dry') || boolEnv('DRY_RUN', fal
       alertedOk = await notifyAll(fresh);
     }
 
-    // Persist the set of free nights we've accounted for. Rules:
-    //  - keep nights that were already seen AND are still open (stable memory);
-    //  - add a fresh opening's nights ONLY if the alert actually got out (so a
-    //    failed send is retried next run, never silently dropped);
-    //  - nights that are no longer free drop out, so if they reopen we re-alert.
-    const keep = new Set();
-    for (const o of openings) {
-      for (const d of o.nightDates) {
-        const k = nightKey(o, d);
-        if (seen.has(k)) keep.add(k);
-      }
-    }
-    if (alertedOk) {
-      for (const o of fresh) for (const d of o.nightDates) keep.add(nightKey(o, d));
-    }
-    saveState({ seenNights: [...keep], updated: nowIso() });
+    // buildSeen refreshes timestamps for still-free nights, keeps freshly-alerted
+    // ones (only if the send succeeded, else retry next run), and prunes past
+    // dates. A night is NOT forgotten just because it vanished from one scan, so
+    // transient flickers never re-alert.
+    saveState({ seen: buildSeen(alertedOk), updated: nowIso() });
   } catch (err) {
     log('ERROR: ' + (err && err.stack ? err.stack : err));
     process.exitCode = 1;
   }
-})();
+}
+
+if (require.main === module) main();
+module.exports = { reconcile, loadSeen };
 
 // ---------------------------------------------------------------------------
 // Availability scan
@@ -288,6 +282,60 @@ function runHasWeekend(run) {
     const dow = parseIso(d).getDay(); // 0 Sun .. 6 Sat
     return dow === 5 || dow === 6;
   });
+}
+
+// Normalize prior state into { "unitId|date": lastSeenFreeMs }. Migrates the old
+// array form (state.seenNights / state.seen as array) by stamping them as seen now.
+function loadSeen(state, nowMs) {
+  const s = state && state.seen;
+  if (s && typeof s === 'object' && !Array.isArray(s)) return { ...s };
+  const arr = Array.isArray(s) ? s : Array.isArray(state && state.seenNights) ? state.seenNights : [];
+  const m = {};
+  for (const k of arr) m[k] = nowMs;
+  return m;
+}
+
+// Decide which openings are genuinely new, and produce the next seen-map.
+// A cabin-night is "new" if we've never seen it, OR it was last seen free more
+// than reopenGapMs ago (a real book-then-cancel, not a seconds-long flicker).
+function reconcile(openings, prevSeen, nowMs, reopenGapMs, todayIso) {
+  const keyOf = (o, d) => `${o.unitId}|${d}`;
+  const isNew = (k) => {
+    const last = prevSeen[k];
+    return last == null || (nowMs - last) > reopenGapMs;
+  };
+
+  const freeKeys = []; // {k, d} for every currently-free night
+  const fresh = [];
+  for (const o of openings) {
+    let anyNew = false;
+    for (const d of o.nightDates) {
+      const k = keyOf(o, d);
+      freeKeys.push({ k, d });
+      if (isNew(k)) anyNew = true;
+    }
+    if (anyNew) fresh.push(o);
+  }
+
+  const buildSeen = (alertedOk) => {
+    const next = {};
+    // carry forward remembered nights that haven't passed yet
+    for (const [k, ts] of Object.entries(prevSeen)) {
+      const d = k.split('|')[1];
+      if (d && d >= todayIso) next[k] = ts;
+    }
+    // update currently-free nights
+    for (const { k, d } of freeKeys) {
+      if (d < todayIso) continue;
+      const wasNew = next[k] == null || (nowMs - next[k]) > reopenGapMs;
+      if (!wasNew) next[k] = nowMs;        // continuously free -> keep timestamp fresh
+      else if (alertedOk) next[k] = nowMs; // we just alerted -> mark seen now
+      // else: new but the alert failed -> leave as-is so it retries next run
+    }
+    return next;
+  };
+
+  return { fresh, buildSeen };
 }
 
 // ---------------------------------------------------------------------------
