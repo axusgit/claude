@@ -562,7 +562,9 @@ function asciiHeader(s) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-function log(msg) { console.log(`[${nowIso()}] ${msg}`); }
+// Logs go to stderr so stdout is reserved for clean JSON (--json / --test).
+// The cron redirects 2>&1, so watcher.log still captures everything.
+function log(msg) { console.error(`[${nowIso()}] ${msg}`); }
 
 // Minimal .env loader (no dependency). KEY=VALUE per line, # comments, optional quotes.
 function loadDotenv(file) {
