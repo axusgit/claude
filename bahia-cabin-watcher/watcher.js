@@ -47,6 +47,12 @@ const CFG = {
   // genuinely gone this long and then reopened (a real book-then-cancel). Shorter
   // disappearances are transient cart-holds/API blips and must NOT re-alert.
   reopenGapMs: intEnv('REOPEN_GAP_MS', 6 * 60 * 60 * 1000), // 6 hours
+  pageDelayMs: intEnv('PAGE_DELAY_MS', 800), // pause between grid pages within a scan
+  // Uniform coverage: each cron run fetches this many 21-day pages, rotating
+  // evenly across the WHOLE window so every month is checked on the same
+  // cadence. Higher = more frequent coverage but more requests (WAF risk).
+  // With ~16 pages (11 months) and 4/run @30s, every date is re-checked ~every 2 min.
+  pagesPerRun: intEnv('PAGES_PER_RUN', 4),
   quiet: boolEnv('QUIET', false),          // suppress the "nothing available" log line
 
   // channels
@@ -98,10 +104,23 @@ const BOOK_URL =
 // ---------------------------------------------------------------------------
 const JSON_OUT = process.argv.includes('--json');
 const DRY = JSON_OUT || process.argv.includes('--dry') || boolEnv('DRY_RUN', false);
+const TEST = process.argv.includes('--test');
+const TEST_CHANNELS = (() => {
+  const a = process.argv.find((x) => x.startsWith('--channels='));
+  return a ? a.split('=')[1].split(',').map((s) => s.trim()).filter(Boolean)
+           : ['push', 'email', 'text'];
+})();
 
 async function main() {
   try {
-    const openings = await scanOpenings();
+    // --test: send a clearly-labeled TEST alert through the selected channels
+    // (same code path as real alerts), print per-channel results as JSON, exit.
+    if (TEST) { await runTest(TEST_CHANNELS); return; }
+
+    const state = loadState();
+    // Manual runs (--json/--dry) do a full scan; the high-frequency cron does a
+    // near-term + rotating-far scan, advancing the rotation cursor each run.
+    const { openings, nextFarCursor } = await scanOpenings({ full: DRY, farCursor: state.farCursor });
 
     // --json: print current openings + effective config, notify nothing. Used
     // by the GUI's "Check now". --dry: run everything but don't notify/persist.
@@ -118,7 +137,6 @@ async function main() {
       return;
     }
 
-    const state = loadState();
     const nowMs = Date.now();
     const todayIso = isoOf(startOfDay(new Date()));
     // Sticky per-night memory: seen = { "unitId|date": lastSeenFreeEpochMs }.
@@ -147,7 +165,7 @@ async function main() {
     // ones (only if the send succeeded, else retry next run), and prunes past
     // dates. A night is NOT forgotten just because it vanished from one scan, so
     // transient flickers never re-alert.
-    saveState({ seen: buildSeen(alertedOk), updated: nowIso() });
+    saveState({ seen: buildSeen(alertedOk), farCursor: nextFarCursor, updated: nowIso() });
   } catch (err) {
     log('ERROR: ' + (err && err.stack ? err.stack : err));
     process.exitCode = 1;
@@ -160,25 +178,42 @@ module.exports = { reconcile, loadSeen };
 // ---------------------------------------------------------------------------
 // Availability scan
 // ---------------------------------------------------------------------------
-async function scanOpenings() {
+async function scanOpenings({ full = false, farCursor = 0 } = {}) {
   const today = new Date();
   const windowStart = addDays(startOfDay(today), CFG.startOffsetDays);
   const windowEnd = CFG.watchEnd
     ? parseIso(CFG.watchEnd)
     : addDays(startOfDay(today), CFG.monthsAhead * 30);
   const hardStart = CFG.watchStart ? parseIso(CFG.watchStart) : windowStart;
-
-  // Collect free-night sets per unit across the whole window by paging in
-  // 21-day grids (the API returns 21 daily slices per call).
-  const units = new Map(); // unitId -> { name, isAda, free:Set<isoDate>, minStay:Map }
-  let cursor = new Date(windowStart);
   const PAGE_DAYS = 21;
-  let pages = 0;
   const MAX_PAGES = 60; // safety cap (~3.4 years)
 
-  while (cursor <= windowEnd && pages < MAX_PAGES) {
-    pages++;
-    const grid = await fetchGrid(cursor);
+  // All 21-day page start dates covering the window.
+  const allPages = [];
+  for (let c = new Date(windowStart); c <= windowEnd && allPages.length < MAX_PAGES; c = addDays(c, PAGE_DAYS)) {
+    allPages.push(new Date(c));
+  }
+
+  // full scan = every page (manual --json/--dry, low frequency). Otherwise fetch
+  // a rotating window of pagesPerRun pages, advancing the cursor each run, so the
+  // whole window is covered uniformly (every ceil(pages/pagesPerRun) runs) while
+  // keeping the request rate under the reservation API's WAF limit.
+  let pagesToFetch;
+  let nextFarCursor = farCursor;
+  if (full || allPages.length <= CFG.pagesPerRun) {
+    pagesToFetch = allPages;
+  } else {
+    const n = allPages.length;
+    const start = (((Number.isInteger(farCursor) ? farCursor : 0) % n) + n) % n;
+    pagesToFetch = [];
+    for (let j = 0; j < CFG.pagesPerRun; j++) pagesToFetch.push(allPages[(start + j) % n]);
+    nextFarCursor = (start + CFG.pagesPerRun) % n;
+  }
+
+  const units = new Map(); // unitId -> { name, isAda, free:Set<isoDate>, minStay:Map }
+  for (let i = 0; i < pagesToFetch.length; i++) {
+    if (i > 0) await sleep(CFG.pageDelayMs); // spread requests so we're not bursty
+    const grid = await fetchGrid(pagesToFetch[i]);
     const facUnits = (grid && grid.Facility && grid.Facility.Units) || {};
     for (const u of Object.values(facUnits)) {
       let rec = units.get(u.UnitId);
@@ -193,7 +228,6 @@ async function scanOpenings() {
         }
       }
     }
-    cursor = addDays(cursor, PAGE_DAYS);
   }
 
   // Turn each unit's free-night set into consecutive runs, then into openings.
@@ -229,7 +263,7 @@ async function scanOpenings() {
   }
 
   openings.sort((a, b) => (a.checkIn < b.checkIn ? -1 : a.checkIn > b.checkIn ? 1 : 0));
-  return openings;
+  return { openings, nextFarCursor };
 }
 
 async function fetchGrid(startDate) {
@@ -245,17 +279,37 @@ async function fetchGrid(startDate) {
     IsADA: false,
     WebOnly: true,
   };
-  const res = await fetchT(CFG.apiBase + 'search/grid', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': CFG.userAgent,
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`grid HTTP ${res.status} for ${body.StartDate}`);
-  return res.json();
+  // Browser-like headers + a Referer from the real booking site reduce the odds
+  // of the API's WAF rejecting us as a bot.
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+    Origin: 'https://reserve.floridastateparks.org',
+    Referer: 'https://reserve.floridastateparks.org/',
+  };
+  // Retry transient WAF/rate-limit responses (403/429) and 5xx with growing
+  // backoff, so a short block window clears within the retry budget instead of
+  // aborting the whole scan. Backoff grows (1s,2s,4s,5s…) + jitter so we don't
+  // hammer during a block.
+  let lastErr;
+  const attempts = 5;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt > 0) {
+      await sleep(Math.min(5000, 1000 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 400));
+    }
+    let res;
+    try {
+      res = await fetchT(CFG.apiBase + 'search/grid', { method: 'POST', headers, body: JSON.stringify(body) });
+    } catch (e) { lastErr = e; continue; } // network error/timeout -> retry
+    if (res.ok) return res.json();
+    if (res.status === 403 || res.status === 429 || res.status >= 500) {
+      lastErr = new Error(`grid HTTP ${res.status} for ${body.StartDate}`);
+      continue; // transient -> retry
+    }
+    throw new Error(`grid HTTP ${res.status} for ${body.StartDate}`); // hard error
+  }
+  throw lastErr;
 }
 
 // [d1,d2,...] iso dates -> array of runs, each run an array of consecutive iso dates
@@ -341,6 +395,41 @@ function reconcile(openings, prevSeen, nowMs, reopenGapMs, todayIso) {
 // ---------------------------------------------------------------------------
 // Notifications
 // ---------------------------------------------------------------------------
+
+// Send a labeled TEST alert to the requested channels; report per-channel result.
+async function runTest(channels) {
+  const want = new Set(channels);
+  const link = BOOK_URL;
+  const title = 'TEST - Bahia Honda cabin watcher';
+  const textBody =
+    'This is a TEST alert. If you received this, your alerts are working.\n\n' +
+    'Real alerts fire the instant a cabin opens and include the cabin, dates, ' +
+    'and this booking link:\n' + link;
+  const htmlBody =
+    '<h2>🏝️ TEST - Bahia Honda cabin watcher</h2>' +
+    '<p>This is a <b>test alert</b>. If you got this, your alerts are working. ' +
+    'Real alerts fire the instant a cabin opens and show the cabin, dates, and a ' +
+    `<a href="${link}">booking link</a>.</p>`;
+  const smsBody =
+    'TEST: Bahia Honda cabin watcher alerts are working. Real alerts show the ' +
+    'cabin, dates & link: ' + link;
+
+  const results = {};
+  const one = async (name, configured, fn) => {
+    if (!want.has(name)) return;
+    if (!configured) { results[name] = { ok: false, skipped: true, error: 'not configured' }; return; }
+    try { await fn(); results[name] = { ok: true }; }
+    catch (e) { results[name] = { ok: false, error: e.message }; }
+  };
+
+  await one('push', !!CFG.ntfyTopic, () => notifyNtfy(title, textBody));
+  await one('email', !!(CFG.smtpHost && CFG.emailTo), () => notifyEmail(title, textBody, htmlBody));
+  await one('text', !!(CFG.smtpHost && CFG.emailSmsTo), () => notifyEmailSms(smsBody));
+  await one('sms', !!(CFG.twilioSid && CFG.smsTo), () => notifySms(smsBody));
+
+  process.stdout.write(JSON.stringify({ test: true, channels, results }));
+}
+
 async function notifyAll(openings) {
   const { title, textBody, htmlBody, smsBody } = formatMessages(openings);
 

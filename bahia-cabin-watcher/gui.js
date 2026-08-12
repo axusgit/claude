@@ -86,6 +86,13 @@ async function checkNow() {
   const out = await ssh(`cd ${REMOTE_DIR} && /usr/bin/node watcher.js --json`);
   return JSON.parse(out.trim());
 }
+async function testAlert(channels) {
+  const allowed = ['push', 'email', 'text'];
+  const list = (channels || []).filter((c) => allowed.includes(c));
+  if (!list.length) throw new Error('Select at least one alert type');
+  const out = await ssh(`cd ${REMOTE_DIR} && /usr/bin/node watcher.js --test --channels=${list.join(',')}`);
+  return JSON.parse(out.trim());
+}
 
 function sendJson(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -122,6 +129,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/api/check') {
       return sendJson(res, 200, { result: await checkNow() });
+    }
+    if (req.method === 'POST' && req.url === '/api/test-alert') {
+      const body = await readBody(req);
+      return sendJson(res, 200, await testAlert(body.channels));
     }
     res.writeHead(404); res.end('not found');
   } catch (e) {
@@ -209,6 +220,15 @@ const PAGE = `<!doctype html>
     <div class="msg" id="msg"></div>
   </div>
 
+  <div class="card">
+    <label style="margin-top:0">Send a test alert <span class="hint">— verify each channel is delivering</span></label>
+    <div class="check"><input type="checkbox" id="t_push" checked><label style="margin:0;font-weight:400">Push (ntfy)</label></div>
+    <div class="check"><input type="checkbox" id="t_email" checked><label style="margin:0;font-weight:400">Email</label></div>
+    <div class="check"><input type="checkbox" id="t_text" checked><label style="margin:0;font-weight:400">Text</label></div>
+    <div class="btns"><button id="test">Send test alert</button></div>
+    <div class="msg" id="testMsg"></div>
+  </div>
+
   <div class="card" id="currentCard" style="display:none">
     <div id="currentBody"></div>
   </div>
@@ -223,7 +243,8 @@ const FIELDS=['minNights','monthsAhead','startOffsetDays','watchStart','watchEnd
 function get(){return{minNights:+$('minNights').value,monthsAhead:+$('monthsAhead').value,startOffsetDays:+$('startOffsetDays').value,watchStart:$('watchStart').value,watchEnd:$('watchEnd').value,weekendsOnly:$('weekendsOnly').checked};}
 function set(c){$('minNights').value=c.minNights;$('monthsAhead').value=c.monthsAhead;$('startOffsetDays').value=c.startOffsetDays;$('watchStart').value=c.watchStart||'';$('watchEnd').value=c.watchEnd||'';$('weekendsOnly').checked=!!c.weekendsOnly;}
 function msg(t,cls){const m=$('msg');m.textContent=t;m.className='msg '+(cls||'');}
-function busy(b){['save','check','current'].forEach(id=>{const el=$(id);if(el)el.disabled=b;});}
+function busy(b){['save','check','current','test'].forEach(id=>{const el=$(id);if(el)el.disabled=b;});}
+function testMsg(t,cls){const m=$('testMsg');m.textContent=t;m.className='msg '+(cls||'');}
 function fmt(iso){const d=new Date(iso+'T00:00:00');return d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}
 function fmtDT(iso){if(!iso)return null;return new Date(iso).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'});}
 function renderCurrent(d){
@@ -256,6 +277,20 @@ async function load(){try{const c=await(await fetch('/api/config')).json();set(c
 $('save').onclick=async()=>{busy(true);msg('Saving to box…');try{const r=await(await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(get())})).json();if(r.error)throw new Error(r.error);set(r.config);msg('✓ Saved & deployed at '+(fmtDT(r.savedAt)||'now')+'. Live within 30 sec.','ok');renderResult(r.result);if(r.checkError)msg('Saved, but preview failed: '+r.checkError,'err');}catch(e){msg('Save failed: '+e.message,'err');}busy(false);};
 $('check').onclick=async()=>{busy(true);msg('Checking live availability…');try{const r=await(await fetch('/api/check',{method:'POST'})).json();if(r.error)throw new Error(r.error);msg('Checked '+new Date().toLocaleTimeString(),'ok');renderResult(r.result);}catch(e){msg('Check failed: '+e.message,'err');}busy(false);};
 $('current').onclick=async()=>{busy(true);msg('Loading current settings from the box…');try{const d=await(await fetch('/api/current')).json();if(d.error)throw new Error(d.error);renderCurrent(d);msg('','');}catch(e){msg('Failed: '+e.message,'err');}busy(false);};
+$('test').onclick=async()=>{
+  const channels=[];['push','email','text'].forEach(c=>{if($('t_'+c).checked)channels.push(c);});
+  if(!channels.length){testMsg('Pick at least one alert type.','err');return;}
+  busy(true);testMsg('Sending test alert to: '+channels.join(', ')+'…');
+  try{
+    const d=await(await fetch('/api/test-alert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channels})})).json();
+    if(d.error)throw new Error(d.error);
+    const names={push:'Push',email:'Email',text:'Text'};
+    const parts=channels.map(c=>{const r=(d.results||{})[c]||{};return names[c]+': '+(r.ok?'✓ sent':(r.skipped?'– not configured':'✗ '+(r.error||'failed')));});
+    const allok=channels.every(c=>(d.results||{})[c]&&d.results[c].ok);
+    testMsg(parts.join('     '),allok?'ok':'err');
+  }catch(e){testMsg('Test failed: '+e.message,'err');}
+  busy(false);
+};
 load();
 </script>
 </body></html>`;
