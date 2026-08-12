@@ -60,8 +60,27 @@ async function readConfig() {
   return sanitize(cfg);
 }
 async function writeConfig(cfg) {
-  const json = JSON.stringify(cfg, null, 2);
+  const savedAt = new Date().toISOString();
+  const json = JSON.stringify({ ...cfg, savedAt }, null, 2);
   await ssh(`cat > ${REMOTE_DIR}/config.json`, json + '\n');
+  return savedAt;
+}
+// Current settings actually on the box + when they were applied. Prefers the
+// embedded savedAt (written on the last GUI save); falls back to the file's
+// modified time if the config predates the timestamp feature.
+async function readCurrent() {
+  const out = await ssh(
+    `cat ${REMOTE_DIR}/config.json 2>/dev/null; echo; echo __MTIME__; ` +
+    `stat -c %Y ${REMOTE_DIR}/config.json 2>/dev/null || echo 0`);
+  const [jsonPart, mtimePart = ''] = out.split('__MTIME__');
+  let cfg = {};
+  try { cfg = JSON.parse(jsonPart.trim() || '{}'); } catch { cfg = {}; }
+  const mtimeSec = parseInt(mtimePart.trim(), 10) || 0;
+  return {
+    config: sanitize(cfg),
+    savedAt: cfg.savedAt || null,
+    fileModified: mtimeSec ? new Date(mtimeSec * 1000).toISOString() : null,
+  };
 }
 async function checkNow() {
   const out = await ssh(`cd ${REMOTE_DIR} && /usr/bin/node watcher.js --json`);
@@ -91,12 +110,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/api/config') {
       return sendJson(res, 200, await readConfig());
     }
+    if (req.method === 'GET' && req.url === '/api/current') {
+      return sendJson(res, 200, await readCurrent());
+    }
     if (req.method === 'POST' && req.url === '/api/config') {
       const cfg = sanitize(await readBody(req));
-      await writeConfig(cfg);
+      const savedAt = await writeConfig(cfg);
       let result = null, checkError = null;
       try { result = await checkNow(); } catch (e) { checkError = e.message; }
-      return sendJson(res, 200, { saved: true, config: cfg, result, checkError });
+      return sendJson(res, 200, { saved: true, config: cfg, savedAt, result, checkError });
     }
     if (req.method === 'POST' && req.url === '/api/check') {
       return sendJson(res, 200, { result: await checkNow() });
@@ -154,7 +176,7 @@ const PAGE = `<!doctype html>
 </style></head>
 <body><div class="wrap">
   <h1>🏝️ Bahia Honda Cabin Watcher</h1>
-  <div class="sub">6 cabins &middot; checked every 3 min &middot; alerts on push, email &amp; text</div>
+  <div class="sub">6 cabins &middot; checked every 30 sec &middot; alerts on push, email &amp; text</div>
 
   <div class="card">
     <label>Minimum nights <span class="hint">(park requires 2)</span></label>
@@ -182,8 +204,13 @@ const PAGE = `<!doctype html>
     <div class="btns">
       <button class="primary" id="save">Save &amp; deploy</button>
       <button id="check">Check availability now</button>
+      <button id="current">Current settings</button>
     </div>
     <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card" id="currentCard" style="display:none">
+    <div id="currentBody"></div>
   </div>
 
   <div class="card" id="resultCard" style="display:none">
@@ -196,8 +223,24 @@ const FIELDS=['minNights','monthsAhead','startOffsetDays','watchStart','watchEnd
 function get(){return{minNights:+$('minNights').value,monthsAhead:+$('monthsAhead').value,startOffsetDays:+$('startOffsetDays').value,watchStart:$('watchStart').value,watchEnd:$('watchEnd').value,weekendsOnly:$('weekendsOnly').checked};}
 function set(c){$('minNights').value=c.minNights;$('monthsAhead').value=c.monthsAhead;$('startOffsetDays').value=c.startOffsetDays;$('watchStart').value=c.watchStart||'';$('watchEnd').value=c.watchEnd||'';$('weekendsOnly').checked=!!c.weekendsOnly;}
 function msg(t,cls){const m=$('msg');m.textContent=t;m.className='msg '+(cls||'');}
-function busy(b){$('save').disabled=b;$('check').disabled=b;}
+function busy(b){['save','check','current'].forEach(id=>{const el=$(id);if(el)el.disabled=b;});}
 function fmt(iso){const d=new Date(iso+'T00:00:00');return d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}
+function fmtDT(iso){if(!iso)return null;return new Date(iso).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'});}
+function renderCurrent(d){
+  const card=$('currentCard'),body=$('currentBody');card.style.display='block';
+  const c=d.config;
+  const win=(c.watchStart||c.watchEnd)?((c.watchStart||'…')+' → '+(c.watchEnd||'…')):'Any opening';
+  const earliest=c.startOffsetDays===0?'Today':('Today + '+c.startOffsetDays+' day'+(c.startOffsetDays===1?'':'s'));
+  const applied=fmtDT(d.savedAt||d.fileModified);
+  let h='<b>Current settings on the watcher</b><table>';
+  h+='<tr><td>Minimum nights</td><td>'+c.minNights+'</td></tr>';
+  h+='<tr><td>Scan window</td><td>'+c.monthsAhead+' months ahead</td></tr>';
+  h+='<tr><td>Earliest check-in</td><td>'+earliest+'</td></tr>';
+  h+='<tr><td>Date window</td><td>'+win+'</td></tr>';
+  h+='<tr><td>Weekends only</td><td>'+(c.weekendsOnly?'Yes':'No')+'</td></tr>';
+  h+='</table><div style="margin-top:10px;color:var(--muted);font-size:12px">Applied: <b style="color:var(--ink)">'+(applied||'unknown')+'</b>'+(d.savedAt?'':' (from file timestamp — set before this feature)')+'</div>';
+  body.innerHTML=h;
+}
 function renderResult(r){
   const card=$('resultCard'),body=$('resultBody');
   if(!r){card.style.display='none';return;}
@@ -210,8 +253,9 @@ function renderResult(r){
   body.innerHTML=h;
 }
 async function load(){try{const c=await(await fetch('/api/config')).json();set(c);}catch(e){msg('Could not reach the box: '+e,'err');}}
-$('save').onclick=async()=>{busy(true);msg('Saving to box…');try{const r=await(await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(get())})).json();if(r.error)throw new Error(r.error);set(r.config);msg('✓ Saved & deployed. Cron will use it within 3 min.','ok');renderResult(r.result);if(r.checkError)msg('Saved, but preview failed: '+r.checkError,'err');}catch(e){msg('Save failed: '+e.message,'err');}busy(false);};
+$('save').onclick=async()=>{busy(true);msg('Saving to box…');try{const r=await(await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(get())})).json();if(r.error)throw new Error(r.error);set(r.config);msg('✓ Saved & deployed at '+(fmtDT(r.savedAt)||'now')+'. Live within 30 sec.','ok');renderResult(r.result);if(r.checkError)msg('Saved, but preview failed: '+r.checkError,'err');}catch(e){msg('Save failed: '+e.message,'err');}busy(false);};
 $('check').onclick=async()=>{busy(true);msg('Checking live availability…');try{const r=await(await fetch('/api/check',{method:'POST'})).json();if(r.error)throw new Error(r.error);msg('Checked '+new Date().toLocaleTimeString(),'ok');renderResult(r.result);}catch(e){msg('Check failed: '+e.message,'err');}busy(false);};
+$('current').onclick=async()=>{busy(true);msg('Loading current settings from the box…');try{const d=await(await fetch('/api/current')).json();if(d.error)throw new Error(d.error);renderCurrent(d);msg('','');}catch(e){msg('Failed: '+e.message,'err');}busy(false);};
 load();
 </script>
 </body></html>`;
