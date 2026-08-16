@@ -64,6 +64,10 @@ sudo -u postgres pg_dump axushub > ~/support-cutover.sql
 docker compose cp ~/support-cutover.sql postgres:/tmp/s.sql
 docker compose exec postgres psql -U axus -d support -f /tmp/s.sql
 docker compose exec support alembic upgrade head     # ensure schema at head
+
+# migrate historical ticket attachments into the support_uploads volume
+# (adjust the legacy path if different); the DB stores only stored_name.
+docker compose cp /var/www/axushub/backend/uploads/. support:/data/uploads/
 ```
 
 ## 4. Validate (before cutover)

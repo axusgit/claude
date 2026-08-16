@@ -138,6 +138,12 @@ services:
       PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/support
       SECRET_KEY: ${SUPPORT_SECRET_KEY}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      # Ticket attachments must survive image rebuilds (`up -d --build`); without
+      # this named volume every routine update wipes them. Migrate the legacy
+      # uploads dir into this volume during cutover (see DEPLOY.md step 3).
+      - support_uploads:/data/uploads
     depends_on:
       postgres: {condition: service_healthy}
     labels:
@@ -178,3 +184,4 @@ volumes:
   authentik_templates:
   traefik_letsencrypt:
   hub_data:
+  support_uploads:
