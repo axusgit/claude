@@ -173,7 +173,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.http.routers.accounting.rule: Host(`accounting.${PLATFORM_DOMAIN}`)
-      traefik.http.routers.accounting.entrypoints: internal       # 8443, IP-restricted
+      traefik.http.routers.accounting.entrypoints: websecure      # public 443, gated by Authentik login
       traefik.http.routers.accounting.tls.certresolver: letsencrypt
       traefik.http.routers.accounting.middlewares: geogate@file,authentik@file
       traefik.http.services.accounting.loadbalancer.server.port: "8000"

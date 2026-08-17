@@ -26,9 +26,9 @@ INTERNAL_PORT = os.getenv("INTERNAL_PORT", "8443")
 # entitlement group; admins see everything. `internal` apps are Axus-staff-only
 # (served on :8443); non-internal apps are client-facing (:443).
 APP_CATALOG = [
-    {"key": "support", "name": "Support", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False},
+    {"key": "support", "name": "Support", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False, "staff_path": "/staff"},
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
-    {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": True},
+    {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
     {"key": "engineering", "name": "Engineering", "desc": "Projects, docs & dev-ops", "group": "app-engineering", "icon": "🛠️", "internal": True},
 ]
 
@@ -54,12 +54,17 @@ app.add_middleware(
 
 def _apps_for(identity: Identity):
     is_admin = identity.role == "admin"
+    is_client = identity.role == "client"
     apps = []
     for a in APP_CATALOG:
         authorized = is_admin or identity.has_group(a["group"])
         if authorized:
             port = f":{INTERNAL_PORT}" if a.get("internal") else ""
-            apps.append({**a, "url": f"https://{a['key']}.{PLATFORM_DOMAIN}{port}"})
+            # Some apps split staff vs client UIs by path (e.g. Support's staff
+            # desk at /staff vs the customer portal at /). Staff/admins get the
+            # staff path; clients get the default (portal) root.
+            path = "" if is_client else a.get("staff_path", "")
+            apps.append({**a, "url": f"https://{a['key']}.{PLATFORM_DOMAIN}{port}{path}"})
     return apps
 
 

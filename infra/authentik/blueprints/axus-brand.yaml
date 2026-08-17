@@ -1,0 +1,17 @@
+# Authentik blueprint — Axus branding for the SSO/login experience so the
+# identity step reads as "Axus", not "authentik". Updates the default brand:
+# Axus logo + title on the login card, Axus favicon, and routes a bare visit to
+# id.hub straight into the Hub launcher. Auto-applied on startup / file change.
+version: 1
+metadata:
+  name: Axus brand
+entries:
+  - model: authentik_brands.brand
+    identifiers: {domain: authentik-default}
+    attrs:
+      branding_title: "Axus Hub"
+      branding_logo: "https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png"
+      branding_favicon: "https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png"
+      # A bare visit to id.hub lands the user in the Hub launcher (role-based tiles).
+      default_application:
+        !Find [authentik_core.application, [slug, axus-hub]]

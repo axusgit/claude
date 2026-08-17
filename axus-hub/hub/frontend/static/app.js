@@ -38,6 +38,8 @@
     const t = document.createElement("a");
     t.className = "app-tile";
     t.href = a.url;
+    t.target = "_blank";           // launch each app in its own tab
+    t.rel = "noopener";
     t.innerHTML = `
       <span class="app-status ${health[a.key] || ""}" data-app="${a.key}"></span>
       <div class="app-icon">${a.icon}</div>
@@ -81,7 +83,7 @@
         `<div class="kpi"><div class="kpi-val ${k.tone || ""}">${k.value}</div><div class="kpi-label">${esc(k.label)}</div></div>`).join("");
       return `<div class="sys-panel">
         <div class="sys-head"><div class="sys-title"><span class="sys-icon">${s.icon}</span>${esc(s.name)}</div>
-          <a class="link" href="${s.url}">Open →</a></div>
+          <a class="link" href="${s.url}" target="_blank" rel="noopener">Open →</a></div>
         <div class="kpi-row">${kpis}</div>
         ${s.footnote ? `<div class="sys-foot muted">${esc(s.footnote)}</div>` : ""}</div>`;
     }).join("");
