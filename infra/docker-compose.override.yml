@@ -1,0 +1,8 @@
+# TEMPORARY — local test access only. Publishes Authentik's HTTP port on the
+# box's loopback so it can be reached through an SSH tunnel WITHOUT cutover
+# (no public exposure; 127.0.0.1 only). Remove this file before/at cutover:
+#   rm infra/docker-compose.override.yml && docker compose up -d
+services:
+  authentik-server:
+    ports:
+      - "127.0.0.1:9000:9000"
