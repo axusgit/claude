@@ -42,17 +42,21 @@ Traefik issues each subdomain's cert on first HTTPS hit (needs 80/443 open + DNS
 
 1. Browse to **https://id.hub.axustechnologies.com**. Finish initial setup / sign
    in as `akadmin` (password = `AUTHENTIK_BOOTSTRAP_PASSWORD`).
-2. The blueprint auto-creates the groups (`app-*`, `role-*`). Verify under
-   *Directory → Groups*.
-3. For **each app** (start with Hub + Support): *Applications → Create* with a
-   **Proxy Provider** in **forward-auth (single application)** mode, external host
-   = the app's URL. Bind the **embedded outpost** (*Applications → Outposts →
-   authentik Embedded Outpost → add the applications*).
-4. Add a **policy binding** on each application requiring its `app-*` group (this
-   is the access gate Traefik enforces).
-5. Create your real users (or migrate), assign `role-admin` + the `app-*` groups
+2. **Blueprints do the rest automatically** (from `infra/authentik/blueprints/`):
+   - `axus-groups.yaml` → the `app-*` and `role-*` groups (*Directory → Groups*).
+   - `axus-apps.yaml` → the **Proxy Providers** (forward-auth single-application),
+     the **Applications**, their binding to the **embedded outpost**, and the
+     **access policies** (Support & Accounting require their `app-*` group; the
+     Hub launcher is open to any authenticated user).
+   Verify under *System → Blueprints* that both applied without error, then spot
+   check *Applications → Providers/Applications/Outposts*. The apps' external
+   hosts come from `PLATFORM_DOMAIN`; blueprints re-apply on every restart, so
+   editing the YAML + `docker compose restart authentik-worker` is the way to
+   change them (manual UI edits get reverted).
+3. Create your real users (or migrate), assign `role-admin` + the `app-*` groups
    they need. For Support *client portal* users: add `role-client`, `app-support`,
-   and a `client_id` property mapping → header `X-Axus-Client-Id`.
+   and a `client_id` property mapping → header `X-Axus-Client-Id` (still manual —
+   this is the one advanced case the blueprint does not cover yet).
 
 ## 3. Migrate Support data (from the legacy Postgres)
 

@@ -1,0 +1,131 @@
+# Authentik blueprint — auto-applied on startup. Wires each platform app into
+# Authentik as a forward-auth Proxy Provider + Application, binds them to the
+# embedded outpost (the callback Traefik forwards to), and gates access by the
+# `app-*` entitlement groups from axus-groups.yaml.
+#
+# This replaces the manual "Applications → Create / Outposts / policy binding"
+# clicking that DEPLOY.md step 2 used to require. Apps trust the headers this
+# forward-auth injects (X-authentik-email/username/name/groups — see libs/auth).
+#
+# External hosts are built from ${PLATFORM_DOMAIN} at apply time.
+version: 1
+metadata:
+  name: Axus platform apps (providers + applications + outpost)
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+context:
+  # Overridable, but defaults to the production platform domain.
+  domain: !Env [PLATFORM_DOMAIN, hub.axustechnologies.com]
+entries:
+  # ---------------------------------------------------------------------------
+  # Proxy Providers (forward-auth, single application). Each sits in front of one
+  # app host; the embedded outpost enforces it and injects identity headers.
+  # ---------------------------------------------------------------------------
+  - id: provider-hub
+    model: authentik_providers_proxy.proxyprovider
+    identifiers: {name: axus-hub}
+    attrs:
+      name: axus-hub
+      mode: forward_single
+      external_host: !Format ["https://%s", !Context domain]
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+
+  - id: provider-support
+    model: authentik_providers_proxy.proxyprovider
+    identifiers: {name: axus-support}
+    attrs:
+      name: axus-support
+      mode: forward_single
+      external_host: !Format ["https://support.%s", !Context domain]
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+
+  - id: provider-accounting
+    model: authentik_providers_proxy.proxyprovider
+    identifiers: {name: axus-accounting}
+    attrs:
+      name: axus-accounting
+      mode: forward_single
+      external_host: !Format ["https://accounting.%s", !Context domain]
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+
+  # ---------------------------------------------------------------------------
+  # Applications (what shows in the user's Authentik library / launcher).
+  # ---------------------------------------------------------------------------
+  - id: app-hub-application
+    model: authentik_core.application
+    identifiers: {slug: axus-hub}
+    attrs:
+      name: Axus Hub
+      slug: axus-hub
+      provider: !KeyOf provider-hub
+      meta_launch_url: !Format ["https://%s", !Context domain]
+      meta_description: Central platform dashboard and app launcher.
+      meta_publisher: Axus Technologies
+      policy_engine_mode: any
+
+  - id: app-support-application
+    model: authentik_core.application
+    identifiers: {slug: axus-support}
+    attrs:
+      name: Axus Support
+      slug: axus-support
+      provider: !KeyOf provider-support
+      meta_launch_url: !Format ["https://support.%s", !Context domain]
+      meta_description: Support desk, ticketing, and customer portal.
+      meta_publisher: Axus Technologies
+      policy_engine_mode: any
+
+  - id: app-accounting-application
+    model: authentik_core.application
+    identifiers: {slug: axus-accounting}
+    attrs:
+      name: Axus Accounting
+      slug: axus-accounting
+      provider: !KeyOf provider-accounting
+      meta_launch_url: !Format ["https://accounting.%s", !Context domain]
+      meta_description: Billing and invoicing (internal).
+      meta_publisher: Axus Technologies
+      policy_engine_mode: any
+
+  # ---------------------------------------------------------------------------
+  # Bind all three providers to the built-in embedded outpost. Traefik's
+  # forward-auth middleware forwards to this outpost on every app host.
+  # ---------------------------------------------------------------------------
+  - model: authentik_outposts.outpost
+    identifiers: {managed: goauthentik.io/outposts/embedded}
+    attrs:
+      providers:
+        - !KeyOf provider-hub
+        - !KeyOf provider-support
+        - !KeyOf provider-accounting
+
+  # ---------------------------------------------------------------------------
+  # Access gates. Binding a group directly to an application means only members
+  # of that group pass the outpost. The Hub itself is intentionally left open to
+  # ANY authenticated user — it is the front door / launcher; per-app buttons are
+  # what's gated. Support & Accounting require their app-* entitlement group.
+  # ---------------------------------------------------------------------------
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf app-support-application
+      group: !Find [authentik_core.group, [name, app-support]]
+      order: 0
+    attrs:
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf app-accounting-application
+      group: !Find [authentik_core.group, [name, app-accounting]]
+      order: 0
+    attrs:
+      enabled: true

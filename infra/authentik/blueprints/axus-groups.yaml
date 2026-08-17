@@ -6,6 +6,11 @@ metadata:
   name: Axus platform groups
 entries:
   # --- application entitlements (gate access per app) ---
+  # app-hub is not an access gate (the Hub launcher is open to any authenticated
+  # user); it exists so admins can tag "platform users" and to mirror dev defaults.
+  - model: authentik_core.group
+    identifiers: {name: app-hub}
+    attrs: {name: app-hub}
   - model: authentik_core.group
     identifiers: {name: app-support}
     attrs: {name: app-support}
