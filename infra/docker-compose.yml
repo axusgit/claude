@@ -17,11 +17,14 @@ x-authentik-env: &authentik-env
 
 services:
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3.3
     restart: unless-stopped
     command: --configFile=/etc/traefik/traefik.yml
     environment:
       TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL: ${ACME_EMAIL}
+      # Docker Engine 29.x rejects the SDK's default (old) API version; pin a
+      # modern one so Traefik's docker provider can read container labels.
+      DOCKER_API_VERSION: "1.44"
     ports:
       - "80:80"
       - "443:443"
@@ -124,7 +127,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.http.routers.hub.rule: Host(`${PLATFORM_DOMAIN}`)
-      traefik.http.routers.hub.entrypoints: internal       # 8443, IP-restricted
+      traefik.http.routers.hub.entrypoints: websecure      # public 443, gated by Authentik login
       traefik.http.routers.hub.tls.certresolver: letsencrypt
       traefik.http.routers.hub.middlewares: geogate@file,authentik@file
       traefik.http.services.hub.loadbalancer.server.port: "8000"
