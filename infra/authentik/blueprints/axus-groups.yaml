@@ -21,6 +21,9 @@ entries:
     identifiers: {name: app-accounting}
     attrs: {name: app-accounting}
   - model: authentik_core.group
+    identifiers: {name: app-insights}
+    attrs: {name: app-insights}
+  - model: authentik_core.group
     identifiers: {name: app-engineering}
     attrs: {name: app-engineering}
   # --- roles (mapped to in-app role by libs/auth) ---
