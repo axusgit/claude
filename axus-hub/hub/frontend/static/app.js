@@ -5,7 +5,7 @@
   const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const initials = n => (n || "?").split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
-  const TITLES = { dashboard: "Dashboard", apps: "Applications", monitoring: "Monitoring", reports: "Reports", admin: "Administration" };
+  const TITLES = { dashboard: "Dashboard", apps: "Products", monitoring: "Monitoring", reports: "Reports", admin: "Administration" };
   let me = null, health = {};
 
   function applyTheme(t) {
@@ -55,7 +55,7 @@
     $("avatar").textContent = initials(me.name);
     $("account-link").href = me.account_url || "#";
     $("hero-title").textContent = `Welcome back, ${me.name.split(" ")[0]}`;
-    $("hero-sub").textContent = `You have access to ${me.apps.length} application${me.apps.length === 1 ? "" : "s"}.`;
+    $("hero-sub").textContent = `You have access to ${me.apps.length} product${me.apps.length === 1 ? "" : "s"}.`;
     document.querySelectorAll(".admin-only").forEach(el => { el.style.display = me.is_admin ? "" : "none"; });
   }
 
@@ -63,7 +63,7 @@
     $("dash-health").innerHTML = me.apps.map(a => `
       <div class="health-row"><span class="health-dot ${health[a.key] || ""}" data-health="${a.key}"></span>
         <span>${esc(a.name)}</span><span class="health-state" data-state="${a.key}">${health[a.key] || "checking…"}</span></div>`).join("")
-      || `<div class="muted">No applications.</div>`;
+      || `<div class="muted">No products.</div>`;
     try {
       const d = await api("/api/dashboard");
       renderCommandCenter(d.systems);
@@ -104,7 +104,7 @@
       return `<tr><td>${esc(a.name)}</td>
         <td><span class="pill ${s}" data-mon="${a.key}">${s || "checking…"}</span></td>
         <td class="muted">${esc(a.url)}</td></tr>`;
-    }).join("") || `<tr><td colspan="3" class="muted">No applications.</td></tr>`;
+    }).join("") || `<tr><td colspan="3" class="muted">No products.</td></tr>`;
   }
 
   function renderReports() {

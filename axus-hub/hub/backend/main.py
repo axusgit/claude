@@ -27,6 +27,7 @@ INTERNAL_PORT = os.getenv("INTERNAL_PORT", "8443")
 # (served on :8443); non-internal apps are client-facing (:443).
 APP_CATALOG = [
     {"key": "support", "name": "Support", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False, "staff_path": "/staff"},
+    {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "url": "https://ain.axustechnologies.com"},
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
     {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
     {"key": "engineering", "name": "Engineering", "desc": "Projects, docs & dev-ops", "group": "app-engineering", "icon": "🛠️", "internal": True},
@@ -64,7 +65,10 @@ def _apps_for(identity: Identity):
             # desk at /staff vs the customer portal at /). Staff/admins get the
             # staff path; clients get the default (portal) root.
             path = "" if is_client else a.get("staff_path", "")
-            apps.append({**a, "url": f"https://{a['key']}.{PLATFORM_DOMAIN}{port}{path}"})
+            # Apps hosted outside *.hub (e.g. Insights at ain.axustechnologies.com)
+            # can pin an explicit URL; others are derived from the key + domain.
+            url = a.get("url") or f"https://{a['key']}.{PLATFORM_DOMAIN}{port}{path}"
+            apps.append({**a, "url": url})
     return apps
 
 
