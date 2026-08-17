@@ -38,3 +38,9 @@ api:
 
 log:
   level: INFO
+
+accessLog:
+  format: json
+  fields:
+    headers:
+      defaultMode: drop
