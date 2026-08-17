@@ -27,7 +27,7 @@ INTERNAL_PORT = os.getenv("INTERNAL_PORT", "8443")
 # (served on :8443); non-internal apps are client-facing (:443).
 APP_CATALOG = [
     {"key": "support", "name": "Support", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False, "staff_path": "/staff"},
-    {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "url": "https://ain.axustechnologies.com"},
+    {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "url": "https://ain.axustechnologies.com/auth?sso=1"},
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
     {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
     {"key": "engineering", "name": "Engineering", "desc": "Projects, docs & dev-ops", "group": "app-engineering", "icon": "🛠️", "internal": True},
