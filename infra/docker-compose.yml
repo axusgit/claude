@@ -71,8 +71,8 @@ services:
     command: server
     environment:
       <<: *authentik-env
-      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD}
-      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL}
+      # akadmin removed 2026-08-17 in favor of admin@axustechnologies.com;
+      # bootstrap creds intentionally omitted so akadmin is not recreated.
     volumes:
       - authentik_media:/media
       - authentik_templates:/templates
