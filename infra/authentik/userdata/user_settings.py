@@ -14,3 +14,12 @@ PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.ScryptPasswordHasher",
     "django.contrib.auth.hashers.BCryptPasswordHasher",
 ]
+
+# --- Group-assigning invitations --------------------------------------------
+# An invitation carries the desired groups in its fixed_data as
+# attributes.invite_groups (user_write merges an "attributes" dict, so the list
+# lands on the new user). A post_save signal registered here does NOT fire in
+# the server's request-handling process during enrollment, so group assignment
+# is done instead by a lightweight reconciliation job (authentik/reconcile-
+# invite-groups.sh, cron every minute) that reads attributes.invite_groups,
+# assigns the matching groups, and clears the marker. See axus-insights-hub-sso.
