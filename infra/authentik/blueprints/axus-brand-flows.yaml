@@ -1,0 +1,18 @@
+# De-brand the built-in flow titles so the login pages never expose the
+# underlying "authentik" tech. Applied on top of the default flows.
+version: 1
+metadata:
+  name: Axus flow titles
+entries:
+  - model: authentik_flows.flow
+    identifiers: {slug: default-authentication-flow}
+    attrs: {title: "Welcome to Axus"}
+  - model: authentik_flows.flow
+    identifiers: {slug: default-source-authentication}
+    attrs: {title: "Welcome to Axus"}
+  - model: authentik_flows.flow
+    identifiers: {slug: initial-setup}
+    attrs: {title: "Welcome to Axus"}
+  - model: authentik_flows.flow
+    identifiers: {slug: default-source-enrollment}
+    attrs: {title: "Welcome to Axus — please choose a username."}

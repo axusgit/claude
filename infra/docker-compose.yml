@@ -78,6 +78,7 @@ services:
       - authentik_templates:/templates
       - ./authentik/blueprints:/blueprints/axus:ro
       - ./authentik/userdata:/data:ro          # user_settings.py (bcrypt hasher override)
+      - ./authentik/custom.css:/web/dist/custom.css:ro   # Axus login CSS (center + hide "powered by")
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
