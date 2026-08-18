@@ -56,28 +56,61 @@ img.pf-c-background-image,
   max-height: 92vh !important;
   overflow-y: auto !important;
   margin: 0 !important;
-  padding: 1.5rem 1.75rem !important;
+  padding: 1.25rem 1.75rem !important;
   background: #2b2f37 !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: 14px !important;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45) !important;
   backdrop-filter: none !important;
 }
+
+/* Shrink-wrap every inner wrapper so the card is only as tall as its content. */
+.pf-c-login__main,
+.pf-c-login__main-header,
+.pf-c-login__main-body,
+.pf-c-login__main-body > *,
+.ak-flow-card,
+ak-flow-executor,
+form.pf-c-form,
+.pf-c-form {
+  min-height: 0 !important;
+  height: auto !important;
+  flex: 0 0 auto !important;
+}
 .pf-c-login__main-header,
 .pf-c-login__main-body {
   padding: 0 !important;
+  margin: 0 !important;
   background: transparent !important;
 }
-/* Trim vertical height: smaller logo + tighter header spacing. */
+
+/* Smaller logo + tight header. */
 .pf-c-brand,
 ak-brand {
-  margin-bottom: 0.25rem !important;
+  margin: 0 0 0.5rem 0 !important;
+  padding: 0 !important;
 }
 .pf-c-brand img,
 ak-brand img,
 .pf-c-login__main-header img {
-  max-height: 48px !important;
+  max-height: 40px !important;
   width: auto !important;
+}
+
+/* Tight form spacing so the button sits right under the field. */
+.pf-c-form__group,
+.pf-c-form__group--action {
+  margin-top: 0.65rem !important;
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+}
+.pf-c-form {
+  --pf-c-form--GridGap: 0.65rem !important;
+}
+/* Trim the heading/subtitle block. */
+.pf-c-login__main-header h1,
+.pf-c-title {
+  margin: 0 0 0.25rem 0 !important;
 }
 
 /* Cleaner, modern input: bordered + tight radius. */
