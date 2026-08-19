@@ -42,11 +42,12 @@ export interface EnvelopeDetail {
   events: { actor: string; type: string; detail: string | null; ip?: string | null; at: string }[];
 }
 
-async function req<T>(path: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...opts,
-  });
+async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  // Only set a JSON content-type when there's actually a body — otherwise Fastify
+  // rejects the empty body ("Body cannot be empty when content-type is json").
+  const headers: Record<string, string> = { ...(opts.headers as Record<string, string> | undefined) };
+  if (opts.body != null) headers["Content-Type"] = "application/json";
+  const res = await fetch(`/api${path}`, { ...opts, headers });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error || `HTTP ${res.status}`);
@@ -112,6 +113,11 @@ export const contactsApi = {
       (r) => r.contact,
     ),
   remove: (id: string) => req<{ ok: boolean }>(`/contacts/${id}`, { method: "DELETE" }),
+  import: (contacts: { name: string; email: string; company?: string }[]) =>
+    req<{ imported: number; skipped: number }>("/contacts/import", {
+      method: "POST",
+      body: JSON.stringify({ contacts }),
+    }),
 };
 
 // --- Public signer API (token-based, no auth) ---

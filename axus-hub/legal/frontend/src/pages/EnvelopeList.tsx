@@ -40,8 +40,12 @@ export function EnvelopeList() {
       )
     )
       return;
-    await api.deleteEnvelope(docId);
-    await load();
+    try {
+      await api.deleteEnvelope(docId);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    }
   }
 
   return (

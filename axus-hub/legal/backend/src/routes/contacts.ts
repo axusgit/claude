@@ -36,4 +36,33 @@ export async function contactRoutes(app: FastifyInstance) {
     await pool.query(`delete from contact where id = $1`, [(req.params as { id: string }).id]);
     return { ok: true };
   });
+
+  // Bulk import (e.g. from a QuickBooks customer export). The frontend parses the
+  // CSV and sends {contacts:[{name,email,company}]}; we upsert each by email.
+  app.post("/import", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const b = (req.body ?? {}) as { contacts?: { name?: string; email?: string; company?: string }[] };
+    const list = b.contacts ?? [];
+    const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    let imported = 0;
+    let skipped = 0;
+    for (const c of list) {
+      const email = (c.email ?? "").trim();
+      const name = (c.name ?? "").trim();
+      if (!email || !emailRe.test(email)) {
+        skipped++;
+        continue;
+      }
+      await pool.query(
+        `insert into contact (name, email, company, created_by) values ($1, $2, $3, $4)
+         on conflict (lower(email)) do update
+           set name = excluded.name,
+               company = coalesce(excluded.company, contact.company)`,
+        [name || email, email, (c.company ?? "").trim() || null, id.email],
+      );
+      imported++;
+    }
+    return { imported, skipped };
+  });
 }
