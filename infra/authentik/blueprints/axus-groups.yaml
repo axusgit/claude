@@ -26,6 +26,19 @@ entries:
   - model: authentik_core.group
     identifiers: {name: app-engineering}
     attrs: {name: app-engineering}
+  - model: authentik_core.group
+    identifiers: {name: app-legal}
+    attrs: {name: app-legal}
+  # --- Legal app roles (app-scoped, like ain-role-*; read by the Legal app) ---
+  - model: authentik_core.group
+    identifiers: {name: legal-role-admin}
+    attrs: {name: legal-role-admin}
+  - model: authentik_core.group
+    identifiers: {name: legal-role-manager}
+    attrs: {name: legal-role-manager}
+  - model: authentik_core.group
+    identifiers: {name: legal-role-member}
+    attrs: {name: legal-role-member}
   # --- roles (mapped to in-app role by libs/auth) ---
   - model: authentik_core.group
     identifiers: {name: role-admin}

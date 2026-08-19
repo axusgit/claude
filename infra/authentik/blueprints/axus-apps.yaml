@@ -57,6 +57,20 @@ entries:
       invalidation_flow:
         !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
 
+  # Axus Legal lives on its own apex subdomain (legal.axustechnologies.com),
+  # not under the hub.* domain — so its external_host is a literal.
+  - id: provider-legal
+    model: authentik_providers_proxy.proxyprovider
+    identifiers: {name: axus-legal}
+    attrs:
+      name: axus-legal
+      mode: forward_single
+      external_host: https://legal.axustechnologies.com
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+
   # ---------------------------------------------------------------------------
   # Applications (what shows in the user's Authentik library / launcher).
   # ---------------------------------------------------------------------------
@@ -96,6 +110,18 @@ entries:
       meta_publisher: Axus Technologies
       policy_engine_mode: any
 
+  - id: app-legal-application
+    model: authentik_core.application
+    identifiers: {slug: axus-legal}
+    attrs:
+      name: Axus Legal
+      slug: axus-legal
+      provider: !KeyOf provider-legal
+      meta_launch_url: https://legal.axustechnologies.com
+      meta_description: Contracts, e-signatures (SOW/MSA), and quotes.
+      meta_publisher: Axus Technologies
+      policy_engine_mode: any
+
   # ---------------------------------------------------------------------------
   # Bind all three providers to the built-in embedded outpost. Traefik's
   # forward-auth middleware forwards to this outpost on every app host.
@@ -107,6 +133,7 @@ entries:
         - !KeyOf provider-hub
         - !KeyOf provider-support
         - !KeyOf provider-accounting
+        - !KeyOf provider-legal
 
   # ---------------------------------------------------------------------------
   # Access gates. Binding a group directly to an application means only members
@@ -126,6 +153,14 @@ entries:
     identifiers:
       target: !KeyOf app-accounting-application
       group: !Find [authentik_core.group, [name, app-accounting]]
+      order: 0
+    attrs:
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf app-legal-application
+      group: !Find [authentik_core.group, [name, app-legal]]
       order: 0
     attrs:
       enabled: true

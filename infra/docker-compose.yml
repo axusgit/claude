@@ -191,6 +191,42 @@ services:
       traefik.http.services.accounting.loadbalancer.server.port: "8000"
     networks: [axus]
 
+  legal:
+    build:
+      context: ..
+      dockerfile: axus-hub/legal/backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/legal
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
+      PUBLIC_BASE_URL: https://legal.axustechnologies.com
+      STORAGE_DIR: /data/legal
+      GOTENBERG_URL: http://gotenberg:3000
+      # Email (M365 relay) — reuses the platform's configured mailbox.
+      SMTP_HOST: ${AUTHENTIK_EMAIL__HOST}
+      SMTP_PORT: ${AUTHENTIK_EMAIL__PORT}
+      SMTP_USER: ${AUTHENTIK_EMAIL__USERNAME}
+      SMTP_PASS: ${AUTHENTIK_EMAIL__PASSWORD}
+      MAIL_FROM: ${AUTHENTIK_EMAIL__FROM}
+    volumes:
+      - legal_data:/data/legal
+    depends_on:
+      postgres: {condition: service_healthy}
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.legal.rule: Host(`legal.axustechnologies.com`)
+      traefik.http.routers.legal.entrypoints: websecure      # public 443, gated by Authentik login
+      traefik.http.routers.legal.tls.certresolver: letsencrypt
+      traefik.http.routers.legal.middlewares: geogate@file,authentik@file
+      traefik.http.services.legal.loadbalancer.server.port: "8000"
+    networks: [axus]
+
+  # Headless LibreOffice for Word->PDF conversion (internal only).
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    networks: [axus]
+
 networks:
   axus:
 
@@ -202,3 +238,4 @@ volumes:
   traefik_letsencrypt:
   hub_data:
   support_uploads:
+  legal_data:
