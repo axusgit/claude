@@ -49,7 +49,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const id = requireStaff(req, reply);
     if (!id) return;
     const { rows } = await pool.query(
-      `select id, title, status, created_by, created_at, sent_at, completed_at, pdf_file
+      `select id, title, status, created_by, created_at, sent_at, completed_at, pdf_file, doc_type, company
        from envelope order by created_at desc limit 200`,
     );
     return { envelopes: rows };
@@ -59,11 +59,13 @@ export async function envelopeRoutes(app: FastifyInstance) {
   app.post("/", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
-    const body = (req.body ?? {}) as { title?: string };
+    const body = (req.body ?? {}) as { title?: string; doc_type?: string; company?: string };
     const title = (body.title ?? "Untitled document").toString().trim().slice(0, 200) || "Untitled document";
+    const docType = body.doc_type?.trim() || null;
+    const company = body.company?.trim() || null;
     const { rows } = await pool.query(
-      `insert into envelope (title, created_by) values ($1, $2) returning *`,
-      [title, id.email],
+      `insert into envelope (title, created_by, doc_type, company) values ($1, $2, $3, $4) returning *`,
+      [title, id.email, docType, company],
     );
     await pool.query(
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`,
@@ -77,9 +79,15 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const id = requireStaff(req, reply);
     if (!id) return;
     const envId = (req.params as { id: string }).id;
-    const body = (req.body ?? {}) as { sequential?: boolean };
+    const body = (req.body ?? {}) as { sequential?: boolean; doc_type?: string; company?: string };
     if (typeof body.sequential === "boolean") {
       await pool.query(`update envelope set sequential = $1 where id = $2`, [body.sequential, envId]);
+    }
+    if (body.doc_type !== undefined) {
+      await pool.query(`update envelope set doc_type = $1 where id = $2`, [body.doc_type?.trim() || null, envId]);
+    }
+    if (body.company !== undefined) {
+      await pool.query(`update envelope set company = $1 where id = $2`, [body.company?.trim() || null, envId]);
     }
     const { rows } = await pool.query(`select * from envelope where id = $1`, [envId]);
     if (!rows.length) return reply.code(404).send({ error: "Not found" });

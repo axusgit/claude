@@ -18,6 +18,8 @@ create table if not exists envelope (
 );
 -- Added after initial release; ADD COLUMN IF NOT EXISTS keeps it idempotent.
 alter table envelope add column if not exists sequential boolean not null default false;
+alter table envelope add column if not exists doc_type text;   -- SOW | MSA | Quote
+alter table envelope add column if not exists company text;    -- associated company name
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),
@@ -71,4 +73,13 @@ create table if not exists contact (
   created_at timestamptz not null default now()
 );
 create unique index if not exists uq_contact_email on contact (lower(email));
+
+-- Companies (imported from QuickBooks) that documents are associated with.
+create table if not exists company (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,
+  created_by text,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists uq_company_name on company (lower(name));
 `;

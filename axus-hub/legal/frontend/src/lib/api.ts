@@ -9,6 +9,8 @@ export interface Envelope {
   source_file?: string | null;
   pdf_file?: string | null;
   sequential?: boolean;
+  doc_type?: string | null;
+  company?: string | null;
 }
 
 export interface Recipient {
@@ -20,7 +22,7 @@ export interface Recipient {
   status?: string;
 }
 
-export type FieldType = "signature" | "name" | "initials" | "date" | "text" | "checkbox";
+export type FieldType = "signature" | "name" | "title" | "initials" | "date" | "text";
 
 export interface Field {
   id?: string;
@@ -57,10 +59,10 @@ async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
 
 export const api = {
   listEnvelopes: () => req<{ envelopes: Envelope[] }>("/envelopes").then((r) => r.envelopes),
-  createEnvelope: (title: string) =>
+  createEnvelope: (data: { title: string; doc_type?: string; company?: string }) =>
     req<{ envelope: Envelope }>("/envelopes", {
       method: "POST",
-      body: JSON.stringify({ title }),
+      body: JSON.stringify(data),
     }).then((r) => r.envelope),
   getEnvelope: (id: string) => req<EnvelopeDetail>(`/envelopes/${id}`),
   uploadDocument: (id: string, file: File) => {
@@ -83,7 +85,7 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ fields }),
     }),
-  updateEnvelope: (id: string, patch: { sequential?: boolean }) =>
+  updateEnvelope: (id: string, patch: { sequential?: boolean; doc_type?: string; company?: string }) =>
     req<{ envelope: Envelope }>(`/envelopes/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -118,6 +120,20 @@ export const contactsApi = {
       method: "POST",
       body: JSON.stringify({ contacts }),
     }),
+};
+
+// --- Companies (associated with each document) ---
+export interface Company {
+  id: string;
+  name: string;
+}
+
+export const companiesApi = {
+  list: () => req<{ companies: Company[] }>("/companies").then((r) => r.companies),
+  add: (name: string) =>
+    req<{ company: Company }>("/companies", { method: "POST", body: JSON.stringify({ name }) }).then(
+      (r) => r.company,
+    ),
 };
 
 // --- Public signer API (token-based, no auth) ---

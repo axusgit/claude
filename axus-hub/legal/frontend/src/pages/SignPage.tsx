@@ -333,24 +333,21 @@ function FieldInput({
       </button>
     );
   }
-  if (field.type === "checkbox") {
-    return (
-      <input
-        type="checkbox"
-        className="absolute accent-[var(--color-brand)]"
-        style={style}
-        checked={value === "true"}
-        onChange={(e) => setValue(e.target.checked ? "true" : "false")}
-      />
-    );
-  }
   return (
     <input
       type="text"
       className="absolute rounded-sm border-[1.5px] border-brand bg-brand/5 px-1 leading-none outline-none focus:bg-white"
       style={{ ...style, fontSize }}
       value={value}
-      placeholder={field.type === "date" ? "Date" : field.type === "name" ? "Name" : "Text"}
+      placeholder={
+        field.type === "date"
+          ? "Date"
+          : field.type === "name"
+            ? "Name"
+            : field.type === "title"
+              ? "Title"
+              : "Text"
+      }
       onChange={(e) => setValue(e.target.value)}
     />
   );

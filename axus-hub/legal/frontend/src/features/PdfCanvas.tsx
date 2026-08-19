@@ -12,11 +12,11 @@ const TARGET_WIDTH = 820;
 // Fallback size (normalized) when a click lands somewhere with no text line.
 export const FIELD_DEFAULTS: Record<FieldType, { w: number; h: number; label: string }> = {
   signature: { w: 0.24, h: 0.03, label: "Signature" },
-  name: { w: 0.24, h: 0.026, label: "Name Lastname" },
+  name: { w: 0.24, h: 0.026, label: "Name" },
+  title: { w: 0.16, h: 0.026, label: "Title" },
   initials: { w: 0.1, h: 0.03, label: "Initials" },
   date: { w: 0.16, h: 0.026, label: "Date" },
   text: { w: 0.22, h: 0.026, label: "Text" },
-  checkbox: { w: 0.022, h: 0.018, label: "✓" },
 };
 
 // A text run from the PDF (a label like "Signature: ______", normalized coords).

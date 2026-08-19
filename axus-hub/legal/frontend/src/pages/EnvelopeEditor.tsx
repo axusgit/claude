@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  Briefcase,
   Calendar,
   Check,
-  CheckSquare,
   Download,
   History,
   PenLine,
@@ -21,6 +21,8 @@ import {
 import {
   api,
   contactsApi,
+  companiesApi,
+  type Company,
   type Contact,
   type EnvelopeDetail,
   type Field,
@@ -33,11 +35,11 @@ import { PdfCanvas } from "@/features/PdfCanvas";
 
 const TOOLS: { type: FieldType; label: string; icon: typeof PenLine }[] = [
   { type: "signature", label: "Signature", icon: PenLine },
-  { type: "name", label: "Name Lastname", icon: User },
+  { type: "name", label: "Name", icon: User },
+  { type: "title", label: "Title", icon: Briefcase },
   { type: "initials", label: "Initials", icon: Type },
   { type: "date", label: "Date", icon: Calendar },
   { type: "text", label: "Text", icon: Type },
-  { type: "checkbox", label: "Checkbox", icon: CheckSquare },
 ];
 
 const EVENT_LABELS: Record<string, string> = {
@@ -94,6 +96,9 @@ export function EnvelopeEditor() {
   const [activeTool, setActiveTool] = useState<FieldType | null>(null);
   const [activeRecipientId, setActiveRecipientId] = useState<string | null>(null);
   const [sequential, setSequential] = useState(false);
+  const [docType, setDocType] = useState("SOW");
+  const [company, setCompany] = useState("");
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,8 +110,14 @@ export function EnvelopeEditor() {
     setRecipients(d.recipients);
     setFields(d.fields);
     setSequential(!!d.envelope.sequential);
+    setDocType(d.envelope.doc_type ?? "SOW");
+    setCompany(d.envelope.company ?? "");
     setActiveRecipientId((prev) => prev ?? d.recipients[0]?.id ?? null);
   }, [id]);
+
+  useEffect(() => {
+    companiesApi.list().then(setCompanies).catch(() => {});
+  }, []);
 
   useEffect(() => {
     void load().catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
@@ -180,7 +191,7 @@ export function EnvelopeEditor() {
       const saved = await api.saveRecipients(id, recipients);
       setRecipients(saved);
       await api.saveFields(id, fields);
-      await api.updateEnvelope(id, { sequential });
+      await api.updateEnvelope(id, { sequential, doc_type: docType, company });
       setDirty(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -226,7 +237,15 @@ export function EnvelopeEditor() {
           </Link>
           <div>
             <h1 className="text-lg font-semibold">{detail.envelope.title}</h1>
-            <StatusBadge status={detail.envelope.status} />
+            <div className="mt-0.5 flex items-center gap-2">
+              <StatusBadge status={detail.envelope.status} />
+              {docType && (
+                <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+                  {docType}
+                </span>
+              )}
+              {company && <span className="text-xs text-muted">{company}</span>}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -279,6 +298,43 @@ export function EnvelopeEditor() {
         <div className="grid grid-cols-[280px_1fr] gap-4">
           {/* Sidebar */}
           <div className="space-y-4">
+            {detail.envelope.status === "draft" && (
+              <Card className="space-y-2.5 p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted">Details</div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">Type</label>
+                  <select
+                    value={docType}
+                    onChange={(e) => {
+                      setDocType(e.target.value);
+                      setDirty(true);
+                    }}
+                    className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+                  >
+                    <option value="SOW">SOW</option>
+                    <option value="MSA">MSA</option>
+                    <option value="Quote">Quote</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">Company</label>
+                  <Input
+                    list="editor-company-list"
+                    value={company}
+                    onChange={(e) => {
+                      setCompany(e.target.value);
+                      setDirty(true);
+                    }}
+                    placeholder="Company"
+                  />
+                  <datalist id="editor-company-list">
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.name} />
+                    ))}
+                  </datalist>
+                </div>
+              </Card>
+            )}
             <RecipientsPanel
               recipients={recipients}
               activeId={activeRecipientId}

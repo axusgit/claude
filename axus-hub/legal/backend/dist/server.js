@@ -6,6 +6,7 @@ import { migrate } from "./db.js";
 import { healthRoutes } from "./routes/health.js";
 import { envelopeRoutes } from "./routes/envelopes.js";
 import { contactRoutes } from "./routes/contacts.js";
+import { companyRoutes } from "./routes/companies.js";
 import { signRoutes } from "./routes/sign.js";
 import { registerStatic } from "./static.js";
 async function main() {
@@ -16,6 +17,7 @@ async function main() {
     await app.register(healthRoutes);
     await app.register(envelopeRoutes, { prefix: "/api/envelopes" });
     await app.register(contactRoutes, { prefix: "/api/contacts" });
+    await app.register(companyRoutes, { prefix: "/api/companies" });
     await app.register(signRoutes, { prefix: "/api/sign" });
     registerStatic(app, config.frontendDir);
     await migrate();

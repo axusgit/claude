@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, FileSignature, Plus, Trash2 } from "lucide-react";
-import { api, type Envelope } from "@/lib/api";
+import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
+
+const DOC_TYPES = ["SOW", "MSA", "Quote"];
 
 export function EnvelopeList() {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
@@ -10,6 +12,9 @@ export function EnvelopeList() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
+  const [docType, setDocType] = useState("SOW");
+  const [company, setCompany] = useState("");
+  const [companies, setCompanies] = useState<Company[]>([]);
   const nav = useNavigate();
 
   async function load() {
@@ -25,11 +30,16 @@ export function EnvelopeList() {
   }
   useEffect(() => {
     void load();
+    companiesApi.list().then(setCompanies).catch(() => {});
   }, []);
 
   async function create() {
-    if (!title.trim()) return;
-    const env = await api.createEnvelope(title.trim());
+    if (!title.trim() || !company.trim()) return;
+    const env = await api.createEnvelope({
+      title: title.trim(),
+      doc_type: docType,
+      company: company.trim(),
+    });
     nav(`/envelopes/${env.id}`);
   }
 
@@ -61,19 +71,52 @@ export function EnvelopeList() {
       </div>
 
       {creating && (
-        <Card className="p-4">
-          <div className="flex items-end gap-3">
-            <div className="flex-1 space-y-1.5">
+        <Card className="space-y-3 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
               <label className="text-sm font-medium">Document title</label>
               <Input
                 autoFocus
                 placeholder="e.g. BCOM Master Services Agreement"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void create()}
               />
             </div>
-            <Button onClick={() => void create()} disabled={!title.trim()}>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Type</label>
+              <select
+                value={docType}
+                onChange={(e) => setDocType(e.target.value)}
+                className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              >
+                {DOC_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid items-end gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Company</label>
+              <Input
+                list="company-list"
+                placeholder="Start typing a company…"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+              />
+              <datalist id="company-list">
+                {companies.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+              </datalist>
+            </div>
+            <Button
+              className="w-fit"
+              onClick={() => void create()}
+              disabled={!title.trim() || !company.trim()}
+            >
               Create &amp; open
             </Button>
           </div>
@@ -96,6 +139,8 @@ export function EnvelopeList() {
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-4 py-3 font-medium">Title</th>
+                <th className="px-4 py-3 font-medium">Type</th>
+                <th className="px-4 py-3 font-medium">Company</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Created</th>
                 <th className="px-4 py-3 font-medium"></th>
@@ -109,6 +154,16 @@ export function EnvelopeList() {
                   onClick={() => nav(`/envelopes/${e.id}`)}
                 >
                   <td className="px-4 py-3 font-medium">{e.title}</td>
+                  <td className="px-4 py-3">
+                    {e.doc_type ? (
+                      <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+                        {e.doc_type}
+                      </span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-muted">{e.company ?? "—"}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={e.status} />
                   </td>
