@@ -108,8 +108,14 @@ html = (
 
 msg = EmailMultiAlternatives(subject, text, settings.DEFAULT_FROM_EMAIL, [email])
 msg.attach_alternative(html, "text/html")
-sent = msg.send()
-print("SENT" if sent else "NOT SENT", "->", email, "| groups:", ", ".join(groups))
+try:
+    sent = msg.send()
+    print("SENT" if sent else "NOT SENT", "->", email, "| groups:", ", ".join(groups))
+except Exception as exc:
+    # Invite already exists in Authentik; email just didn't go out (bad address,
+    # SMTP hiccup). Don't crash — surface the link so it can be shared manually.
+    print("EMAIL NOT SENT (" + str(exc) + ")")
+    print("The invitation was created — share this link manually:")
 print("URL=" + url)
 PY
 )
@@ -118,4 +124,4 @@ B64=$(printf '%s' "$PYCODE" | base64 -w0)
 docker compose exec \
   -e INVITE_EMAIL="$EMAIL" -e INVITE_NAME="$NAME" -e INVITE_ROLE="$ROLE" -e INVITE_ORG="$ORG" -e B64PY="$B64" \
   -T authentik-server ak shell -c \
-  'import base64, os; exec(base64.b64decode(os.environ["B64PY"]).decode())'
+  'import base64, os; exec(base64.b64decode(os.environ["B64PY"]).decode())' 2>/dev/null
