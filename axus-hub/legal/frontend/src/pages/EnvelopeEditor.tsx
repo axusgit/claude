@@ -3,16 +3,20 @@ import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
+  Check,
   CheckSquare,
   Download,
   History,
   PenLine,
+  Pencil,
   Plus,
   Send,
+  Trash2,
   Type,
   Upload,
   User,
   UserPlus,
+  X,
 } from "lucide-react";
 import {
   api,
@@ -126,6 +130,17 @@ export function EnvelopeEditor() {
     };
     setRecipients((r) => [...r, rec]);
     setActiveRecipientId(rec.id!);
+    setDirty(true);
+  }
+  function updateRecipient(rid: string, patch: Partial<Recipient>) {
+    setRecipients((rs) => rs.map((r) => (r.id === rid ? { ...r, ...patch } : r)));
+    setDirty(true);
+  }
+  function removeRecipient(rid: string) {
+    const remaining = recipients.filter((r) => r.id !== rid);
+    setRecipients(remaining);
+    setFields((fs) => fs.filter((f) => f.recipient_id !== rid)); // drop their fields too
+    if (activeRecipientId === rid) setActiveRecipientId(remaining[0]?.id ?? null);
     setDirty(true);
   }
 
@@ -269,6 +284,8 @@ export function EnvelopeEditor() {
               activeId={activeRecipientId}
               onSelect={setActiveRecipientId}
               onAdd={addRecipient}
+              onUpdate={updateRecipient}
+              onRemove={removeRecipient}
               sequential={sequential}
               onToggleSequential={(v) => {
                 setSequential(v);
@@ -307,7 +324,7 @@ export function EnvelopeEditor() {
                 )}
                 {activeTool && (
                   <p className="mt-2 text-[11px] text-muted">
-                    Draw a box (or click) on the document to place a{" "}
+                    Click on the blank after a label (e.g. “Signature:”) to place a{" "}
                     <span className="font-medium">{activeTool}</span> field for{" "}
                     <span className="font-medium">{labelFor(activeRecipientId)}</span>.
                   </p>
@@ -347,6 +364,8 @@ function RecipientsPanel({
   activeId,
   onSelect,
   onAdd,
+  onUpdate,
+  onRemove,
   sequential,
   onToggleSequential,
 }: {
@@ -354,12 +373,29 @@ function RecipientsPanel({
   activeId: string | null;
   onSelect: (id: string) => void;
   onAdd: (name: string, email: string) => void;
+  onUpdate: (id: string, patch: Partial<Recipient>) => void;
+  onRemove: (id: string) => void;
   sequential: boolean;
   onToggleSequential: (v: boolean) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+
+  function startEdit(r: Recipient) {
+    setEditingId(r.id!);
+    setEditName(r.name);
+    setEditEmail(r.email);
+    setAdding(false);
+  }
+  function saveEdit(r: Recipient) {
+    if (!editName.trim() || !editEmail.trim()) return;
+    onUpdate(r.id!, { name: editName.trim(), email: editEmail.trim() });
+    setEditingId(null);
+  }
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [saveContact, setSaveContact] = useState(false);
 
@@ -397,36 +433,91 @@ function RecipientsPanel({
   return (
     <Card className="p-3">
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted">Recipients</div>
-        <button className="text-muted hover:text-brand" onClick={() => setAdding((v) => !v)}>
-          <UserPlus className="h-4 w-4" />
-        </button>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Recipients <span className="normal-case text-muted/70">({recipients.length}/2)</span>
+        </div>
+        {recipients.length < 2 && (
+          <button className="text-muted hover:text-brand" onClick={() => setAdding((v) => !v)}>
+            <UserPlus className="h-4 w-4" />
+          </button>
+        )}
       </div>
       <div className="space-y-1.5">
-        {recipients.map((r, i) => (
-          <button
-            key={r.id}
-            onClick={() => onSelect(r.id!)}
-            className={
-              "flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition-colors " +
-              (activeId === r.id ? "border-brand bg-brand/5" : "border-line hover:bg-canvas")
-            }
-          >
-            <span
-              className="h-3 w-3 shrink-0 rounded-full"
-              style={{ background: recipientColor(i) }}
-            />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium">{r.name}</span>
-              <span className="block truncate text-xs text-muted">{r.email}</span>
-            </span>
-          </button>
-        ))}
+        {recipients.map((r, i) =>
+          editingId === r.id ? (
+            <div key={r.id} className="space-y-2 rounded-lg border border-brand/40 p-2">
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Full name"
+              />
+              <Input
+                value={editEmail}
+                type="email"
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="email@company.com"
+              />
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  onClick={() => saveEdit(r)}
+                  disabled={!editName.trim() || !editEmail.trim()}
+                >
+                  <Check className="h-3.5 w-3.5" /> Save
+                </Button>
+                <Button variant="ghost" onClick={() => setEditingId(null)}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div
+              key={r.id}
+              className={
+                "group flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors " +
+                (activeId === r.id ? "border-brand bg-brand/5" : "border-line hover:bg-canvas")
+              }
+            >
+              <button
+                onClick={() => onSelect(r.id!)}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              >
+                <span
+                  className="h-3 w-3 shrink-0 rounded-full"
+                  style={{ background: recipientColor(i) }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{r.name}</span>
+                  <span className="block truncate text-xs text-muted">{r.email}</span>
+                </span>
+              </button>
+              <div className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                <button
+                  onClick={() => startEdit(r)}
+                  className="text-muted hover:text-brand"
+                  title="Edit recipient"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Remove ${r.name}?`)) onRemove(r.id!);
+                  }}
+                  className="text-muted hover:text-red-600"
+                  title="Remove recipient"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ),
+        )}
         {recipients.length === 0 && !adding && (
           <p className="py-1 text-xs text-muted">No recipients yet.</p>
         )}
       </div>
-      {adding ? (
+      {recipients.length < 2 &&
+        (adding ? (
         <div className="mt-2 space-y-2">
           {contacts.length > 0 && (
             <select
@@ -468,7 +559,7 @@ function RecipientsPanel({
         >
           <Plus className="h-3.5 w-3.5" /> Add recipient
         </button>
-      )}
+      ))}
       {recipients.length >= 2 && (
         <label className="mt-3 flex items-start gap-2 border-t border-line pt-3 text-xs text-muted">
           <input

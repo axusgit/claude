@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Trash2, Upload, Users } from "lucide-react";
+import { FileDown, Plus, Trash2, Upload, Users } from "lucide-react";
 import { contactsApi, type Contact } from "@/lib/api";
 import { Button, Card, Input } from "@/components/ui";
 
@@ -129,6 +129,19 @@ export function ContactsPage() {
     await load();
   }
 
+  function downloadTemplate() {
+    const csv =
+      "Full name,Email,Company\n" +
+      "Jane Doe,jane.doe@example.com,Example Inc\n" +
+      "John Smith,john.smith@example.com,\n";
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "axus-legal-contacts-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -164,7 +177,7 @@ export function ContactsPage() {
             Save people you send documents to, so you can pick them instead of retyping.
           </p>
         </div>
-        <div>
+        <div className="flex items-center gap-2">
           <input
             ref={fileRef}
             type="file"
@@ -172,6 +185,9 @@ export function ContactsPage() {
             className="hidden"
             onChange={onImportFile}
           />
+          <Button variant="ghost" onClick={downloadTemplate} title="Download a CSV template">
+            <FileDown className="h-4 w-4" /> Template
+          </Button>
           <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importing}>
             <Upload className="h-4 w-4" /> {importing ? "Importing…" : "Import CSV"}
           </Button>

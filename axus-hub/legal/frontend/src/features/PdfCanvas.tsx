@@ -9,57 +9,46 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const TARGET_WIDTH = 820;
 
-// Default size (normalized) when a field is click-dropped rather than drawn.
-// Heights are deliberately thin so a field sits on a line without covering the
-// lines above/below; drawing a box overrides these.
+// Fallback size (normalized) when a click lands somewhere with no text line.
 export const FIELD_DEFAULTS: Record<FieldType, { w: number; h: number; label: string }> = {
-  signature: { w: 0.24, h: 0.045, label: "Signature" },
-  name: { w: 0.24, h: 0.025, label: "Name Lastname" },
-  initials: { w: 0.1, h: 0.04, label: "Initials" },
-  date: { w: 0.16, h: 0.023, label: "Date" },
-  text: { w: 0.22, h: 0.023, label: "Text" },
-  checkbox: { w: 0.022, h: 0.016, label: "✓" },
+  signature: { w: 0.24, h: 0.03, label: "Signature" },
+  name: { w: 0.24, h: 0.026, label: "Name Lastname" },
+  initials: { w: 0.1, h: 0.03, label: "Initials" },
+  date: { w: 0.16, h: 0.026, label: "Date" },
+  text: { w: 0.22, h: 0.026, label: "Text" },
+  checkbox: { w: 0.022, h: 0.018, label: "✓" },
 };
 
-interface TextLine {
+// A text run from the PDF (a label like "Signature: ______", normalized coords).
+interface Run {
   x0: number;
   x1: number;
   baseline: number;
   height: number;
+  str: string;
 }
 
-// Extract text lines (normalized coords) so fields can snap to line length +
-// anchor to the line they're dropped on.
-function computeLines(
+function computeRuns(
   tc: { items: unknown[] },
   viewport: { transform: number[]; width: number; height: number; scale: number },
-): TextLine[] {
-  const raws: { x: number; y: number; w: number; h: number }[] = [];
+): Run[] {
+  const W = viewport.width;
+  const H = viewport.height;
+  const runs: Run[] = [];
   for (const raw of tc.items) {
     const it = raw as { str?: string; transform?: number[]; width?: number; height?: number };
     if (!it.str || !it.str.trim() || !it.transform) continue;
     const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
     const h = Math.hypot(t[2], t[3]) || (it.height ?? 0) * viewport.scale;
-    raws.push({ x: t[4], y: t[5], w: (it.width ?? 0) * viewport.scale, h });
+    runs.push({
+      x0: t[4] / W,
+      x1: (t[4] + (it.width ?? 0) * viewport.scale) / W,
+      baseline: t[5] / H,
+      height: h / H,
+      str: it.str,
+    });
   }
-  raws.sort((a, b) => a.y - b.y);
-  const lines: { x0: number; x1: number; baseline: number; height: number }[] = [];
-  for (const r of raws) {
-    const found = lines.find((l) => Math.abs(l.baseline - r.y) < Math.max(l.height, r.h) * 0.6);
-    if (found) {
-      found.x0 = Math.min(found.x0, r.x);
-      found.x1 = Math.max(found.x1, r.x + r.w);
-      found.height = Math.max(found.height, r.h);
-    } else {
-      lines.push({ x0: r.x, x1: r.x + r.w, baseline: r.y, height: r.h });
-    }
-  }
-  return lines.map((l) => ({
-    x0: l.x0 / viewport.width,
-    x1: l.x1 / viewport.width,
-    baseline: l.baseline / viewport.height,
-    height: l.height / viewport.height,
-  }));
+  return runs;
 }
 
 interface PdfCanvasProps {
@@ -114,13 +103,6 @@ export function PdfCanvas(props: PdfCanvasProps) {
   );
 }
 
-interface Rect {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-}
-
 function PdfPage({
   doc,
   pageNumber,
@@ -136,9 +118,7 @@ function PdfPage({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [lines, setLines] = useState<TextLine[]>([]);
-  const [draw, setDraw] = useState<Rect | null>(null);
-  const drawing = useRef(false);
+  const [runs, setRuns] = useState<Run[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,7 +143,7 @@ function PdfPage({
       }
       try {
         const tc = await page.getTextContent();
-        if (!cancelled) setLines(computeLines(tc, viewport));
+        if (!cancelled) setRuns(computeRuns(tc, viewport));
       } catch {
         /* no text layer */
       }
@@ -178,87 +158,57 @@ function PdfPage({
     };
   }, [doc, pageNumber]);
 
-  function toNorm(e: React.PointerEvent): { nx: number; ny: number } {
-    const rect = overlayRef.current!.getBoundingClientRect();
-    return {
-      nx: Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1),
-      ny: Math.min(Math.max((e.clientY - rect.top) / rect.height, 0), 1),
-    };
-  }
-
-  function onDown(e: React.PointerEvent) {
-    if (!activeTool || !size) return;
-    overlayRef.current!.setPointerCapture(e.pointerId);
-    drawing.current = true;
-    const { nx, ny } = toNorm(e);
-    setDraw({ x0: nx, y0: ny, x1: nx, y1: ny });
-  }
-  function onMove(e: React.PointerEvent) {
-    if (!drawing.current) return;
-    const { nx, ny } = toNorm(e);
-    setDraw((d) => (d ? { ...d, x1: nx, y1: ny } : d));
-  }
-  function onUp(e: React.PointerEvent) {
-    if (!drawing.current) return;
-    drawing.current = false;
-    try {
-      overlayRef.current!.releasePointerCapture(e.pointerId);
-    } catch {
-      /* noop */
-    }
-    const d = draw;
-    setDraw(null);
-    if (!d || !activeTool) return;
-    const def = FIELD_DEFAULTS[activeTool];
-    let x = Math.min(d.x0, d.x1);
-    let y = Math.min(d.y0, d.y1);
-    let w = Math.abs(d.x1 - d.x0);
-    let h = Math.abs(d.y1 - d.y0);
-    // A tiny drag counts as a click → drop a default-sized field at the point.
-    if (w < 0.02 || h < 0.008) {
-      w = def.w;
-      h = def.h;
-      x = Math.min(Math.max(d.x0 - w / 2, 0), 1 - w);
-      y = Math.min(Math.max(d.y0 - h / 2, 0), 1 - h);
-    } else {
-      x = Math.min(x, 1 - w);
-      y = Math.min(y, 1 - h);
-    }
-    onAddField(
-      snapToLine({
-        type: activeTool,
-        page: pageNumber,
-        x,
-        y,
-        w,
-        h,
-        recipient_id: activeRecipientId,
-        required: true,
-      }),
-    );
-  }
-
-  // Snap a field to the nearest text line: match the line's length, anchor its
-  // bottom to the baseline. Checkboxes keep their small size.
-  function snapToLine(f: Field): Field {
-    if (f.type === "checkbox" || !lines.length) return f;
-    const cy = f.y + f.h / 2;
-    let best: TextLine | null = null;
+  // Click → auto-place a field. If the click is on a labeled line
+  // ("Signature: ____"), fill the blank after the label; otherwise drop a
+  // default-sized field at the click.
+  function placeFieldAt(cx: number, cy: number): Field | null {
+    if (!activeTool) return null;
+    // Find the labeled run the click sits on/above (baseline just below click).
+    let best: Run | null = null;
     let bestD = Infinity;
-    for (const l of lines) {
-      const d = Math.abs(l.baseline - cy);
+    for (const r of runs) {
+      if (cx < r.x0 - 0.006 || cx > r.x1 + 0.006) continue;
+      const dy = r.baseline - cy; // >0 when the line is below the click
+      if (dy < -1.2 * r.height || dy > 3 * r.height) continue;
+      const d = Math.abs(dy);
       if (d < bestD) {
         bestD = d;
-        best = l;
+        best = r;
       }
     }
-    if (!best || bestD > 0.03) return f;
-    const w = Math.max(best.x1 - best.x0, 0.03);
-    const y = Math.min(Math.max(best.baseline - f.h, 0), 1 - f.h);
-    return { ...f, x: best.x0, w, y };
+
+    if (best) {
+      const s = best.str;
+      const uIdx = s.indexOf("_");
+      let startFrac: number;
+      if (uIdx >= 0) startFrac = uIdx / s.length;
+      else {
+        const ci = s.indexOf(":");
+        startFrac = ci >= 0 ? Math.min((ci + 2) / s.length, 0.9) : 0;
+      }
+      const runW = best.x1 - best.x0;
+      const x = Math.min(best.x0 + runW * startFrac + 0.004, best.x1 - 0.03);
+      const w = Math.max(best.x1 - x, 0.03);
+      const h = Math.min(best.height * 1.7, 0.06);
+      const y = Math.min(Math.max(best.baseline - h, 0), 1 - h);
+      return { type: activeTool, page: pageNumber, x, y, w, h, recipient_id: activeRecipientId, required: true };
+    }
+
+    // No text line here — drop a default field centered on the click.
+    const def = FIELD_DEFAULTS[activeTool];
+    const x = Math.min(Math.max(cx - def.w / 2, 0), 1 - def.w);
+    const y = Math.min(Math.max(cy - def.h / 2, 0), 1 - def.h);
+    return { type: activeTool, page: pageNumber, x, y, w: def.w, h: def.h, recipient_id: activeRecipientId, required: true };
   }
 
-  const previewColor = colorFor(activeRecipientId);
+  function handleClick(e: React.MouseEvent) {
+    if (!activeTool || !size) return;
+    const rect = overlayRef.current!.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) / rect.width;
+    const cy = (e.clientY - rect.top) / rect.height;
+    const field = placeFieldAt(cx, cy);
+    if (field) onAddField(field);
+  }
 
   return (
     <div
@@ -268,11 +218,9 @@ function PdfPage({
       <canvas ref={canvasRef} className="block" />
       <div
         ref={overlayRef}
-        className="absolute inset-0 touch-none"
+        className="absolute inset-0"
         style={{ cursor: activeTool ? "crosshair" : "default" }}
-        onPointerDown={onDown}
-        onPointerMove={onMove}
-        onPointerUp={onUp}
+        onClick={handleClick}
       >
         {size &&
           fields.map((f, gi) =>
@@ -284,23 +232,11 @@ function PdfPage({
                 color={colorFor(f.recipient_id)}
                 label={labelFor(f.recipient_id)}
                 onMove={(x, y) => onUpdateField(gi, { x, y })}
+                onResize={(w, h) => onUpdateField(gi, { w, h })}
                 onDelete={() => onDeleteField(gi)}
               />
             ) : null,
           )}
-        {size && draw && (
-          <div
-            className="pointer-events-none absolute rounded-sm"
-            style={{
-              left: Math.min(draw.x0, draw.x1) * size.w,
-              top: Math.min(draw.y0, draw.y1) * size.h,
-              width: Math.abs(draw.x1 - draw.x0) * size.w,
-              height: Math.abs(draw.y1 - draw.y0) * size.h,
-              border: `1.5px dashed ${previewColor}`,
-              background: `${previewColor}18`,
-            }}
-          />
-        )}
       </div>
     </div>
   );
@@ -312,6 +248,7 @@ function FieldBox({
   color,
   label,
   onMove,
+  onResize,
   onDelete,
 }: {
   field: Field;
@@ -319,9 +256,13 @@ function FieldBox({
   color: string;
   label: string;
   onMove: (x: number, y: number) => void;
+  onResize: (w: number, h: number) => void;
   onDelete: () => void;
 }) {
   const drag = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const resize = useRef<
+    { startX: number; startY: number; origW: number; origH: number; mode: "r" | "b" | "c" } | null
+  >(null);
 
   function onPointerDown(e: React.PointerEvent) {
     e.stopPropagation();
@@ -332,9 +273,10 @@ function FieldBox({
     if (!drag.current) return;
     const dx = (e.clientX - drag.current.startX) / pageSize.w;
     const dy = (e.clientY - drag.current.startY) / pageSize.h;
-    const x = Math.min(Math.max(drag.current.origX + dx, 0), 1 - field.w);
-    const y = Math.min(Math.max(drag.current.origY + dy, 0), 1 - field.h);
-    onMove(x, y);
+    onMove(
+      Math.min(Math.max(drag.current.origX + dx, 0), 1 - field.w),
+      Math.min(Math.max(drag.current.origY + dy, 0), 1 - field.h),
+    );
   }
   function onPointerUp(e: React.PointerEvent) {
     drag.current = null;
@@ -345,10 +287,36 @@ function FieldBox({
     }
   }
 
+  function onHandleDown(e: React.PointerEvent, mode: "r" | "b" | "c") {
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    resize.current = { startX: e.clientX, startY: e.clientY, origW: field.w, origH: field.h, mode };
+  }
+  function onHandleMove(e: React.PointerEvent) {
+    if (!resize.current) return;
+    e.stopPropagation();
+    const dx = (e.clientX - resize.current.startX) / pageSize.w;
+    const dy = (e.clientY - resize.current.startY) / pageSize.h;
+    let w = field.w;
+    let h = field.h;
+    if (resize.current.mode !== "b") w = Math.max(0.02, Math.min(resize.current.origW + dx, 1 - field.x));
+    if (resize.current.mode !== "r") h = Math.max(0.01, Math.min(resize.current.origH + dy, 1 - field.y));
+    onResize(w, h);
+  }
+  function onHandleUp(e: React.PointerEvent) {
+    resize.current = null;
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* noop */
+    }
+  }
+
   const h = field.h * pageSize.h;
+  const handle = "absolute hidden bg-white group-hover:block";
   return (
     <div
-      className="group absolute flex items-center justify-center overflow-hidden rounded-sm font-medium select-none"
+      className="group absolute rounded-sm font-medium select-none"
       style={{
         left: field.x * pageSize.w,
         top: field.y * pageSize.h,
@@ -365,7 +333,9 @@ function FieldBox({
       onPointerUp={onPointerUp}
       title={`${label} — ${field.type}`}
     >
-      <span className="truncate px-1 leading-none">{FIELD_DEFAULTS[field.type].label}</span>
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden px-1">
+        <span className="truncate leading-none">{FIELD_DEFAULTS[field.type].label}</span>
+      </span>
       <button
         className="absolute -right-2 -top-2 hidden h-4 w-4 place-items-center rounded-full bg-white text-red-600 shadow group-hover:grid"
         onClick={(e) => {
@@ -377,6 +347,27 @@ function FieldBox({
       >
         <X className="h-3 w-3" />
       </button>
+      <span
+        className={`${handle} right-[-3px] top-1/2 h-4 w-1.5 -translate-y-1/2 rounded`}
+        style={{ border: `1px solid ${color}`, cursor: "ew-resize" }}
+        onPointerDown={(e) => onHandleDown(e, "r")}
+        onPointerMove={onHandleMove}
+        onPointerUp={onHandleUp}
+      />
+      <span
+        className={`${handle} bottom-[-3px] left-1/2 h-1.5 w-4 -translate-x-1/2 rounded`}
+        style={{ border: `1px solid ${color}`, cursor: "ns-resize" }}
+        onPointerDown={(e) => onHandleDown(e, "b")}
+        onPointerMove={onHandleMove}
+        onPointerUp={onHandleUp}
+      />
+      <span
+        className={`${handle} bottom-[-4px] right-[-4px] h-2.5 w-2.5 rounded-sm`}
+        style={{ border: `1px solid ${color}`, cursor: "nwse-resize" }}
+        onPointerDown={(e) => onHandleDown(e, "c")}
+        onPointerMove={onHandleMove}
+        onPointerUp={onHandleUp}
+      />
     </div>
   );
 }
