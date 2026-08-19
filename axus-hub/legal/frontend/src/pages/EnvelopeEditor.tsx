@@ -14,7 +14,15 @@ import {
   User,
   UserPlus,
 } from "lucide-react";
-import { api, type EnvelopeDetail, type Field, type FieldType, type Recipient } from "@/lib/api";
+import {
+  api,
+  contactsApi,
+  type Contact,
+  type EnvelopeDetail,
+  type Field,
+  type FieldType,
+  type Recipient,
+} from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 import { recipientColor } from "@/lib/utils";
 import { PdfCanvas } from "@/features/PdfCanvas";
@@ -352,12 +360,37 @@ function RecipientsPanel({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [saveContact, setSaveContact] = useState(false);
 
-  function submit() {
+  useEffect(() => {
+    contactsApi.list().then(setContacts).catch(() => {});
+  }, []);
+
+  function pickContact(cid: string) {
+    const c = contacts.find((x) => x.id === cid);
+    if (c) {
+      setName(c.name);
+      setEmail(c.email);
+    }
+  }
+
+  async function submit() {
     if (!name.trim() || !email.trim()) return;
+    if (saveContact) {
+      try {
+        const c = await contactsApi.add({ name: name.trim(), email: email.trim() });
+        setContacts((prev) =>
+          [...prev.filter((x) => x.id !== c.id), c].sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      } catch {
+        /* non-fatal */
+      }
+    }
     onAdd(name.trim(), email.trim());
     setName("");
     setEmail("");
+    setSaveContact(false);
     setAdding(false);
   }
 
@@ -395,6 +428,20 @@ function RecipientsPanel({
       </div>
       {adding ? (
         <div className="mt-2 space-y-2">
+          {contacts.length > 0 && (
+            <select
+              defaultValue=""
+              onChange={(e) => pickContact(e.target.value)}
+              className="w-full rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+            >
+              <option value="">Choose from contacts…</option>
+              {contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} — {c.email}
+                </option>
+              ))}
+            </select>
+          )}
           <Input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
           <Input
             placeholder="email@company.com"
@@ -402,7 +449,15 @@ function RecipientsPanel({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <Button className="w-full" onClick={submit} disabled={!name.trim() || !email.trim()}>
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={saveContact}
+              onChange={(e) => setSaveContact(e.target.checked)}
+            />
+            Save to contacts
+          </label>
+          <Button className="w-full" onClick={() => void submit()} disabled={!name.trim() || !email.trim()}>
             Add recipient
           </Button>
         </div>

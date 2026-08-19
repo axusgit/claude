@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, unlink, writeFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -72,6 +72,31 @@ export async function envelopeRoutes(app) {
         if (!rows.length)
             return reply.code(404).send({ error: "Not found" });
         return { envelope: rows[0] };
+    });
+    // Delete an envelope (and its recipients/fields/events + stored files).
+    app.delete("/:id", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const envId = req.params.id;
+        const env = await pool.query(`select source_file, pdf_file, sealed_file from envelope where id = $1`, [envId]);
+        if (!env.rowCount)
+            return reply.code(404).send({ error: "Not found" });
+        const r = env.rows[0];
+        for (const f of [r.source_file, r.pdf_file, r.sealed_file]) {
+            if (!f)
+                continue;
+            const p = join(config.storageDir, f);
+            try {
+                if (existsSync(p))
+                    await unlink(p);
+            }
+            catch {
+                /* best effort */
+            }
+        }
+        await pool.query(`delete from envelope where id = $1`, [envId]); // cascades children
+        return { ok: true };
     });
     // Fetch one envelope with its recipients + fields + events.
     app.get("/:id", async (req, reply) => {

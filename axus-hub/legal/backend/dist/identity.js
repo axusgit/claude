@@ -47,4 +47,13 @@ export function legalRole(id) {
 export function hasLegalAccess(id) {
     return id.groups.includes("app-legal") || legalRole(id) !== null;
 }
+// Guard for staff-only routes: returns the identity, or 403s and returns null.
+export function requireStaff(req, reply) {
+    const id = getIdentity(req);
+    if (!id || !hasLegalAccess(id)) {
+        reply.code(403).send({ error: "Forbidden" });
+        return null;
+    }
+    return id;
+}
 //# sourceMappingURL=identity.js.map

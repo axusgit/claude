@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Download, FileSignature, Plus } from "lucide-react";
+import { Download, FileSignature, Plus, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
@@ -31,6 +31,17 @@ export function EnvelopeList() {
     if (!title.trim()) return;
     const env = await api.createEnvelope(title.trim());
     nav(`/envelopes/${env.id}`);
+  }
+
+  async function del(docId: string, docTitle: string) {
+    if (
+      !window.confirm(
+        `Delete "${docTitle}"? This permanently removes the document and its audit trail.`,
+      )
+    )
+      return;
+    await api.deleteEnvelope(docId);
+    await load();
   }
 
   return (
@@ -100,19 +111,33 @@ export function EnvelopeList() {
                   <td className="px-4 py-3 text-muted">
                     {new Date(e.created_at).toLocaleDateString()}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    {e.pdf_file && (
-                      <a
-                        href={api.documentUrl(e.id)}
-                        target="_blank"
-                        rel="noopener"
-                        onClick={(ev) => ev.stopPropagation()}
-                        className="inline-flex text-muted hover:text-brand"
-                        title={e.status === "completed" ? "Download signed document" : "Download document"}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-3">
+                      {e.pdf_file && (
+                        <a
+                          href={api.documentUrl(e.id)}
+                          target="_blank"
+                          rel="noopener"
+                          onClick={(ev) => ev.stopPropagation()}
+                          className="text-muted hover:text-brand"
+                          title={
+                            e.status === "completed" ? "Download signed document" : "Download document"
+                          }
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                      )}
+                      <button
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          void del(e.id, e.title);
+                        }}
+                        className="text-muted hover:text-red-600"
+                        title="Delete document"
                       >
-                        <Download className="h-4 w-4" />
-                      </a>
-                    )}
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

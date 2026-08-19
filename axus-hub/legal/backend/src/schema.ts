@@ -59,4 +59,16 @@ create table if not exists event (
 create index if not exists idx_recipient_envelope on recipient(envelope_id);
 create index if not exists idx_field_envelope on field(envelope_id);
 create index if not exists idx_event_envelope on event(envelope_id);
+
+-- Reusable contact list (shared across Axus staff), so recipients can be picked
+-- instead of retyped.
+create table if not exists contact (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,
+  email      text not null,
+  company    text,
+  created_by text,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists uq_contact_email on contact (lower(email));
 `;

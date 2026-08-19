@@ -92,7 +92,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  deleteEnvelope: (id: string) =>
+    req<{ ok: boolean }>(`/envelopes/${id}`, { method: "DELETE" }),
   documentUrl: (id: string) => `/api/envelopes/${id}/document`,
+};
+
+// --- Contacts (reusable recipient list, shared across staff) ---
+export interface Contact {
+  id: string;
+  name: string;
+  email: string;
+  company?: string | null;
+}
+
+export const contactsApi = {
+  list: () => req<{ contacts: Contact[] }>("/contacts").then((r) => r.contacts),
+  add: (c: { name: string; email: string; company?: string }) =>
+    req<{ contact: Contact }>("/contacts", { method: "POST", body: JSON.stringify(c) }).then(
+      (r) => r.contact,
+    ),
+  remove: (id: string) => req<{ ok: boolean }>(`/contacts/${id}`, { method: "DELETE" }),
 };
 
 // --- Public signer API (token-based, no auth) ---

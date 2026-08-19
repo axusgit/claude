@@ -1,7 +1,7 @@
 // Staff identity comes from the Authentik forward-auth proxy headers (same
 // contract as libs/auth). External signers never hit these routes — they use
 // tokenized links instead.
-import type { FastifyRequest } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { config } from "./config.js";
 
 export interface Identity {
@@ -62,4 +62,14 @@ export function legalRole(id: Identity): LegalRole | null {
 
 export function hasLegalAccess(id: Identity): boolean {
   return id.groups.includes("app-legal") || legalRole(id) !== null;
+}
+
+// Guard for staff-only routes: returns the identity, or 403s and returns null.
+export function requireStaff(req: FastifyRequest, reply: FastifyReply): Identity | null {
+  const id = getIdentity(req);
+  if (!id || !hasLegalAccess(id)) {
+    reply.code(403).send({ error: "Forbidden" });
+    return null;
+  }
+  return id;
 }
