@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileSignature, Plus } from "lucide-react";
+import { Download, FileSignature, Plus } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
@@ -83,6 +83,7 @@ export function EnvelopeList() {
                 <th className="px-4 py-3 font-medium">Title</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Created</th>
+                <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -98,6 +99,20 @@ export function EnvelopeList() {
                   </td>
                   <td className="px-4 py-3 text-muted">
                     {new Date(e.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {e.pdf_file && (
+                      <a
+                        href={api.documentUrl(e.id)}
+                        target="_blank"
+                        rel="noopener"
+                        onClick={(ev) => ev.stopPropagation()}
+                        className="inline-flex text-muted hover:text-brand"
+                        title={e.status === "completed" ? "Download signed document" : "Download document"}
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
+                    )}
                   </td>
                 </tr>
               ))}

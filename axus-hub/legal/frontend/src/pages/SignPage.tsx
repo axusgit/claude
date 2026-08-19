@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { CheckCircle2, Download, ScrollText } from "lucide-react";
+import { CheckCircle2, ScrollText } from "lucide-react";
 import { signApi, type Field, type SignView } from "@/lib/api";
 import { Button } from "@/components/ui";
 import { SignaturePad } from "@/features/SignaturePad";
@@ -78,13 +78,9 @@ export function SignPage() {
         <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" />
         <h1 className="mt-3 text-lg font-semibold">Thank you — you're all set</h1>
         <p className="mt-1 text-sm text-muted">
-          Your signature on <span className="font-medium">{view.envelope.title}</span> has been recorded.
+          Your signature on <span className="font-medium">{view.envelope.title}</span> has been
+          recorded. Once all parties have signed, a completed copy will be emailed to everyone.
         </p>
-        <a href={signApi.documentUrl(token)} target="_blank" rel="noopener" className="mt-5 inline-block">
-          <Button variant="outline">
-            <Download className="h-4 w-4" /> Download document
-          </Button>
-        </a>
       </Centered>
     );
   }

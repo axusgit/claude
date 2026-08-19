@@ -43,7 +43,7 @@ export async function envelopeRoutes(app) {
         const id = requireStaff(req, reply);
         if (!id)
             return;
-        const { rows } = await pool.query(`select id, title, status, created_by, created_at, sent_at, completed_at
+        const { rows } = await pool.query(`select id, title, status, created_by, created_at, sent_at, completed_at, pdf_file
        from envelope order by created_at desc limit 200`);
         return { envelopes: rows };
     });
@@ -85,7 +85,7 @@ export async function envelopeRoutes(app) {
         const recipients = await pool.query(`select id, envelope_id, name, email, role, sign_order, status, signed_at
        from recipient where envelope_id = $1 order by sign_order`, [envId]);
         const fields = await pool.query(`select * from field where envelope_id = $1`, [envId]);
-        const events = await pool.query(`select actor, type, detail, at from event where envelope_id = $1 order by at`, [envId]);
+        const events = await pool.query(`select actor, type, detail, ip, at from event where envelope_id = $1 order by at`, [envId]);
         return {
             envelope: env.rows[0],
             recipients: recipients.rows,
@@ -135,10 +135,13 @@ export async function envelopeRoutes(app) {
         if (!id)
             return;
         const envId = req.params.id;
-        const env = await pool.query(`select pdf_file, source_file from envelope where id = $1`, [envId]);
+        const env = await pool.query(`select pdf_file, source_file, sealed_file, status from envelope where id = $1`, [envId]);
         if (!env.rowCount)
             return reply.code(404).send({ error: "Not found" });
-        const fileName = env.rows[0].pdf_file ?? env.rows[0].source_file;
+        const row = env.rows[0];
+        const fileName = row.status === "completed" && row.sealed_file
+            ? row.sealed_file
+            : (row.pdf_file ?? row.source_file);
         if (!fileName)
             return reply.code(404).send({ error: "No document uploaded" });
         const full = join(config.storageDir, fileName);

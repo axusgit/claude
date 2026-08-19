@@ -39,7 +39,7 @@ export interface EnvelopeDetail {
   envelope: Envelope;
   recipients: Recipient[];
   fields: Field[];
-  events: { actor: string; type: string; detail: string | null; at: string }[];
+  events: { actor: string; type: string; detail: string | null; ip?: string | null; at: string }[];
 }
 
 async function req<T>(path: string, opts?: RequestInit): Promise<T> {

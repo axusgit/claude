@@ -19,13 +19,10 @@ async function finalizeEnvelope(envId) {
     await writeFile(join(config.storageDir, sealedName), bytes);
     await pool.query(`update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`, [sealedName, sha256, envId]);
     await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'completed', $2)`, [envId, `Sealed. SHA-256 ${sha256}`]);
+    const safeName = e.title.replace(/[^a-z0-9\-_ ]/gi, "_").slice(0, 80) || "document";
+    const attachment = { filename: `${safeName}.pdf`, content: Buffer.from(bytes) };
     for (const r of recs.rows) {
-        await sendCompleted({
-            to: r.email,
-            recipientName: r.name,
-            title: e.title,
-            url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
-        });
+        await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment });
     }
 }
 export async function signRoutes(app) {

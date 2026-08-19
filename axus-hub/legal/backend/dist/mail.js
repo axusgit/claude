@@ -47,13 +47,22 @@ export async function sendSigningInvite(opts) {
 export async function sendCompleted(opts) {
     const html = shell("Document completed", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">Hi ' +
         opts.recipientName +
-        ',</p><p style="margin:0 0 22px;font-size:15px;line-height:1.55;color:#374151;"><strong>' +
+        ',</p><p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;"><strong>' +
         opts.title +
-        "</strong> has been signed by all parties. A copy is attached / available below.</p>" +
-        '<p style="margin:0 0 24px;">' + button(opts.url, "View signed document") + "</p>");
-    const text = `Hi ${opts.recipientName},\n\n"${opts.title}" has been signed by all parties.\n${opts.url}\n\n— Axus Legal`;
+        "</strong> has been signed by all parties. A signed copy is attached for your records, " +
+        "including a certificate of completion.</p>");
+    const text = `Hi ${opts.recipientName},\n\n"${opts.title}" has been signed by all parties. A signed copy is attached.\n\n— Axus Legal`;
     try {
-        await transport.sendMail({ from: config.mail.from, to: opts.to, subject: `Completed: ${opts.title}`, text, html });
+        await transport.sendMail({
+            from: config.mail.from,
+            to: opts.to,
+            subject: `Completed: ${opts.title}`,
+            text,
+            html,
+            attachments: opts.attachment
+                ? [{ filename: opts.attachment.filename, content: opts.attachment.content }]
+                : [],
+        });
         return true;
     }
     catch {

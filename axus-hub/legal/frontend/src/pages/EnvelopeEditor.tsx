@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   Calendar,
   CheckSquare,
+  Download,
+  History,
   PenLine,
   Plus,
   Send,
@@ -25,6 +27,52 @@ const TOOLS: { type: FieldType; label: string; icon: typeof PenLine }[] = [
   { type: "text", label: "Text", icon: Type },
   { type: "checkbox", label: "Checkbox", icon: CheckSquare },
 ];
+
+const EVENT_LABELS: Record<string, string> = {
+  created: "Created",
+  document_uploaded: "Document uploaded",
+  sent: "Sent",
+  viewed: "Viewed",
+  consented: "Consented",
+  signed: "Signed",
+  completed: "Completed",
+  voided: "Voided",
+};
+
+// Audit trail — the full history of the signing process, for compliance/audit.
+function HistoryCard({ events }: { events: EnvelopeDetail["events"] }) {
+  if (!events.length) return null;
+  return (
+    <Card className="p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+        <History className="h-3.5 w-3.5" /> Audit trail
+      </div>
+      <ol className="space-y-2.5">
+        {events.map((ev, i) => {
+          const who = ev.actor && ev.actor !== "system" ? ev.actor : "";
+          return (
+            <li key={i} className="relative pl-4 text-xs">
+              <span className="absolute left-0 top-1 h-1.5 w-1.5 rounded-full bg-brand" />
+              <div className="font-medium">
+                {EVENT_LABELS[ev.type] ?? ev.type}
+                <span className="ml-1.5 font-normal text-muted">
+                  {new Date(ev.at).toLocaleString()}
+                </span>
+              </div>
+              {(who || ev.detail || ev.ip) && (
+                <div className="break-words text-muted">
+                  {who}
+                  {ev.detail ? `${who ? " — " : ""}${ev.detail}` : ""}
+                  {ev.ip ? ` · IP ${ev.ip}` : ""}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
+  );
+}
 
 export function EnvelopeEditor() {
   const { id = "" } = useParams();
@@ -160,9 +208,18 @@ export function EnvelopeEditor() {
         </div>
         <div className="flex items-center gap-2">
           {dirty && <span className="text-xs text-muted">Unsaved changes</span>}
-          <Button variant="outline" onClick={() => void save()} disabled={saving || !dirty}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
+          {detail.envelope.pdf_file && (
+            <a href={api.documentUrl(id)} target="_blank" rel="noopener" title="Download document">
+              <Button variant="ghost">
+                <Download className="h-4 w-4" />
+              </Button>
+            </a>
+          )}
+          {detail.envelope.status === "draft" && (
+            <Button variant="outline" onClick={() => void save()} disabled={saving || !dirty}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          )}
           <Button
             onClick={() => void send()}
             disabled={sending || detail.envelope.status !== "draft"}
@@ -210,43 +267,50 @@ export function EnvelopeEditor() {
                 setDirty(true);
               }}
             />
-            <Card className="p-3">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                Fields
-              </div>
-              {recipients.length === 0 ? (
-                <p className="text-xs text-muted">Add a recipient first, then place fields for them.</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {TOOLS.map((t) => {
-                    const Icon = t.icon;
-                    const active = activeTool === t.type;
-                    return (
-                      <button
-                        key={t.type}
-                        onClick={() => setActiveTool(active ? null : t.type)}
-                        className={
-                          "flex flex-col items-center gap-1 rounded-lg border p-2.5 text-xs font-medium transition-colors " +
-                          (active
-                            ? "border-brand bg-brand/10 text-brand"
-                            : "border-line hover:bg-canvas")
-                        }
-                      >
-                        <Icon className="h-4 w-4" />
-                        {t.label}
-                      </button>
-                    );
-                  })}
+            {detail.envelope.status === "draft" ? (
+              <Card className="p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Fields
                 </div>
-              )}
-              {activeTool && (
-                <p className="mt-2 text-[11px] text-muted">
-                  Click on the document to place a{" "}
-                  <span className="font-medium">{activeTool}</span> field for{" "}
-                  <span className="font-medium">{labelFor(activeRecipientId)}</span>.
-                </p>
-              )}
-            </Card>
+                {recipients.length === 0 ? (
+                  <p className="text-xs text-muted">
+                    Add a recipient first, then place fields for them.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {TOOLS.map((t) => {
+                      const Icon = t.icon;
+                      const active = activeTool === t.type;
+                      return (
+                        <button
+                          key={t.type}
+                          onClick={() => setActiveTool(active ? null : t.type)}
+                          className={
+                            "flex flex-col items-center gap-1 rounded-lg border p-2.5 text-xs font-medium transition-colors " +
+                            (active ? "border-brand bg-brand/10 text-brand" : "border-line hover:bg-canvas")
+                          }
+                        >
+                          <Icon className="h-4 w-4" />
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {activeTool && (
+                  <p className="mt-2 text-[11px] text-muted">
+                    Draw a box (or click) on the document to place a{" "}
+                    <span className="font-medium">{activeTool}</span> field for{" "}
+                    <span className="font-medium">{labelFor(activeRecipientId)}</span>.
+                  </p>
+                )}
+              </Card>
+            ) : (
+              <Card className="p-3 text-xs text-muted">
+                This document has been sent — it can no longer be edited.
+              </Card>
+            )}
+            <HistoryCard events={detail.events} />
           </div>
 
           {/* Document */}
