@@ -13,13 +13,54 @@ const TARGET_WIDTH = 820;
 // Heights are deliberately thin so a field sits on a line without covering the
 // lines above/below; drawing a box overrides these.
 export const FIELD_DEFAULTS: Record<FieldType, { w: number; h: number; label: string }> = {
-  signature: { w: 0.24, h: 0.05, label: "Signature" },
-  name: { w: 0.24, h: 0.028, label: "Name Lastname" },
-  initials: { w: 0.1, h: 0.045, label: "Initials" },
-  date: { w: 0.16, h: 0.026, label: "Date" },
-  text: { w: 0.22, h: 0.026, label: "Text" },
-  checkbox: { w: 0.025, h: 0.018, label: "✓" },
+  signature: { w: 0.24, h: 0.045, label: "Signature" },
+  name: { w: 0.24, h: 0.025, label: "Name Lastname" },
+  initials: { w: 0.1, h: 0.04, label: "Initials" },
+  date: { w: 0.16, h: 0.023, label: "Date" },
+  text: { w: 0.22, h: 0.023, label: "Text" },
+  checkbox: { w: 0.022, h: 0.016, label: "✓" },
 };
+
+interface TextLine {
+  x0: number;
+  x1: number;
+  baseline: number;
+  height: number;
+}
+
+// Extract text lines (normalized coords) so fields can snap to line length +
+// anchor to the line they're dropped on.
+function computeLines(
+  tc: { items: unknown[] },
+  viewport: { transform: number[]; width: number; height: number; scale: number },
+): TextLine[] {
+  const raws: { x: number; y: number; w: number; h: number }[] = [];
+  for (const raw of tc.items) {
+    const it = raw as { str?: string; transform?: number[]; width?: number; height?: number };
+    if (!it.str || !it.str.trim() || !it.transform) continue;
+    const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
+    const h = Math.hypot(t[2], t[3]) || (it.height ?? 0) * viewport.scale;
+    raws.push({ x: t[4], y: t[5], w: (it.width ?? 0) * viewport.scale, h });
+  }
+  raws.sort((a, b) => a.y - b.y);
+  const lines: { x0: number; x1: number; baseline: number; height: number }[] = [];
+  for (const r of raws) {
+    const found = lines.find((l) => Math.abs(l.baseline - r.y) < Math.max(l.height, r.h) * 0.6);
+    if (found) {
+      found.x0 = Math.min(found.x0, r.x);
+      found.x1 = Math.max(found.x1, r.x + r.w);
+      found.height = Math.max(found.height, r.h);
+    } else {
+      lines.push({ x0: r.x, x1: r.x + r.w, baseline: r.y, height: r.h });
+    }
+  }
+  return lines.map((l) => ({
+    x0: l.x0 / viewport.width,
+    x1: l.x1 / viewport.width,
+    baseline: l.baseline / viewport.height,
+    height: l.height / viewport.height,
+  }));
+}
 
 interface PdfCanvasProps {
   url: string;
@@ -95,6 +136,7 @@ function PdfPage({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [lines, setLines] = useState<TextLine[]>([]);
   const [draw, setDraw] = useState<Rect | null>(null);
   const drawing = useRef(false);
 
@@ -118,6 +160,12 @@ function PdfPage({
         await renderTask.promise;
       } catch {
         /* cancelled */
+      }
+      try {
+        const tc = await page.getTextContent();
+        if (!cancelled) setLines(computeLines(tc, viewport));
+      } catch {
+        /* no text layer */
       }
     })();
     return () => {
@@ -176,16 +224,38 @@ function PdfPage({
       x = Math.min(x, 1 - w);
       y = Math.min(y, 1 - h);
     }
-    onAddField({
-      type: activeTool,
-      page: pageNumber,
-      x,
-      y,
-      w,
-      h,
-      recipient_id: activeRecipientId,
-      required: true,
-    });
+    onAddField(
+      snapToLine({
+        type: activeTool,
+        page: pageNumber,
+        x,
+        y,
+        w,
+        h,
+        recipient_id: activeRecipientId,
+        required: true,
+      }),
+    );
+  }
+
+  // Snap a field to the nearest text line: match the line's length, anchor its
+  // bottom to the baseline. Checkboxes keep their small size.
+  function snapToLine(f: Field): Field {
+    if (f.type === "checkbox" || !lines.length) return f;
+    const cy = f.y + f.h / 2;
+    let best: TextLine | null = null;
+    let bestD = Infinity;
+    for (const l of lines) {
+      const d = Math.abs(l.baseline - cy);
+      if (d < bestD) {
+        bestD = d;
+        best = l;
+      }
+    }
+    if (!best || bestD > 0.03) return f;
+    const w = Math.max(best.x1 - best.x0, 0.03);
+    const y = Math.min(Math.max(best.baseline - f.h, 0), 1 - f.h);
+    return { ...f, x: best.x0, w, y };
   }
 
   const previewColor = colorFor(activeRecipientId);

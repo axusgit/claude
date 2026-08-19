@@ -8,6 +8,7 @@ export interface Envelope {
   completed_at?: string | null;
   source_file?: string | null;
   pdf_file?: string | null;
+  sequential?: boolean;
 }
 
 export interface Recipient {
@@ -81,9 +82,15 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ fields }),
     }),
+  updateEnvelope: (id: string, patch: { sequential?: boolean }) =>
+    req<{ envelope: Envelope }>(`/envelopes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }).then((r) => r.envelope),
   sendEnvelope: (id: string) =>
     req<{ ok: boolean; results: { email: string; sent: boolean }[] }>(`/envelopes/${id}/send`, {
       method: "POST",
+      body: JSON.stringify({}),
     }),
   documentUrl: (id: string) => `/api/envelopes/${id}/document`,
 };

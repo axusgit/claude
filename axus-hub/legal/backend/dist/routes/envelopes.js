@@ -58,6 +58,21 @@ export async function envelopeRoutes(app) {
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`, [rows[0].id, id.email, title]);
         return reply.code(201).send({ envelope: rows[0] });
     });
+    // Update envelope settings (currently: sequential signing order).
+    app.patch("/:id", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const envId = req.params.id;
+        const body = (req.body ?? {});
+        if (typeof body.sequential === "boolean") {
+            await pool.query(`update envelope set sequential = $1 where id = $2`, [body.sequential, envId]);
+        }
+        const { rows } = await pool.query(`select * from envelope where id = $1`, [envId]);
+        if (!rows.length)
+            return reply.code(404).send({ error: "Not found" });
+        return { envelope: rows[0] };
+    });
     // Fetch one envelope with its recipients + fields + events.
     app.get("/:id", async (req, reply) => {
         const id = requireStaff(req, reply);
@@ -235,21 +250,36 @@ export async function envelopeRoutes(app) {
                 .send({ error: `Add at least one field for: ${missing.map((m) => m.name).join(", ")}` });
         }
         const results = [];
-        for (const r of recips.rows) {
-            const token = randomBytes(24).toString("base64url");
-            await pool.query(`update recipient set sign_token = $1, status = 'sent' where id = $2`, [
-                token,
-                r.id,
-            ]);
-            const url = `${config.publicBaseUrl}/sign/${token}`;
-            const sent = await sendSigningInvite({
-                to: r.email,
-                recipientName: r.name,
-                senderName: id.name,
-                title: env.title,
-                url,
-            });
-            results.push({ email: r.email, sent });
+        const tokens = new Map();
+        for (const r of recips.rows)
+            tokens.set(r.id, randomBytes(24).toString("base64url"));
+        const invite = (r) => sendSigningInvite({
+            to: r.email,
+            recipientName: r.name,
+            senderName: id.name,
+            title: env.title,
+            url: `${config.publicBaseUrl}/sign/${tokens.get(r.id)}`,
+        });
+        if (env.sequential) {
+            // Only the first recipient is emailed now; the rest advance as each signs.
+            const firstId = recips.rows[0].id;
+            for (const r of recips.rows) {
+                await pool.query(`update recipient set sign_token = $1, status = $2 where id = $3`, [
+                    tokens.get(r.id),
+                    r.id === firstId ? "sent" : "pending",
+                    r.id,
+                ]);
+            }
+            results.push({ email: recips.rows[0].email, sent: await invite(recips.rows[0]) });
+        }
+        else {
+            for (const r of recips.rows) {
+                await pool.query(`update recipient set sign_token = $1, status = 'sent' where id = $2`, [
+                    tokens.get(r.id),
+                    r.id,
+                ]);
+                results.push({ email: r.email, sent: await invite(r) });
+            }
         }
         await pool.query(`update envelope set status = 'sent', sent_at = now() where id = $1`, [envId]);
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'sent', $3)`, [envId, id.email, `Sent to ${recips.rowCount} recipient(s)`]);

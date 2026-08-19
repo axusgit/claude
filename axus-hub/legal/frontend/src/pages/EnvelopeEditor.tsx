@@ -33,6 +33,7 @@ export function EnvelopeEditor() {
   const [fields, setFields] = useState<Field[]>([]);
   const [activeTool, setActiveTool] = useState<FieldType | null>(null);
   const [activeRecipientId, setActiveRecipientId] = useState<string | null>(null);
+  const [sequential, setSequential] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export function EnvelopeEditor() {
     setDetail(d);
     setRecipients(d.recipients);
     setFields(d.fields);
+    setSequential(!!d.envelope.sequential);
     setActiveRecipientId((prev) => prev ?? d.recipients[0]?.id ?? null);
   }, [id]);
 
@@ -107,6 +109,7 @@ export function EnvelopeEditor() {
       const saved = await api.saveRecipients(id, recipients);
       setRecipients(saved);
       await api.saveFields(id, fields);
+      await api.updateEnvelope(id, { sequential });
       setDirty(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -201,6 +204,11 @@ export function EnvelopeEditor() {
               activeId={activeRecipientId}
               onSelect={setActiveRecipientId}
               onAdd={addRecipient}
+              sequential={sequential}
+              onToggleSequential={(v) => {
+                setSequential(v);
+                setDirty(true);
+              }}
             />
             <Card className="p-3">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
@@ -267,11 +275,15 @@ function RecipientsPanel({
   activeId,
   onSelect,
   onAdd,
+  sequential,
+  onToggleSequential,
 }: {
   recipients: Recipient[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onAdd: (name: string, email: string) => void;
+  sequential: boolean;
+  onToggleSequential: (v: boolean) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -337,6 +349,17 @@ function RecipientsPanel({
         >
           <Plus className="h-3.5 w-3.5" /> Add recipient
         </button>
+      )}
+      {recipients.length >= 2 && (
+        <label className="mt-3 flex items-start gap-2 border-t border-line pt-3 text-xs text-muted">
+          <input
+            type="checkbox"
+            checked={sequential}
+            onChange={(e) => onToggleSequential(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>Recipients must sign in order (top to bottom)</span>
+        </label>
       )}
     </Card>
   );

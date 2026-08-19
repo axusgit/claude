@@ -16,6 +16,8 @@ create table if not exists envelope (
   sent_at     timestamptz,
   completed_at timestamptz
 );
+-- Added after initial release; ADD COLUMN IF NOT EXISTS keeps it idempotent.
+alter table envelope add column if not exists sequential boolean not null default false;
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),

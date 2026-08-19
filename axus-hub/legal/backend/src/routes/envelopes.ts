@@ -72,6 +72,20 @@ export async function envelopeRoutes(app: FastifyInstance) {
     return reply.code(201).send({ envelope: rows[0] });
   });
 
+  // Update envelope settings (currently: sequential signing order).
+  app.patch("/:id", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const body = (req.body ?? {}) as { sequential?: boolean };
+    if (typeof body.sequential === "boolean") {
+      await pool.query(`update envelope set sequential = $1 where id = $2`, [body.sequential, envId]);
+    }
+    const { rows } = await pool.query(`select * from envelope where id = $1`, [envId]);
+    if (!rows.length) return reply.code(404).send({ error: "Not found" });
+    return { envelope: rows[0] };
+  });
+
   // Fetch one envelope with its recipients + fields + events.
   app.get("/:id", async (req, reply) => {
     const id = requireStaff(req, reply);
@@ -292,21 +306,37 @@ export async function envelopeRoutes(app: FastifyInstance) {
     }
 
     const results: { email: string; sent: boolean }[] = [];
-    for (const r of recips.rows) {
-      const token = randomBytes(24).toString("base64url");
-      await pool.query(`update recipient set sign_token = $1, status = 'sent' where id = $2`, [
-        token,
-        r.id,
-      ]);
-      const url = `${config.publicBaseUrl}/sign/${token}`;
-      const sent = await sendSigningInvite({
+    const tokens = new Map<string, string>();
+    for (const r of recips.rows) tokens.set(r.id, randomBytes(24).toString("base64url"));
+
+    const invite = (r: { id: string; name: string; email: string }) =>
+      sendSigningInvite({
         to: r.email,
         recipientName: r.name,
         senderName: id.name,
         title: env.title,
-        url,
+        url: `${config.publicBaseUrl}/sign/${tokens.get(r.id)}`,
       });
-      results.push({ email: r.email, sent });
+
+    if (env.sequential) {
+      // Only the first recipient is emailed now; the rest advance as each signs.
+      const firstId = recips.rows[0].id;
+      for (const r of recips.rows) {
+        await pool.query(`update recipient set sign_token = $1, status = $2 where id = $3`, [
+          tokens.get(r.id),
+          r.id === firstId ? "sent" : "pending",
+          r.id,
+        ]);
+      }
+      results.push({ email: recips.rows[0].email, sent: await invite(recips.rows[0]) });
+    } else {
+      for (const r of recips.rows) {
+        await pool.query(`update recipient set sign_token = $1, status = 'sent' where id = $2`, [
+          tokens.get(r.id),
+          r.id,
+        ]);
+        results.push({ email: r.email, sent: await invite(r) });
+      }
     }
     await pool.query(`update envelope set status = 'sent', sent_at = now() where id = $1`, [envId]);
     await pool.query(

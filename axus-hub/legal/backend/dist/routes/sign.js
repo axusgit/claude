@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { sealPdf } from "../seal.js";
-import { sendCompleted } from "../mail.js";
+import { sendCompleted, sendSigningInvite } from "../mail.js";
 async function finalizeEnvelope(envId) {
     const env = await pool.query(`select id, title, pdf_file from envelope where id = $1`, [envId]);
     const e = env.rows[0];
@@ -112,6 +112,24 @@ export async function signRoutes(app) {
         if (pending.rows[0].n === 0) {
             await finalizeEnvelope(envId);
             completed = true;
+        }
+        else {
+            // Sequential envelopes: email the next recipient in order now.
+            const envRow = await pool.query(`select sequential, title from envelope where id = $1`, [envId]);
+            if (envRow.rows[0]?.sequential) {
+                const next = await pool.query(`select * from recipient where envelope_id = $1 and status = 'pending' order by sign_order limit 1`, [envId]);
+                if (next.rowCount) {
+                    const n = next.rows[0];
+                    await pool.query(`update recipient set status = 'sent' where id = $1`, [n.id]);
+                    await sendSigningInvite({
+                        to: n.email,
+                        recipientName: n.name,
+                        senderName: "Axus Legal",
+                        title: envRow.rows[0].title,
+                        url: `${config.publicBaseUrl}/sign/${n.sign_token}`,
+                    });
+                }
+            }
         }
         return { ok: true, completed };
     });
