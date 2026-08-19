@@ -319,4 +319,25 @@ function RecipientsPanel({
       </div>
       {adding ? (
         <div className="mt-2 space-y-2">
-          <Input placeholder="Full name" value={name} onChange={(e) => setName(e.target.
+          <Input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input
+            placeholder="email@company.com"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <Button className="w-full" onClick={submit} disabled={!name.trim() || !email.trim()}>
+            Add recipient
+          </Button>
+        </div>
+      ) : (
+        <button
+          className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-line py-1.5 text-xs text-muted hover:bg-canvas"
+          onClick={() => setAdding(true)}
+        >
+          <Plus className="h-3.5 w-3.5" /> Add recipient
+        </button>
+      )}
+    </Card>
+  );
+}

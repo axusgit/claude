@@ -214,11 +214,19 @@ services:
       postgres: {condition: service_healthy}
     labels:
       traefik.enable: "true"
+      # Staff app — gated by Authentik login.
       traefik.http.routers.legal.rule: Host(`legal.axustechnologies.com`)
-      traefik.http.routers.legal.entrypoints: websecure      # public 443, gated by Authentik login
+      traefik.http.routers.legal.entrypoints: websecure
       traefik.http.routers.legal.tls.certresolver: letsencrypt
       traefik.http.routers.legal.middlewares: geogate@file,authentik@file
       traefik.http.services.legal.loadbalancer.server.port: "8000"
+      # Public signer routes (external signers have no Axus account): the signer
+      # page, its API, and the shared JS/CSS bundle bypass the auth middleware.
+      traefik.http.routers.legal-public.rule: Host(`legal.axustechnologies.com`) && (PathPrefix(`/sign`) || PathPrefix(`/api/sign`) || PathPrefix(`/assets`))
+      traefik.http.routers.legal-public.entrypoints: websecure
+      traefik.http.routers.legal-public.tls.certresolver: letsencrypt
+      traefik.http.routers.legal-public.priority: "100"
+      traefik.http.routers.legal-public.service: legal
     networks: [axus]
 
   # Headless LibreOffice for Word->PDF conversion (internal only).

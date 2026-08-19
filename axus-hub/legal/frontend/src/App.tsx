@@ -1,9 +1,19 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { Scale } from "lucide-react";
 import { EnvelopeList } from "@/pages/EnvelopeList";
 import { EnvelopeEditor } from "@/pages/EnvelopeEditor";
+import { SignPage } from "@/pages/SignPage";
 
 export function App() {
+  // The signer experience is a standalone full-page flow (no staff chrome).
+  const isSigning = useLocation().pathname.startsWith("/sign/");
+  if (isSigning) {
+    return (
+      <Routes>
+        <Route path="/sign/:token" element={<SignPage />} />
+      </Routes>
+    );
+  }
   return (
     <div className="min-h-full">
       <header className="border-b border-line bg-white">
