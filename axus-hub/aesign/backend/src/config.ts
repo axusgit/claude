@@ -18,8 +18,10 @@ export const config = {
     port: Number(process.env.SMTP_PORT ?? 587),
     user: process.env.SMTP_USER ?? "",
     pass: process.env.SMTP_PASS ?? "",
-    // Placeholder sender; will change later (kept configurable).
-    from: process.env.MAIL_FROM ?? "Axus <support@axustechnologies.com>",
+    // What recipients SEE in the From line.
+    from: process.env.MAIL_FROM ?? "Axus eSign <no-reply@axustechnologies.com>",
+    // Envelope MAIL FROM / bounce address = the authenticated mailbox (support@).
+    sender: process.env.MAIL_SENDER ?? process.env.SMTP_USER ?? "support@axustechnologies.com",
   },
   // Dev-only identity fallback when not behind the Authentik forward-auth proxy.
   dev: {

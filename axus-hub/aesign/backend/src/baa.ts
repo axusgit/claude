@@ -27,10 +27,18 @@ export async function stampBaaPdf(
     page.drawText(opts.dateLong, { x: 393, y: 579, size, font: helv, color: ink });
   }
   if (opts.company) {
-    // Keep the name inside the blank (blank runs ~x208 → ~x395).
-    let name = opts.company;
-    while (name.length > 1 && helv.widthOfTextAtSize(name, size) > 185) name = name.slice(0, -1);
-    page.drawText(name, { x: 210, y: 566, size, font: helv, color: ink });
+    // Covered Entity blank runs x≈208 → x≈424 (~216pt). Shrink the font so the
+    // COMPLETE name fits inside the blank rather than truncating it.
+    const maxW = 210;
+    const name = opts.company.trim();
+    let coSize = size;
+    while (coSize > 5.5 && helv.widthOfTextAtSize(name, coSize) > maxW) coSize -= 0.25;
+    page.drawText(name, { x: 210, y: 566, size: coSize, font: helv, color: ink });
+  }
+  // Section 6.5 Governing Law — "State of ____": Florida (page 3, blank x≈388, y=198).
+  const page3 = pdf.getPages()[2];
+  if (page3) {
+    page3.drawText("Florida", { x: 390, y: 200, size, font: helv, color: ink });
   }
   return pdf.save();
 }

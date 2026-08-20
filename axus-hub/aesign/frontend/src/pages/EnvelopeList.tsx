@@ -4,7 +4,7 @@ import { Check, Circle, Download, FileSignature, Pencil, Plus, Trash2 } from "lu
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
-const DOC_TYPES = ["SOW", "MSA", "BAA", "Quote"];
+const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "Quote"];
 // Types that auto-attach a stored template on creation (Quotes are generated separately).
 const TEMPLATE_TYPES = ["BAA"];
 
@@ -13,7 +13,6 @@ export function EnvelopeList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState("");
   const [docType, setDocType] = useState("SOW");
   const [company, setCompany] = useState("");
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -66,9 +65,10 @@ export function EnvelopeList() {
       );
       return;
     }
-    if (!title.trim()) return;
+    // Upload-based types (SOW / MSA / SOW & MSA): no title is asked — a
+    // placeholder is used until the uploaded document's file name replaces it.
     const env = await api.createEnvelope({
-      title: title.trim(),
+      title: `${company.trim()} ${docType}`,
       doc_type: docType,
       company: company.trim(),
     });
@@ -126,26 +126,16 @@ export function EnvelopeList() {
       {creating && (
         <Card className="space-y-3 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            {docType === "Quote" || TEMPLATE_TYPES.includes(docType) ? (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Document</label>
-                <p className="pt-2 text-sm text-muted">
-                  {docType === "Quote"
-                    ? "You'll build the quote on the next step."
-                    : `The ${docType} template opens pre-filled with the company & date — nothing is saved until you click Save.`}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Document title</label>
-                <Input
-                  autoFocus
-                  placeholder="e.g. BCOM Master Services Agreement"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Document</label>
+              <p className="pt-2 text-sm text-muted">
+                {docType === "Quote"
+                  ? "You'll build the quote on the next step."
+                  : TEMPLATE_TYPES.includes(docType)
+                    ? `The ${docType} template opens pre-filled with the company & date — nothing is saved until you click Save.`
+                    : "You'll upload the document next — its file name becomes the title."}
+              </p>
+            </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Type</label>
               <select
@@ -187,11 +177,7 @@ export function EnvelopeList() {
             <Button
               className="w-fit"
               onClick={() => void create()}
-              disabled={
-                docType === "Quote" || TEMPLATE_TYPES.includes(docType)
-                  ? !company.trim()
-                  : !title.trim() || !company.trim()
-              }
+              disabled={!company.trim()}
             >
               {docType === "Quote" || TEMPLATE_TYPES.includes(docType) ? "Continue" : "Create & open"}
             </Button>

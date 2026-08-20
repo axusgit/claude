@@ -22,8 +22,6 @@ import {
 import {
   api,
   contactsApi,
-  companiesApi,
-  type Company,
   type Contact,
   type EnvelopeDetail,
   type Field,
@@ -104,7 +102,6 @@ export function EnvelopeEditor() {
   const [sequential, setSequential] = useState(false);
   const [docType, setDocType] = useState(isNew ? (sp.get("doc_type") ?? "BAA") : "SOW");
   const [company, setCompany] = useState(isNew ? (sp.get("company") ?? "") : "");
-  const [companies, setCompanies] = useState<Company[]>([]);
   const [reminder, setReminder] = useState("");
   const [reminderTime, setReminderTime] = useState("09:00");
   const [reminderDow, setReminderDow] = useState(1);
@@ -146,10 +143,6 @@ export function EnvelopeEditor() {
     setReminderDom(d.envelope.reminder_dom ?? 1);
     setActiveRecipientId((prev) => prev ?? d.recipients[0]?.id ?? null);
   }, [id, isNew, sp]);
-
-  useEffect(() => {
-    companiesApi.list().then(setCompanies).catch(() => {});
-  }, []);
 
   useEffect(() => {
     void load().catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
@@ -396,57 +389,6 @@ export function EnvelopeEditor() {
         <div className="grid grid-cols-[280px_1fr] gap-4">
           {/* Sidebar */}
           <div className="space-y-4">
-            {detail.envelope.status === "draft" && (
-              <Card className="space-y-2.5 p-3">
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted">Details</div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted">Type</label>
-                  <select
-                    value={docType}
-                    onChange={(e) => {
-                      setDocType(e.target.value);
-                      setDirty(true);
-                    }}
-                    className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-                  >
-                    <option value="SOW">SOW</option>
-                    <option value="MSA">MSA</option>
-                    <option value="BAA">BAA</option>
-                    <option value="Quote">Quote</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted">Company</label>
-                  {companies.length > 0 && (
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          setCompany(e.target.value);
-                          setDirty(true);
-                        }
-                      }}
-                      className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-                    >
-                      <option value="">Pick from your companies…</option>
-                      {companies.map((c) => (
-                        <option key={c.id} value={c.name}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <Input
-                    value={company}
-                    onChange={(e) => {
-                      setCompany(e.target.value);
-                      setDirty(true);
-                    }}
-                    placeholder="Company"
-                  />
-                </div>
-              </Card>
-            )}
             <RecipientsPanel
               recipients={recipients}
               activeId={activeRecipientId}

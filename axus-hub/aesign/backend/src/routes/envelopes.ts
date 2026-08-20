@@ -230,9 +230,13 @@ export async function envelopeRoutes(app: FastifyInstance) {
       pdfFile = await convertToPdf(join(config.storageDir, stored), file.filename, envId);
     }
 
-    await pool.query(`update envelope set source_file = $1, pdf_file = $2 where id = $3`, [
+    // Use the uploaded file's name (sans extension) as the document title —
+    // SOW/MSA/etc. no longer ask for a title up front.
+    const docTitle = file.filename.replace(/\.[^.]+$/, "").trim().slice(0, 200) || "Untitled document";
+    await pool.query(`update envelope set source_file = $1, pdf_file = $2, title = $3 where id = $4`, [
       stored,
       pdfFile,
+      docTitle,
       envId,
     ]);
     await pool.query(

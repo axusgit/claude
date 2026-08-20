@@ -82,7 +82,7 @@ export async function sendSigningInvite(opts: {
     `Hi ${opts.recipientName},\n\n${opts.senderName} has sent you "${opts.title}" to review and sign.\n\n` +
     `Open it here:\n${opts.url}\n\n— Axus eSign`;
   try {
-    await transport.sendMail({ from: config.mail.from, to: opts.to, subject: `Please sign: ${opts.title}`, text, html, attachments: withLogo() });
+    await transport.sendMail({ from: config.mail.from, envelope: { from: config.mail.sender, to: opts.to }, to: opts.to, subject: `Please sign: ${opts.title}`, text, html, attachments: withLogo() });
     return true;
   } catch {
     return false;
@@ -108,6 +108,7 @@ export async function sendCompleted(opts: {
   try {
     await transport.sendMail({
       from: config.mail.from,
+      envelope: { from: config.mail.sender, to: opts.to },
       to: opts.to,
       subject: `Completed: ${opts.title}`,
       text,
@@ -147,6 +148,7 @@ export async function sendProgress(opts: {
   try {
     await transport.sendMail({
       from: config.mail.from,
+      envelope: { from: config.mail.sender, to: opts.to },
       to: opts.to,
       subject: `Update: ${opts.title}`,
       text,
@@ -188,6 +190,7 @@ export async function sendReminder(opts: {
   try {
     await transport.sendMail({
       from: config.mail.from,
+      envelope: { from: config.mail.sender, to: opts.to },
       to: opts.to,
       subject: `Signature needed: ${opts.title}`,
       text,
@@ -221,6 +224,7 @@ export async function sendPendingReminder(opts: {
   try {
     await transport.sendMail({
       from: config.mail.from,
+      envelope: { from: config.mail.sender, to: opts.to },
       to: opts.to,
       subject: `Reminder — signature needed: ${opts.title}`,
       text,

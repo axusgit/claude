@@ -207,7 +207,11 @@ services:
       SMTP_PORT: ${AUTHENTIK_EMAIL__PORT}
       SMTP_USER: ${AUTHENTIK_EMAIL__USERNAME}
       SMTP_PASS: ${AUTHENTIK_EMAIL__PASSWORD}
-      MAIL_FROM: ${AUTHENTIK_EMAIL__FROM}
+      # Auth/relay through support@ (SMTP_USER). To show no-reply@ to recipients,
+      # M365 must let support@ "Send As" no-reply@ (see below), then set MAIL_FROM
+      # to: Axus eSign <no-reply@axustechnologies.com>. Until then, use support@.
+      MAIL_FROM: Axus eSign <support@axustechnologies.com>
+      MAIL_SENDER: ${AUTHENTIK_EMAIL__USERNAME}
     volumes:
       - aesign_data:/data/aesign
     depends_on:
