@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Download, FileSignature, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Circle, Download, FileSignature, Pencil, Plus, Trash2 } from "lucide-react";
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
@@ -254,7 +254,28 @@ export function EnvelopeList() {
                   </td>
                   <td className="px-4 py-3 text-muted">{e.company ?? "—"}</td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={e.status} />
+                    <span className="group relative inline-block">
+                      <StatusBadge status={e.status} />
+                      {e.recipients && e.recipients.length > 0 && (
+                        <span className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-max min-w-[190px] rounded-lg border border-line bg-white p-2 text-xs shadow-lg group-hover:block">
+                          {e.recipients.map((r, i) => (
+                            <span key={i} className="flex items-center gap-1.5 py-0.5">
+                              {r.status === "signed" ? (
+                                <Check className="h-3 w-3 shrink-0 text-green-600" />
+                              ) : (
+                                <Circle className="h-3 w-3 shrink-0 text-muted" />
+                              )}
+                              <span className={r.status === "signed" ? "text-ink" : "text-muted"}>
+                                {r.name}
+                              </span>
+                              <span className="ml-auto pl-3 text-muted">
+                                {r.status === "signed" ? "signed" : "not signed"}
+                              </span>
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-muted">
                     {new Date(e.created_at).toLocaleDateString()}

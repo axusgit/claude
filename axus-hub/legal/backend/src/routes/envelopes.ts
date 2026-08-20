@@ -49,8 +49,13 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const id = requireStaff(req, reply);
     if (!id) return;
     const { rows } = await pool.query(
-      `select id, title, status, created_by, created_at, sent_at, completed_at, pdf_file, doc_type, company
-       from envelope order by created_at desc limit 200`,
+      `select e.id, e.title, e.status, e.created_by, e.created_at, e.sent_at, e.completed_at,
+              e.pdf_file, e.doc_type, e.company,
+              coalesce((
+                select json_agg(json_build_object('name', r.name, 'status', r.status) order by r.sign_order)
+                from recipient r where r.envelope_id = e.id
+              ), '[]') as recipients
+       from envelope e order by e.created_at desc limit 200`,
     );
     return { envelopes: rows };
   });
@@ -92,12 +97,27 @@ export async function envelopeRoutes(app: FastifyInstance) {
       company?: string;
       title?: string;
       reminder_interval?: string;
+      reminder_time?: string;
+      reminder_dow?: number;
+      reminder_dom?: number;
     };
     if (body.reminder_interval !== undefined) {
       await pool.query(`update envelope set reminder_interval = $1 where id = $2`, [
         body.reminder_interval?.trim() || null,
         envId,
       ]);
+    }
+    if (body.reminder_time !== undefined) {
+      await pool.query(`update envelope set reminder_time = $1 where id = $2`, [
+        body.reminder_time || null,
+        envId,
+      ]);
+    }
+    if (body.reminder_dow !== undefined) {
+      await pool.query(`update envelope set reminder_dow = $1 where id = $2`, [body.reminder_dow, envId]);
+    }
+    if (body.reminder_dom !== undefined) {
+      await pool.query(`update envelope set reminder_dom = $1 where id = $2`, [body.reminder_dom, envId]);
     }
     if (typeof body.sequential === "boolean") {
       await pool.query(`update envelope set sequential = $1 where id = $2`, [body.sequential, envId]);

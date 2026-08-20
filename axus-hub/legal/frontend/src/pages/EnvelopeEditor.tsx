@@ -101,6 +101,9 @@ export function EnvelopeEditor() {
   const [company, setCompany] = useState("");
   const [companies, setCompanies] = useState<Company[]>([]);
   const [reminder, setReminder] = useState("");
+  const [reminderTime, setReminderTime] = useState("09:00");
+  const [reminderDow, setReminderDow] = useState(1);
+  const [reminderDom, setReminderDom] = useState(1);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +118,9 @@ export function EnvelopeEditor() {
     setDocType(d.envelope.doc_type ?? "SOW");
     setCompany(d.envelope.company ?? "");
     setReminder(d.envelope.reminder_interval ?? "");
+    setReminderTime(d.envelope.reminder_time ?? "09:00");
+    setReminderDow(d.envelope.reminder_dow ?? 1);
+    setReminderDom(d.envelope.reminder_dom ?? 1);
     setActiveRecipientId((prev) => prev ?? d.recipients[0]?.id ?? null);
   }, [id]);
 
@@ -232,6 +238,18 @@ export function EnvelopeEditor() {
       setError(e instanceof Error ? e.message : "Cancel failed");
     }
   }
+  function saveReminder(patch: {
+    reminder_interval?: string;
+    reminder_time?: string;
+    reminder_dow?: number;
+    reminder_dom?: number;
+  }) {
+    if (patch.reminder_interval !== undefined) setReminder(patch.reminder_interval);
+    if (patch.reminder_time !== undefined) setReminderTime(patch.reminder_time);
+    if (patch.reminder_dow !== undefined) setReminderDow(patch.reminder_dow);
+    if (patch.reminder_dom !== undefined) setReminderDom(patch.reminder_dom);
+    void api.updateEnvelope(id, patch);
+  }
 
   if (!detail) {
     return <div className="p-8 text-center text-sm text-muted">{error ?? "Loading…"}</div>;
@@ -262,25 +280,13 @@ export function EnvelopeEditor() {
         </div>
         <div className="flex items-center gap-2">
           {dirty && <span className="text-xs text-muted">Unsaved changes</span>}
-          <div
-            className="flex items-center gap-1.5"
-            title="Automatic reminders to recipients who haven't signed"
-          >
-            <Bell className="h-3.5 w-3.5 text-muted" />
-            <select
-              value={reminder}
-              onChange={(e) => {
-                setReminder(e.target.value);
-                void api.updateEnvelope(id, { reminder_interval: e.target.value });
-              }}
-              className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
-            >
-              <option value="">No reminders</option>
-              <option value="daily">Remind daily</option>
-              <option value="weekly">Remind weekly</option>
-              <option value="monthly">Remind monthly</option>
-            </select>
-          </div>
+          <ReminderControl
+            interval={reminder}
+            time={reminderTime}
+            dow={reminderDow}
+            dom={reminderDom}
+            onSave={saveReminder}
+          />
           {detail.envelope.pdf_file && (
             <a href={api.documentUrl(id)} target="_blank" rel="noopener" title="Download document">
               <Button variant="ghost">
@@ -465,6 +471,107 @@ export function EnvelopeEditor() {
             />
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function ReminderControl({
+  interval,
+  time,
+  dow,
+  dom,
+  onSave,
+}: {
+  interval: string;
+  time: string;
+  dow: number;
+  dom: number;
+  onSave: (patch: {
+    reminder_interval?: string;
+    reminder_time?: string;
+    reminder_dow?: number;
+    reminder_dom?: number;
+  }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const inputCls =
+    "w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-brand";
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm hover:bg-canvas"
+        title="Automatic reminders to recipients who haven't signed"
+      >
+        <Bell className="h-3.5 w-3.5 text-muted" />
+        <span className={interval ? "text-ink" : "text-muted"}>
+          {interval ? `Reminder: ${interval[0].toUpperCase()}${interval.slice(1)}` : "No reminders"}
+        </span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-20 mt-1 w-64 space-y-3 rounded-[var(--radius-card)] border border-line bg-white p-3 shadow-lg">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted">Remind unsigned recipients</label>
+              <select
+                value={interval}
+                onChange={(e) => onSave({ reminder_interval: e.target.value })}
+                className={inputCls}
+              >
+                <option value="">Off</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            {interval === "weekly" && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted">Day of week</label>
+                <select
+                  value={dow}
+                  onChange={(e) => onSave({ reminder_dow: Number(e.target.value) })}
+                  className={inputCls}
+                >
+                  {DOW.map((d, i) => (
+                    <option key={i} value={i}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {interval === "monthly" && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted">Day of month</label>
+                <select
+                  value={dom}
+                  onChange={(e) => onSave({ reminder_dom: Number(e.target.value) })}
+                  className={inputCls}
+                >
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {interval && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted">Time (Eastern)</label>
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => onSave({ reminder_time: e.target.value })}
+                  className={inputCls}
+                />
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

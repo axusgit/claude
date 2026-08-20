@@ -12,6 +12,10 @@ export interface Envelope {
   doc_type?: string | null;
   company?: string | null;
   reminder_interval?: string | null;
+  reminder_time?: string | null;
+  reminder_dow?: number | null;
+  reminder_dom?: number | null;
+  recipients?: { name: string; status: string }[];
 }
 
 export interface Recipient {
@@ -99,6 +103,9 @@ export const api = {
       company?: string;
       title?: string;
       reminder_interval?: string;
+      reminder_time?: string;
+      reminder_dow?: number;
+      reminder_dom?: number;
     },
   ) =>
     req<{ envelope: Envelope }>(`/envelopes/${id}`, {
