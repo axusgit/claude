@@ -89,4 +89,5 @@ create table if not exists company (
 );
 create unique index if not exists uq_company_name on company (lower(name));
 alter table company add column if not exists address text;
+alter table company add column if not exists phone text;
 `;

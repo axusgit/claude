@@ -157,6 +157,7 @@ export interface Company {
   id: string;
   name: string;
   address?: string | null;
+  phone?: string | null;
 }
 
 // --- Quotes (generated documents) ---
@@ -171,7 +172,7 @@ export interface QuoteData {
   quote_number: string;
   quote_date: string;
   valid_until?: string;
-  customer: { company: string; contact?: string; address?: string };
+  customer: { company: string; contact?: string; address?: string; phone?: string };
   salesperson?: string;
   job?: string;
   shipping_method?: string;
@@ -197,14 +198,14 @@ export const quotesApi = {
 
 export const companiesApi = {
   list: () => req<{ companies: Company[] }>("/companies").then((r) => r.companies),
-  add: (name: string) =>
-    req<{ company: Company }>("/companies", { method: "POST", body: JSON.stringify({ name }) }).then(
+  add: (data: { name: string; address?: string; phone?: string }) =>
+    req<{ company: Company }>("/companies", { method: "POST", body: JSON.stringify(data) }).then(
       (r) => r.company,
     ),
-  update: (id: string, name: string) =>
+  update: (id: string, patch: { name?: string; address?: string; phone?: string }) =>
     req<{ company: Company }>(`/companies/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(patch),
     }).then((r) => r.company),
   remove: (id: string) => req<{ ok: boolean }>(`/companies/${id}`, { method: "DELETE" }),
 };

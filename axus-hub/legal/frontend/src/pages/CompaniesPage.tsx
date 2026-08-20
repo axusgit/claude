@@ -8,9 +8,13 @@ export function CompaniesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [addr, setAddr] = useState("");
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editAddr, setEditAddr] = useState("");
 
   async function load() {
     setLoading(true);
@@ -31,32 +35,44 @@ export function CompaniesPage() {
     if (!name.trim()) return;
     setAdding(true);
     try {
-      const added = await companiesApi.add(name.trim());
+      const c = await companiesApi.add({ name: name.trim(), phone: phone.trim(), address: addr.trim() });
       setCompanies((cs) =>
-        [...cs.filter((c) => c.id !== added.id), added].sort((a, b) => a.name.localeCompare(b.name)),
+        [...cs.filter((x) => x.id !== c.id), c].sort((a, b) => a.name.localeCompare(b.name)),
       );
       setName("");
+      setPhone("");
+      setAddr("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add");
     } finally {
       setAdding(false);
     }
   }
+  function startEdit(c: Company) {
+    setEditId(c.id);
+    setEditName(c.name);
+    setEditPhone(c.phone ?? "");
+    setEditAddr(c.address ?? "");
+  }
   async function saveEdit(id: string) {
     if (!editName.trim()) return;
     try {
-      const updated = await companiesApi.update(id, editName.trim());
-      setCompanies((cs) => cs.map((c) => (c.id === id ? updated : c))); // in place, keep position
+      const updated = await companiesApi.update(id, {
+        name: editName.trim(),
+        phone: editPhone.trim(),
+        address: editAddr.trim(),
+      });
+      setCompanies((cs) => cs.map((c) => (c.id === id ? updated : c)));
       setEditId(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to rename");
+      setError(e instanceof Error ? e.message : "Failed to update");
     }
   }
   async function remove(id: string) {
     if (!window.confirm("Delete this company?")) return;
     try {
       await companiesApi.remove(id);
-      setCompanies((cs) => cs.filter((c) => c.id !== id)); // stay in place, no reload
+      setCompanies((cs) => cs.filter((c) => c.id !== id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete");
     }
@@ -66,19 +82,22 @@ export function CompaniesPage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-semibold">Companies</h1>
-        <p className="text-sm text-muted">Companies your documents are associated with.</p>
+        <p className="text-sm text-muted">Companies your documents and quotes are associated with.</p>
       </div>
 
       <Card className="p-4">
-        <div className="flex items-end gap-3">
-          <div className="flex-1 space-y-1.5">
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_2fr_auto] sm:items-end">
+          <div className="space-y-1.5">
             <label className="text-sm font-medium">Company name</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. AGAPE NETWORK"
-              onKeyDown={(e) => e.key === "Enter" && void add()}
-            />
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="AGAPE NETWORK" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Phone</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="305-235-2616" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Address</label>
+            <Input value={addr} onChange={(e) => setAddr(e.target.value)} placeholder="Street, City, ST ZIP" />
           </div>
           <Button onClick={() => void add()} disabled={adding || !name.trim()}>
             <Plus className="h-4 w-4" /> Add
@@ -95,73 +114,59 @@ export function CompaniesPage() {
           <div className="p-12 text-center">
             <Building2 className="mx-auto h-8 w-8 text-muted" />
             <p className="mt-3 text-sm font-medium">No companies yet</p>
-            <p className="text-sm text-muted">Add companies above or import them from Contacts.</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-4 py-3 font-medium">Company ({companies.length})</th>
+                <th className="px-4 py-3 font-medium">Phone</th>
+                <th className="px-4 py-3 font-medium">Address</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {companies.map((c) => (
-                <tr key={c.id} className="group border-b border-line last:border-0">
-                  <td className="px-4 py-3">
-                    {editId === c.id ? (
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && void saveEdit(c.id)}
-                          className="max-w-sm"
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => void saveEdit(c.id)}
-                          className="text-brand hover:opacity-80"
-                          title="Save"
-                        >
+              {companies.map((c) =>
+                editId === c.id ? (
+                  <tr key={c.id} className="border-b border-line last:border-0">
+                    <td className="px-3 py-2">
+                      <Input value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Phone" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Input value={editAddr} onChange={(e) => setEditAddr(e.target.value)} placeholder="Address" />
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => void saveEdit(c.id)} className="text-brand hover:opacity-80" title="Save">
                           <Check className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => setEditId(null)}
-                          className="text-muted hover:text-ink"
-                          title="Cancel"
-                        >
+                        <button onClick={() => setEditId(null)} className="text-muted hover:text-ink" title="Cancel">
                           <X className="h-4 w-4" />
                         </button>
                       </div>
-                    ) : (
-                      <span className="font-medium">{c.name}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {editId !== c.id && (
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={c.id} className="group border-b border-line last:border-0">
+                    <td className="px-4 py-3 font-medium">{c.name}</td>
+                    <td className="px-4 py-3 text-muted">{c.phone || "—"}</td>
+                    <td className="px-4 py-3 text-muted">{c.address || "—"}</td>
+                    <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-3 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button
-                          onClick={() => {
-                            setEditId(c.id);
-                            setEditName(c.name);
-                          }}
-                          className="text-muted hover:text-brand"
-                          title="Rename"
-                        >
+                        <button onClick={() => startEdit(c)} className="text-muted hover:text-brand" title="Edit">
                           <Pencil className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => void remove(c.id)}
-                          className="text-muted hover:text-red-600"
-                          title="Delete"
-                        >
+                        <button onClick={() => void remove(c.id)} className="text-muted hover:text-red-600" title="Delete">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         )}

@@ -6,42 +6,53 @@ export async function companyRoutes(app: FastifyInstance) {
   app.get("/", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
-    const { rows } = await pool.query(`select id, name, address from company order by name`);
+    const { rows } = await pool.query(`select id, name, address, phone from company order by name`);
     return { companies: rows };
   });
 
   app.post("/", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
-    const b = (req.body ?? {}) as { name?: string };
+    const b = (req.body ?? {}) as { name?: string; address?: string; phone?: string };
     if (!b.name?.trim()) return reply.code(400).send({ error: "Company name is required." });
     const { rows } = await pool.query(
-      `insert into company (name, created_by) values ($1, $2)
-       on conflict (lower(name)) do update set name = excluded.name
-       returning id, name`,
-      [b.name.trim(), id.email],
+      `insert into company (name, address, phone, created_by) values ($1, $2, $3, $4)
+       on conflict (lower(name)) do update
+         set name = excluded.name,
+             address = coalesce(excluded.address, company.address),
+             phone = coalesce(excluded.phone, company.phone)
+       returning id, name, address, phone`,
+      [b.name.trim(), b.address?.trim() || null, b.phone?.trim() || null, id.email],
     );
     return { company: rows[0] };
   });
 
-  // Rename a company (and keep any documents pointing at it in sync).
+  // Edit a company's name / address / phone. Renaming keeps documents in sync.
   app.patch("/:id", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
     const cid = (req.params as { id: string }).id;
-    const b = (req.body ?? {}) as { name?: string };
-    if (!b.name?.trim()) return reply.code(400).send({ error: "Company name is required." });
+    const b = (req.body ?? {}) as { name?: string; address?: string; phone?: string };
     const cur = await pool.query(`select name from company where id = $1`, [cid]);
     if (!cur.rowCount) return reply.code(404).send({ error: "Not found" });
     const oldName = cur.rows[0].name as string;
-    const newName = b.name.trim();
-    try {
-      await pool.query(`update company set name = $1 where id = $2`, [newName, cid]);
-    } catch {
-      return reply.code(409).send({ error: "A company with that name already exists." });
+    if (b.name?.trim()) {
+      const newName = b.name.trim();
+      try {
+        await pool.query(`update company set name = $1 where id = $2`, [newName, cid]);
+      } catch {
+        return reply.code(409).send({ error: "A company with that name already exists." });
+      }
+      await pool.query(`update envelope set company = $1 where company = $2`, [newName, oldName]);
     }
-    await pool.query(`update envelope set company = $1 where company = $2`, [newName, oldName]);
-    return { company: { id: cid, name: newName } };
+    if (b.address !== undefined) {
+      await pool.query(`update company set address = $1 where id = $2`, [b.address?.trim() || null, cid]);
+    }
+    if (b.phone !== undefined) {
+      await pool.query(`update company set phone = $1 where id = $2`, [b.phone?.trim() || null, cid]);
+    }
+    const { rows } = await pool.query(`select id, name, address, phone from company where id = $1`, [cid]);
+    return { company: rows[0] };
   });
 
   app.delete("/:id", async (req, reply) => {

@@ -64,7 +64,12 @@ export async function generateQuotePdf(d) {
     let toy = 108;
     put(p1, "QUOTE TO", tox, toy, { size: 8, bold: true, color: ORANGE });
     toy += 14;
-    const toLines = [d.customer.contact, d.customer.company, ...String(d.customer.address ?? "").split("\n")]
+    const toLines = [
+        d.customer.contact,
+        d.customer.company,
+        ...String(d.customer.address ?? "").split("\n"),
+        d.customer.phone ? `Phone: ${d.customer.phone}` : "",
+    ]
         .map((s) => (s ?? "").trim())
         .filter(Boolean);
     for (const l of toLines) {

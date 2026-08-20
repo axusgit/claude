@@ -30,6 +30,7 @@ export function QuoteBuilder() {
   const [company, setCompany] = useState(params.get("company") ?? "");
   const [contact, setContact] = useState("");
   const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
   const [salesperson, setSalesperson] = useState("JMK");
   const [job, setJob] = useState("");
   const [shipping, setShipping] = useState("Ground");
@@ -48,7 +49,10 @@ export function QuoteBuilder() {
   useEffect(() => {
     if (!company) return;
     const co = companies.find((c) => c.name === company);
-    if (co) setAddress((prev) => prev || (co.address ?? ""));
+    if (co) {
+      setAddress((prev) => prev || (co.address ?? ""));
+      setPhone((prev) => prev || (co.phone ?? ""));
+    }
     const persons = contacts.filter((c) => (c.company ?? "") === company);
     setContact((prev) => prev || (persons[0]?.name ?? ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -58,6 +62,7 @@ export function QuoteBuilder() {
     setCompany(name);
     const co = companies.find((c) => c.name === name);
     setAddress(co?.address ?? "");
+    setPhone(co?.phone ?? "");
     const persons = contacts.filter((c) => (c.company ?? "") === name);
     setContact(persons[0]?.name ?? "");
   }
@@ -90,6 +95,7 @@ export function QuoteBuilder() {
           company: company.trim(),
           contact: contact.trim() || undefined,
           address: address.trim() || undefined,
+          phone: phone.trim() || undefined,
         },
         salesperson,
         job,
@@ -169,6 +175,10 @@ export function QuoteBuilder() {
                   : "Select a company to choose a contact."}
               </p>
             )}
+          </div>
+          <div className="space-y-1">
+            <label className={lbl}>Phone</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
           </div>
           <div className="space-y-1">
             <label className={lbl}>Address</label>
