@@ -6,7 +6,7 @@ export async function companyRoutes(app: FastifyInstance) {
   app.get("/", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
-    const { rows } = await pool.query(`select id, name from company order by name`);
+    const { rows } = await pool.query(`select id, name, address from company order by name`);
     return { companies: rows };
   });
 

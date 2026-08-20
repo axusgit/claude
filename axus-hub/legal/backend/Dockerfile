@@ -25,5 +25,6 @@ COPY axus-hub/legal/backend/package*.json ./
 RUN npm ci --omit=dev
 COPY --from=backend /app/dist ./dist
 COPY --from=frontend /fe/dist ./public
+COPY axus-hub/legal/backend/assets ./assets
 EXPOSE 8000
 CMD ["node", "dist/server.js"]

@@ -25,6 +25,7 @@ alter table envelope add column if not exists last_reminded_at timestamptz;
 alter table envelope add column if not exists reminder_time text;          -- "HH:MM" (ET)
 alter table envelope add column if not exists reminder_dow  int;           -- 0-6 (Sun=0), weekly
 alter table envelope add column if not exists reminder_dom  int;           -- 1-31, monthly
+alter table envelope add column if not exists quote_data jsonb;            -- generated-quote source data
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),
@@ -87,4 +88,5 @@ create table if not exists company (
   created_at timestamptz not null default now()
 );
 create unique index if not exists uq_company_name on company (lower(name));
+alter table company add column if not exists address text;
 `;

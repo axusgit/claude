@@ -16,6 +16,7 @@ export interface Envelope {
   reminder_dow?: number | null;
   reminder_dom?: number | null;
   recipients?: { name: string; status: string }[];
+  quote_data?: QuoteData | null;
 }
 
 export interface Recipient {
@@ -155,7 +156,44 @@ export const contactsApi = {
 export interface Company {
   id: string;
   name: string;
+  address?: string | null;
 }
+
+// --- Quotes (generated documents) ---
+export interface QuoteItem {
+  qty: number;
+  item: string;
+  description: string;
+  unit_price: number;
+  discount: number;
+}
+export interface QuoteData {
+  quote_number: string;
+  quote_date: string;
+  valid_until?: string;
+  customer: { company: string; contact?: string; address?: string };
+  salesperson?: string;
+  job?: string;
+  shipping_method?: string;
+  delivery_date?: string;
+  payment_terms?: string;
+  due_date?: string;
+  items: QuoteItem[];
+  tax?: string;
+}
+
+export const quotesApi = {
+  create: (title: string, quote: QuoteData) =>
+    req<{ envelope: Envelope }>("/quotes", {
+      method: "POST",
+      body: JSON.stringify({ title, quote }),
+    }).then((r) => r.envelope),
+  update: (id: string, title: string, quote: QuoteData) =>
+    req<{ envelope: Envelope }>(`/quotes/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ title, quote }),
+    }).then((r) => r.envelope),
+};
 
 export const companiesApi = {
   list: () => req<{ companies: Company[] }>("/companies").then((r) => r.companies),

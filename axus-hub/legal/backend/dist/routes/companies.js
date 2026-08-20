@@ -5,7 +5,7 @@ export async function companyRoutes(app) {
         const id = requireStaff(req, reply);
         if (!id)
             return;
-        const { rows } = await pool.query(`select id, name from company order by name`);
+        const { rows } = await pool.query(`select id, name, address from company order by name`);
         return { companies: rows };
     });
     app.post("/", async (req, reply) => {

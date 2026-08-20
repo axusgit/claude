@@ -51,7 +51,12 @@ export function EnvelopeList() {
   }, []);
 
   async function create() {
-    if (!title.trim() || !company.trim()) return;
+    if (!company.trim()) return;
+    if (docType === "Quote") {
+      nav(`/quotes/new?company=${encodeURIComponent(company.trim())}`);
+      return;
+    }
+    if (!title.trim()) return;
     const env = await api.createEnvelope({
       title: title.trim(),
       doc_type: docType,
@@ -111,15 +116,22 @@ export function EnvelopeList() {
       {creating && (
         <Card className="space-y-3 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Document title</label>
-              <Input
-                autoFocus
-                placeholder="e.g. BCOM Master Services Agreement"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
+            {docType === "Quote" ? (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Document</label>
+                <p className="pt-2 text-sm text-muted">You'll build the quote on the next step.</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Document title</label>
+                <Input
+                  autoFocus
+                  placeholder="e.g. BCOM Master Services Agreement"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Type</label>
               <select
@@ -161,9 +173,9 @@ export function EnvelopeList() {
             <Button
               className="w-fit"
               onClick={() => void create()}
-              disabled={!title.trim() || !company.trim()}
+              disabled={docType === "Quote" ? !company.trim() : !title.trim() || !company.trim()}
             >
-              Create &amp; open
+              {docType === "Quote" ? "Continue" : "Create & open"}
             </Button>
           </div>
         </Card>

@@ -4,6 +4,7 @@ import { EnvelopeList } from "@/pages/EnvelopeList";
 import { EnvelopeEditor } from "@/pages/EnvelopeEditor";
 import { ContactsPage } from "@/pages/ContactsPage";
 import { CompaniesPage } from "@/pages/CompaniesPage";
+import { QuoteBuilder } from "@/pages/QuoteBuilder";
 import { SignPage } from "@/pages/SignPage";
 
 const navCls = ({ isActive }: { isActive: boolean }) =>
@@ -52,6 +53,7 @@ export function App() {
           <Route path="/envelopes/:id" element={<EnvelopeEditor />} />
           <Route path="/contacts" element={<ContactsPage />} />
           <Route path="/companies" element={<CompaniesPage />} />
+          <Route path="/quotes/new" element={<QuoteBuilder />} />
         </Routes>
       </main>
     </div>
