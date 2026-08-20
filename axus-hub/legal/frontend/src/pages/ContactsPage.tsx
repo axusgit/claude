@@ -176,7 +176,7 @@ export function ContactsPage() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "axus-legal-contacts-template.csv";
+    a.download = "axus-esign-contacts-template.csv";
     a.click();
     URL.revokeObjectURL(url);
   }

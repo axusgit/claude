@@ -199,7 +199,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/legal
       PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
-      PUBLIC_BASE_URL: https://legal.axustechnologies.com
+      PUBLIC_BASE_URL: https://aesign.axustechnologies.com
       STORAGE_DIR: /data/legal
       GOTENBERG_URL: http://gotenberg:3000
       # Email (M365 relay) — reuses the platform's configured mailbox.
@@ -214,15 +214,15 @@ services:
       postgres: {condition: service_healthy}
     labels:
       traefik.enable: "true"
-      # Staff app — gated by Authentik login.
-      traefik.http.routers.legal.rule: Host(`legal.axustechnologies.com`)
+      # Staff app — gated by Authentik login. Primary host: aesign.axustechnologies.com.
+      traefik.http.routers.legal.rule: Host(`aesign.axustechnologies.com`)
       traefik.http.routers.legal.entrypoints: websecure
       traefik.http.routers.legal.tls.certresolver: letsencrypt
       traefik.http.routers.legal.middlewares: geogate@file,authentik@file
       traefik.http.services.legal.loadbalancer.server.port: "8000"
       # Public signer routes (external signers have no Axus account): the signer
       # page, its API, and the shared JS/CSS bundle bypass the auth middleware.
-      traefik.http.routers.legal-public.rule: Host(`legal.axustechnologies.com`) && (PathPrefix(`/sign`) || PathPrefix(`/api/sign`) || PathPrefix(`/assets`))
+      traefik.http.routers.legal-public.rule: Host(`aesign.axustechnologies.com`) && (PathPrefix(`/sign`) || PathPrefix(`/api/sign`) || PathPrefix(`/assets`))
       traefik.http.routers.legal-public.entrypoints: websecure
       traefik.http.routers.legal-public.tls.certresolver: letsencrypt
       traefik.http.routers.legal-public.priority: "100"

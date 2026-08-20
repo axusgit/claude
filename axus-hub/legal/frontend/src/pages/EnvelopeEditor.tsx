@@ -361,6 +361,7 @@ export function EnvelopeEditor() {
                   >
                     <option value="SOW">SOW</option>
                     <option value="MSA">MSA</option>
+                    <option value="BAA">BAA</option>
                     <option value="Quote">Quote</option>
                   </select>
                 </div>

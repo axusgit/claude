@@ -62,7 +62,7 @@ export async function sealPdf(sourcePath, fields, recipients, meta, includeCert 
             y -= size + 6;
         };
         cert.drawRectangle({ x: 0, y: 788, width: 612, height: 4, color: rgb(0.92, 0.35, 0.05) });
-        line("Axus Legal — Certificate of Completion", { bold: true, size: 16, color: rgb(0.07, 0.09, 0.15) });
+        line("Axus eSign — Certificate of Completion", { bold: true, size: 16, color: rgb(0.07, 0.09, 0.15) });
         y -= 6;
         line(`Document: ${meta.title}`, { bold: true, size: 11 });
         line(`Envelope ID: ${meta.envelopeId}`);

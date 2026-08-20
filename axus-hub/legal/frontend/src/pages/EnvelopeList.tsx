@@ -4,7 +4,7 @@ import { Check, Circle, Download, FileSignature, Pencil, Plus, Trash2 } from "lu
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
-const DOC_TYPES = ["SOW", "MSA", "Quote"];
+const DOC_TYPES = ["SOW", "MSA", "BAA", "Quote"];
 
 export function EnvelopeList() {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);

@@ -24,7 +24,7 @@ async function main() {
     registerStatic(app, config.frontendDir);
     await migrate();
     await app.listen({ host: "0.0.0.0", port: config.port });
-    app.log.info(`Axus Legal API listening on :${config.port}`);
+    app.log.info(`Axus eSign API listening on :${config.port}`);
 }
 main().catch((err) => {
     console.error("Fatal startup error:", err);

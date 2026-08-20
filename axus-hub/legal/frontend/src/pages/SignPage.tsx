@@ -107,7 +107,7 @@ export function SignPage() {
       <header className="sticky top-0 z-10 border-b border-line bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3">
           <div className="text-[13px] font-bold tracking-wide">
-            AXUS <span className="text-brand">LEGAL</span>
+            AXUS <span className="text-brand">eSIGN</span>
           </div>
           <div className="text-sm text-muted">
             Signing as <span className="font-medium text-ink">{view.recipient.name}</span>

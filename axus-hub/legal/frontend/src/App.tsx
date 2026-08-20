@@ -1,5 +1,5 @@
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { Scale } from "lucide-react";
+import { FileSignature } from "lucide-react";
 import { EnvelopeList } from "@/pages/EnvelopeList";
 import { EnvelopeEditor } from "@/pages/EnvelopeEditor";
 import { ContactsPage } from "@/pages/ContactsPage";
@@ -27,10 +27,10 @@ export function App() {
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-5">
           <Link to="/" className="flex items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-brand-fg">
-              <Scale className="h-4.5 w-4.5" />
+              <FileSignature className="h-4.5 w-4.5" />
             </span>
             <span className="text-[15px] font-semibold">
-              Axus <span className="text-muted">Legal</span>
+              Axus <span className="text-muted">eSign</span>
             </span>
           </Link>
           <nav className="flex items-center gap-1">

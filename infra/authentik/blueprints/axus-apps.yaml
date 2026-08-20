@@ -57,7 +57,7 @@ entries:
       invalidation_flow:
         !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
 
-  # Axus Legal lives on its own apex subdomain (legal.axustechnologies.com),
+  # Axus eSign lives on its own apex subdomain (aesign.axustechnologies.com),
   # not under the hub.* domain — so its external_host is a literal.
   - id: provider-legal
     model: authentik_providers_proxy.proxyprovider
@@ -65,7 +65,7 @@ entries:
     attrs:
       name: axus-legal
       mode: forward_single
-      external_host: https://legal.axustechnologies.com
+      external_host: https://aesign.axustechnologies.com
       authorization_flow:
         !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
       invalidation_flow:
@@ -114,11 +114,11 @@ entries:
     model: authentik_core.application
     identifiers: {slug: axus-legal}
     attrs:
-      name: Axus Legal
+      name: Axus eSign
       slug: axus-legal
       provider: !KeyOf provider-legal
-      meta_launch_url: https://legal.axustechnologies.com
-      meta_description: Contracts, e-signatures (SOW/MSA), and quotes.
+      meta_launch_url: https://aesign.axustechnologies.com
+      meta_description: Electronic signatures (SOW/MSA), documents, and quotes.
       meta_publisher: Axus Technologies
       policy_engine_mode: any
 
