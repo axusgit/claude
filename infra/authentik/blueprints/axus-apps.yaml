@@ -160,7 +160,7 @@ entries:
   - model: authentik_policies.policybinding
     identifiers:
       target: !KeyOf app-legal-application
-      group: !Find [authentik_core.group, [name, app-legal]]
+      group: !Find [authentik_core.group, [name, app-aesign]]
       order: 0
     attrs:
       enabled: true

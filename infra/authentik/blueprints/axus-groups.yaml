@@ -27,18 +27,18 @@ entries:
     identifiers: {name: app-engineering}
     attrs: {name: app-engineering}
   - model: authentik_core.group
-    identifiers: {name: app-legal}
-    attrs: {name: app-legal}
-  # --- Legal app roles (app-scoped, like ain-role-*; read by the Legal app) ---
+    identifiers: {name: app-aesign}
+    attrs: {name: app-aesign}
+  # --- eSign app roles (app-scoped, like ain-role-*; read by the eSign app) ---
   - model: authentik_core.group
-    identifiers: {name: legal-role-admin}
-    attrs: {name: legal-role-admin}
+    identifiers: {name: aesign-role-admin}
+    attrs: {name: aesign-role-admin}
   - model: authentik_core.group
-    identifiers: {name: legal-role-manager}
-    attrs: {name: legal-role-manager}
+    identifiers: {name: aesign-role-manager}
+    attrs: {name: aesign-role-manager}
   - model: authentik_core.group
-    identifiers: {name: legal-role-member}
-    attrs: {name: legal-role-member}
+    identifiers: {name: aesign-role-member}
+    attrs: {name: aesign-role-member}
   # --- roles (mapped to in-app role by libs/auth) ---
   - model: authentik_core.group
     identifiers: {name: role-admin}
