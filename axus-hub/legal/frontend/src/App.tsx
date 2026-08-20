@@ -3,6 +3,7 @@ import { Scale } from "lucide-react";
 import { EnvelopeList } from "@/pages/EnvelopeList";
 import { EnvelopeEditor } from "@/pages/EnvelopeEditor";
 import { ContactsPage } from "@/pages/ContactsPage";
+import { CompaniesPage } from "@/pages/CompaniesPage";
 import { SignPage } from "@/pages/SignPage";
 
 const navCls = ({ isActive }: { isActive: boolean }) =>
@@ -35,6 +36,9 @@ export function App() {
             <NavLink to="/" end className={navCls}>
               Documents
             </NavLink>
+            <NavLink to="/companies" className={navCls}>
+              Companies
+            </NavLink>
             <NavLink to="/contacts" className={navCls}>
               Contacts
             </NavLink>
@@ -47,6 +51,7 @@ export function App() {
           <Route path="/" element={<EnvelopeList />} />
           <Route path="/envelopes/:id" element={<EnvelopeEditor />} />
           <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/companies" element={<CompaniesPage />} />
         </Routes>
       </main>
     </div>

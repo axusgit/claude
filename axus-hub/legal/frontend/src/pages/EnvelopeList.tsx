@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Download, FileSignature, Plus, Trash2 } from "lucide-react";
+import { Download, FileSignature, Pencil, Plus, Trash2 } from "lucide-react";
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
@@ -15,7 +15,24 @@ export function EnvelopeList() {
   const [docType, setDocType] = useState("SOW");
   const [company, setCompany] = useState("");
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [editDoc, setEditDoc] = useState<Envelope | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editType, setEditType] = useState("SOW");
+  const [editCompany, setEditCompany] = useState("");
+  const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
   const nav = useNavigate();
+
+  const filtered = envelopes.filter((e) => {
+    if (filterType !== "all" && (e.doc_type ?? "") !== filterType) return false;
+    if (filterStatus !== "all" && e.status !== filterStatus) return false;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      if (!`${e.title} ${e.company ?? ""}`.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
   async function load() {
     setLoading(true);
@@ -41,6 +58,27 @@ export function EnvelopeList() {
       company: company.trim(),
     });
     nav(`/envelopes/${env.id}`);
+  }
+
+  function openEdit(e: Envelope) {
+    setEditDoc(e);
+    setEditTitle(e.title);
+    setEditType(e.doc_type ?? "SOW");
+    setEditCompany(e.company ?? "");
+  }
+  async function saveEdit() {
+    if (!editDoc || !editTitle.trim() || !editCompany.trim()) return;
+    try {
+      await api.updateEnvelope(editDoc.id, {
+        title: editTitle.trim(),
+        doc_type: editType,
+        company: editCompany.trim(),
+      });
+      setEditDoc(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    }
   }
 
   async function del(docId: string, docTitle: string) {
@@ -100,17 +138,25 @@ export function EnvelopeList() {
           <div className="grid items-end gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Company</label>
+              {companies.length > 0 && (
+                <select
+                  value=""
+                  onChange={(e) => e.target.value && setCompany(e.target.value)}
+                  className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                >
+                  <option value="">Pick from your companies…</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <Input
-                list="company-list"
-                placeholder="Start typing a company…"
+                placeholder="Company name"
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
               />
-              <datalist id="company-list">
-                {companies.map((c) => (
-                  <option key={c.id} value={c.name} />
-                ))}
-              </datalist>
             </div>
             <Button
               className="w-fit"
@@ -121,6 +167,40 @@ export function EnvelopeList() {
             </Button>
           </div>
         </Card>
+      )}
+
+      {!loading && !error && envelopes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            placeholder="Search title or company…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-64 max-w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+          />
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+          >
+            <option value="all">All types</option>
+            {DOC_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+          >
+            <option value="all">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
       )}
 
       <Card>
@@ -147,7 +227,14 @@ export function EnvelopeList() {
               </tr>
             </thead>
             <tbody>
-              {envelopes.map((e) => (
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                    No documents match your search.
+                  </td>
+                </tr>
+              )}
+              {filtered.map((e) => (
                 <tr
                   key={e.id}
                   className="cursor-pointer border-b border-line last:border-0 hover:bg-canvas"
@@ -172,6 +259,16 @@ export function EnvelopeList() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">
+                      <button
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          openEdit(e);
+                        }}
+                        className="text-muted hover:text-brand"
+                        title="Edit title, type, company"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
                       {e.pdf_file && (
                         <a
                           href={api.documentUrl(e.id)}
@@ -204,6 +301,73 @@ export function EnvelopeList() {
           </table>
         )}
       </Card>
+
+      {editDoc && (
+        <div
+          className="fixed inset-0 z-20 grid place-items-center bg-black/40 p-4"
+          onClick={() => setEditDoc(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-white p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-3 font-semibold">Edit document</h3>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Title</label>
+                <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Type</label>
+                <select
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value)}
+                  className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                >
+                  {DOC_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Company</label>
+                {companies.length > 0 && (
+                  <select
+                    value=""
+                    onChange={(e) => e.target.value && setEditCompany(e.target.value)}
+                    className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                  >
+                    <option value="">Pick from your companies…</option>
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <Input
+                  value={editCompany}
+                  onChange={(e) => setEditCompany(e.target.value)}
+                  placeholder="Company name"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditDoc(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void saveEdit()}
+                disabled={!editTitle.trim() || !editCompany.trim()}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

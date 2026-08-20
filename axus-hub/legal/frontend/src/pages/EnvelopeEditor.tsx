@@ -318,8 +318,26 @@ export function EnvelopeEditor() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-muted">Company</label>
+                  {companies.length > 0 && (
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setCompany(e.target.value);
+                          setDirty(true);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+                    >
+                      <option value="">Pick from your companies…</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <Input
-                    list="editor-company-list"
                     value={company}
                     onChange={(e) => {
                       setCompany(e.target.value);
@@ -327,11 +345,6 @@ export function EnvelopeEditor() {
                     }}
                     placeholder="Company"
                   />
-                  <datalist id="editor-company-list">
-                    {companies.map((c) => (
-                      <option key={c.id} value={c.name} />
-                    ))}
-                  </datalist>
                 </div>
               </Card>
             )}

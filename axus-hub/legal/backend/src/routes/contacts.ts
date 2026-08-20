@@ -30,6 +30,41 @@ export async function contactRoutes(app: FastifyInstance) {
     return { contact: rows[0] };
   });
 
+  // Edit a contact's name / email / company.
+  app.patch("/:id", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const cid = (req.params as { id: string }).id;
+    const b = (req.body ?? {}) as { name?: string; email?: string; company?: string };
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    let i = 1;
+    if (b.name !== undefined) {
+      sets.push(`name = $${i++}`);
+      vals.push(b.name.trim());
+    }
+    if (b.email !== undefined) {
+      sets.push(`email = $${i++}`);
+      vals.push(b.email.trim());
+    }
+    if (b.company !== undefined) {
+      sets.push(`company = $${i++}`);
+      vals.push(b.company?.trim() || null);
+    }
+    if (!sets.length) return reply.code(400).send({ error: "Nothing to update." });
+    vals.push(cid);
+    try {
+      const { rows } = await pool.query(
+        `update contact set ${sets.join(", ")} where id = $${i} returning id, name, email, company`,
+        vals,
+      );
+      if (!rows.length) return reply.code(404).send({ error: "Not found" });
+      return { contact: rows[0] };
+    } catch {
+      return reply.code(409).send({ error: "A contact with that email already exists." });
+    }
+  });
+
   app.delete("/:id", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;

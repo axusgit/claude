@@ -85,7 +85,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ fields }),
     }),
-  updateEnvelope: (id: string, patch: { sequential?: boolean; doc_type?: string; company?: string }) =>
+  updateEnvelope: (
+    id: string,
+    patch: { sequential?: boolean; doc_type?: string; company?: string; title?: string },
+  ) =>
     req<{ envelope: Envelope }>(`/envelopes/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -114,6 +117,11 @@ export const contactsApi = {
     req<{ contact: Contact }>("/contacts", { method: "POST", body: JSON.stringify(c) }).then(
       (r) => r.contact,
     ),
+  update: (id: string, patch: { name?: string; email?: string; company?: string }) =>
+    req<{ contact: Contact }>(`/contacts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }).then((r) => r.contact),
   remove: (id: string) => req<{ ok: boolean }>(`/contacts/${id}`, { method: "DELETE" }),
   import: (contacts: { name: string; email: string; company?: string }[]) =>
     req<{ imported: number; skipped: number }>("/contacts/import", {
@@ -134,6 +142,12 @@ export const companiesApi = {
     req<{ company: Company }>("/companies", { method: "POST", body: JSON.stringify({ name }) }).then(
       (r) => r.company,
     ),
+  update: (id: string, name: string) =>
+    req<{ company: Company }>(`/companies/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }).then((r) => r.company),
+  remove: (id: string) => req<{ ok: boolean }>(`/companies/${id}`, { method: "DELETE" }),
 };
 
 // --- Public signer API (token-based, no auth) ---

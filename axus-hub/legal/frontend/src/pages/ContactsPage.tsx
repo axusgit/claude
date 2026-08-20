@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FileDown, Plus, Trash2, Upload, Users } from "lucide-react";
+import { Check, FileDown, Pencil, Plus, Trash2, Upload, Users, X } from "lucide-react";
 import { contactsApi, type Contact } from "@/lib/api";
 import { Button, Card, Input } from "@/components/ui";
 
@@ -92,6 +92,10 @@ export function ContactsPage() {
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editCompany, setEditCompany] = useState("");
 
   async function load() {
     setLoading(true);
@@ -112,21 +116,51 @@ export function ContactsPage() {
     if (!name.trim() || !email.trim()) return;
     setAdding(true);
     try {
-      await contactsApi.add({ name: name.trim(), email: email.trim(), company: company.trim() || undefined });
+      const c = await contactsApi.add({
+        name: name.trim(),
+        email: email.trim(),
+        company: company.trim() || undefined,
+      });
+      setContacts((cs) =>
+        [...cs.filter((x) => x.id !== c.id), c].sort((a, b) => a.name.localeCompare(b.name)),
+      );
       setName("");
       setEmail("");
       setCompany("");
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add");
     } finally {
       setAdding(false);
     }
   }
+  function startEdit(c: Contact) {
+    setEditId(c.id);
+    setEditName(c.name);
+    setEditEmail(c.email);
+    setEditCompany(c.company ?? "");
+  }
+  async function saveEdit(id: string) {
+    if (!editName.trim() || !editEmail.trim()) return;
+    try {
+      const updated = await contactsApi.update(id, {
+        name: editName.trim(),
+        email: editEmail.trim(),
+        company: editCompany.trim(),
+      });
+      setContacts((cs) => cs.map((c) => (c.id === id ? updated : c))); // in place
+      setEditId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
   async function remove(id: string) {
     if (!window.confirm("Delete this contact?")) return;
-    await contactsApi.remove(id);
-    await load();
+    try {
+      await contactsApi.remove(id);
+      setContacts((cs) => cs.filter((c) => c.id !== id)); // stay in place
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete");
+    }
   }
 
   function downloadTemplate() {
@@ -247,22 +281,71 @@ export function ContactsPage() {
               </tr>
             </thead>
             <tbody>
-              {contacts.map((c) => (
-                <tr key={c.id} className="border-b border-line last:border-0">
-                  <td className="px-4 py-3 font-medium">{c.name}</td>
-                  <td className="px-4 py-3 text-muted">{c.email}</td>
-                  <td className="px-4 py-3 text-muted">{c.company ?? "—"}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => void remove(c.id)}
-                      className="text-muted hover:text-red-600"
-                      title="Delete contact"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {contacts.map((c) =>
+                editId === c.id ? (
+                  <tr key={c.id} className="border-b border-line last:border-0">
+                    <td className="px-4 py-2">
+                      <Input value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
+                    </td>
+                    <td className="px-4 py-2">
+                      <Input
+                        value={editEmail}
+                        type="email"
+                        onChange={(e) => setEditEmail(e.target.value)}
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <Input
+                        value={editCompany}
+                        onChange={(e) => setEditCompany(e.target.value)}
+                        placeholder="Company"
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => void saveEdit(c.id)}
+                          className="text-brand hover:opacity-80"
+                          title="Save"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => setEditId(null)}
+                          className="text-muted hover:text-ink"
+                          title="Cancel"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={c.id} className="group border-b border-line last:border-0">
+                    <td className="px-4 py-3 font-medium">{c.name}</td>
+                    <td className="px-4 py-3 text-muted">{c.email}</td>
+                    <td className="px-4 py-3 text-muted">{c.company ?? "—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-3 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          onClick={() => startEdit(c)}
+                          className="text-muted hover:text-brand"
+                          title="Edit contact"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => void remove(c.id)}
+                          className="text-muted hover:text-red-600"
+                          title="Delete contact"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         )}

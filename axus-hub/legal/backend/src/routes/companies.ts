@@ -24,6 +24,26 @@ export async function companyRoutes(app: FastifyInstance) {
     return { company: rows[0] };
   });
 
+  // Rename a company (and keep any documents pointing at it in sync).
+  app.patch("/:id", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const cid = (req.params as { id: string }).id;
+    const b = (req.body ?? {}) as { name?: string };
+    if (!b.name?.trim()) return reply.code(400).send({ error: "Company name is required." });
+    const cur = await pool.query(`select name from company where id = $1`, [cid]);
+    if (!cur.rowCount) return reply.code(404).send({ error: "Not found" });
+    const oldName = cur.rows[0].name as string;
+    const newName = b.name.trim();
+    try {
+      await pool.query(`update company set name = $1 where id = $2`, [newName, cid]);
+    } catch {
+      return reply.code(409).send({ error: "A company with that name already exists." });
+    }
+    await pool.query(`update envelope set company = $1 where company = $2`, [newName, oldName]);
+    return { company: { id: cid, name: newName } };
+  });
+
   app.delete("/:id", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
