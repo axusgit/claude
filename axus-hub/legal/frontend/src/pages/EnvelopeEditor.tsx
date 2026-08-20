@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  Bell,
   Briefcase,
   Calendar,
   Check,
@@ -99,6 +100,7 @@ export function EnvelopeEditor() {
   const [docType, setDocType] = useState("SOW");
   const [company, setCompany] = useState("");
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [reminder, setReminder] = useState("");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +114,7 @@ export function EnvelopeEditor() {
     setSequential(!!d.envelope.sequential);
     setDocType(d.envelope.doc_type ?? "SOW");
     setCompany(d.envelope.company ?? "");
+    setReminder(d.envelope.reminder_interval ?? "");
     setActiveRecipientId((prev) => prev ?? d.recipients[0]?.id ?? null);
   }, [id]);
 
@@ -220,6 +223,15 @@ export function EnvelopeEditor() {
       setSending(false);
     }
   }
+  async function cancelDoc() {
+    if (!window.confirm("Cancel this document? Recipients will no longer be able to sign it.")) return;
+    try {
+      await api.cancelEnvelope(id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Cancel failed");
+    }
+  }
 
   if (!detail) {
     return <div className="p-8 text-center text-sm text-muted">{error ?? "Loading…"}</div>;
@@ -250,12 +262,41 @@ export function EnvelopeEditor() {
         </div>
         <div className="flex items-center gap-2">
           {dirty && <span className="text-xs text-muted">Unsaved changes</span>}
+          <div
+            className="flex items-center gap-1.5"
+            title="Automatic reminders to recipients who haven't signed"
+          >
+            <Bell className="h-3.5 w-3.5 text-muted" />
+            <select
+              value={reminder}
+              onChange={(e) => {
+                setReminder(e.target.value);
+                void api.updateEnvelope(id, { reminder_interval: e.target.value });
+              }}
+              className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-brand"
+            >
+              <option value="">No reminders</option>
+              <option value="daily">Remind daily</option>
+              <option value="weekly">Remind weekly</option>
+              <option value="monthly">Remind monthly</option>
+            </select>
+          </div>
           {detail.envelope.pdf_file && (
             <a href={api.documentUrl(id)} target="_blank" rel="noopener" title="Download document">
               <Button variant="ghost">
                 <Download className="h-4 w-4" />
               </Button>
             </a>
+          )}
+          {(detail.envelope.status === "sent" ||
+            detail.envelope.status === "partially_completed") && (
+            <Button
+              variant="ghost"
+              className="text-red-600 hover:bg-red-50"
+              onClick={() => void cancelDoc()}
+            >
+              Cancel
+            </Button>
           )}
           {detail.envelope.status === "draft" && (
             <Button variant="outline" onClick={() => void save()} disabled={saving || !dirty}>
@@ -264,7 +305,8 @@ export function EnvelopeEditor() {
           )}
           <Button
             onClick={() => void send()}
-            disabled={sending || detail.envelope.status !== "draft"}
+            disabled={sending || detail.envelope.status !== "draft" || fields.length === 0}
+            title={fields.length === 0 ? "Add at least one field before sending" : undefined}
           >
             <Send className="h-4 w-4" />
             {detail.envelope.status !== "draft" ? "Sent" : sending ? "Sending…" : "Send"}

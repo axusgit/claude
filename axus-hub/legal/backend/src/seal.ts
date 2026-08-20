@@ -25,6 +25,7 @@ export async function sealPdf(
   fields: SealField[],
   recipients: SealRecipient[],
   meta: { title: string; envelopeId: string },
+  includeCert = true,
 ): Promise<{ bytes: Uint8Array; sha256: string }> {
   const src = await readFile(sourcePath);
   const pdf = await PDFDocument.load(src);
@@ -73,7 +74,8 @@ export async function sealPdf(
     }
   }
 
-  // --- Certificate of completion ---
+  // --- Certificate of completion (only on the final, fully-signed copy) ---
+  if (includeCert) {
   const cert = pdf.addPage([612, 792]);
   let y = 736;
   const line = (t: string, o?: { bold?: boolean; size?: number; color?: Color }) => {
@@ -103,6 +105,7 @@ export async function sealPdf(
     color: rgb(0.45, 0.45, 0.45),
   });
   line("IP address recorded in the audit trail.", { size: 9, color: rgb(0.45, 0.45, 0.45) });
+  }
 
   const bytes = await pdf.save();
   const sha256 = createHash("sha256").update(bytes).digest("hex");

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 // Flatten field values/signatures onto the source PDF and append a certificate
 // of completion. Returns the sealed bytes + their SHA-256 (integrity proof).
-export async function sealPdf(sourcePath, fields, recipients, meta) {
+export async function sealPdf(sourcePath, fields, recipients, meta, includeCert = true) {
     const src = await readFile(sourcePath);
     const pdf = await PDFDocument.load(src);
     const helv = await pdf.embedFont(StandardFonts.Helvetica);
@@ -52,36 +52,38 @@ export async function sealPdf(sourcePath, fields, recipients, meta) {
             });
         }
     }
-    // --- Certificate of completion ---
-    const cert = pdf.addPage([612, 792]);
-    let y = 736;
-    const line = (t, o) => {
-        const size = o?.size ?? 10;
-        cert.drawText(t, { x: 54, y, size, font: o?.bold ? bold : helv, color: o?.color ?? rgb(0.25, 0.25, 0.25) });
-        y -= size + 6;
-    };
-    cert.drawRectangle({ x: 0, y: 788, width: 612, height: 4, color: rgb(0.92, 0.35, 0.05) });
-    line("Axus Legal — Certificate of Completion", { bold: true, size: 16, color: rgb(0.07, 0.09, 0.15) });
-    y -= 6;
-    line(`Document: ${meta.title}`, { bold: true, size: 11 });
-    line(`Envelope ID: ${meta.envelopeId}`);
-    y -= 8;
-    line("Signers", { bold: true, size: 12, color: rgb(0.07, 0.09, 0.15) });
-    for (const r of recipients) {
-        line(`• ${r.name} <${r.email}>`, { bold: true });
-        line(`    Signed: ${r.signed_at ?? "—"}     IP: ${r.ip ?? "—"}`);
-        y -= 2;
+    // --- Certificate of completion (only on the final, fully-signed copy) ---
+    if (includeCert) {
+        const cert = pdf.addPage([612, 792]);
+        let y = 736;
+        const line = (t, o) => {
+            const size = o?.size ?? 10;
+            cert.drawText(t, { x: 54, y, size, font: o?.bold ? bold : helv, color: o?.color ?? rgb(0.25, 0.25, 0.25) });
+            y -= size + 6;
+        };
+        cert.drawRectangle({ x: 0, y: 788, width: 612, height: 4, color: rgb(0.92, 0.35, 0.05) });
+        line("Axus Legal — Certificate of Completion", { bold: true, size: 16, color: rgb(0.07, 0.09, 0.15) });
+        y -= 6;
+        line(`Document: ${meta.title}`, { bold: true, size: 11 });
+        line(`Envelope ID: ${meta.envelopeId}`);
+        y -= 8;
+        line("Signers", { bold: true, size: 12, color: rgb(0.07, 0.09, 0.15) });
+        for (const r of recipients) {
+            line(`• ${r.name} <${r.email}>`, { bold: true });
+            line(`    Signed: ${r.signed_at ?? "—"}     IP: ${r.ip ?? "—"}`);
+            y -= 2;
+        }
+        y -= 6;
+        line("Executed electronically under the U.S. ESIGN Act and UETA. Each signer consented to", {
+            size: 9,
+            color: rgb(0.45, 0.45, 0.45),
+        });
+        line("sign electronically; identity was attributed via a unique emailed link, with timestamp and", {
+            size: 9,
+            color: rgb(0.45, 0.45, 0.45),
+        });
+        line("IP address recorded in the audit trail.", { size: 9, color: rgb(0.45, 0.45, 0.45) });
     }
-    y -= 6;
-    line("Executed electronically under the U.S. ESIGN Act and UETA. Each signer consented to", {
-        size: 9,
-        color: rgb(0.45, 0.45, 0.45),
-    });
-    line("sign electronically; identity was attributed via a unique emailed link, with timestamp and", {
-        size: 9,
-        color: rgb(0.45, 0.45, 0.45),
-    });
-    line("IP address recorded in the audit trail.", { size: 9, color: rgb(0.45, 0.45, 0.45) });
     const bytes = await pdf.save();
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     return { bytes, sha256 };

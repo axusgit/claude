@@ -69,4 +69,80 @@ export async function sendCompleted(opts) {
         return false;
     }
 }
+export async function sendProgress(opts) {
+    const html = shell("Document update", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">Hi ' +
+        opts.recipientName +
+        ',</p><p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;"><strong>' +
+        opts.signerName +
+        "</strong> has completed their part of <strong>" +
+        opts.title +
+        "</strong>. The current copy is attached; you'll receive the fully-signed version once all parties have signed.</p>");
+    const text = `Hi ${opts.recipientName},\n\n${opts.signerName} has completed their part of "${opts.title}". ` +
+        `The current copy is attached; the fully-signed version follows once all parties sign.\n\n— Axus Legal`;
+    try {
+        await transport.sendMail({
+            from: config.mail.from,
+            to: opts.to,
+            subject: `Update: ${opts.title}`,
+            text,
+            html,
+            attachments: opts.attachment
+                ? [{ filename: opts.attachment.filename, content: opts.attachment.content }]
+                : [],
+        });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+// Sent to a participant who hasn't signed yet, once the other party completes.
+export async function sendReminder(opts) {
+    const html = shell("Your signature is needed", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">Hi ' +
+        opts.recipientName +
+        ',</p><p style="margin:0 0 22px;font-size:15px;line-height:1.55;color:#374151;"><strong>' +
+        opts.signerName +
+        "</strong> has completed their part of <strong>" +
+        opts.title +
+        "</strong>. Your signature is now needed to complete it.</p>" +
+        '<p style="margin:0 0 8px;">' + button(opts.url, "Complete your part") + "</p>");
+    const text = `Hi ${opts.recipientName},\n\n${opts.signerName} has completed their part of "${opts.title}". ` +
+        `Your signature is now needed to complete it:\n${opts.url}\n\n— Axus Legal`;
+    try {
+        await transport.sendMail({
+            from: config.mail.from,
+            to: opts.to,
+            subject: `Signature needed: ${opts.title}`,
+            text,
+            html,
+        });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+// Periodic reminder (scheduled) to a signer who hasn't completed yet.
+export async function sendPendingReminder(opts) {
+    const html = shell("Reminder: your signature is needed", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">Hi ' +
+        opts.recipientName +
+        ',</p><p style="margin:0 0 22px;font-size:15px;line-height:1.55;color:#374151;">This is a friendly reminder that <strong>' +
+        opts.title +
+        "</strong> is awaiting your signature.</p>" +
+        '<p style="margin:0 0 8px;">' + button(opts.url, "Complete your part") + "</p>");
+    const text = `Hi ${opts.recipientName},\n\nReminder: "${opts.title}" is awaiting your signature.\n${opts.url}\n\n— Axus Legal`;
+    try {
+        await transport.sendMail({
+            from: config.mail.from,
+            to: opts.to,
+            subject: `Reminder — signature needed: ${opts.title}`,
+            text,
+            html,
+        });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
 //# sourceMappingURL=mail.js.map

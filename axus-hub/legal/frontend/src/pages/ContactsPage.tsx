@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, FileDown, Pencil, Plus, Trash2, Upload, Users, X } from "lucide-react";
-import { contactsApi, type Contact } from "@/lib/api";
+import { companiesApi, contactsApi, type Company, type Contact } from "@/lib/api";
 import { Button, Card, Input } from "@/components/ui";
 
 // Minimal CSV parser (handles quoted fields, embedded commas/newlines).
@@ -96,6 +96,7 @@ export function ContactsPage() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editCompany, setEditCompany] = useState("");
+  const [companies, setCompanies] = useState<Company[]>([]);
 
   async function load() {
     setLoading(true);
@@ -110,6 +111,7 @@ export function ContactsPage() {
   }
   useEffect(() => {
     void load();
+    companiesApi.list().then(setCompanies).catch(() => {});
   }, []);
 
   async function add() {
@@ -248,7 +250,18 @@ export function ContactsPage() {
             <label className="text-sm font-medium">
               Company <span className="text-muted">(optional)</span>
             </label>
-            <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company" />
+            <select
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+            >
+              <option value="">— No company —</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
           <Button onClick={() => void add()} disabled={adding || !name.trim() || !email.trim()}>
             <Plus className="h-4 w-4" /> Add
@@ -295,11 +308,21 @@ export function ContactsPage() {
                       />
                     </td>
                     <td className="px-4 py-2">
-                      <Input
+                      <select
                         value={editCompany}
                         onChange={(e) => setEditCompany(e.target.value)}
-                        placeholder="Company"
-                      />
+                        className="w-full rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+                      >
+                        <option value="">— No company —</option>
+                        {editCompany && !companies.some((c) => c.name === editCompany) && (
+                          <option value={editCompany}>{editCompany} (not in list)</option>
+                        )}
+                        {companies.map((c) => (
+                          <option key={c.id} value={c.name}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-2">

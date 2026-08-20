@@ -7,43 +7,85 @@ import { join } from "node:path";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { sealPdf, type SealField, type SealRecipient } from "../seal.js";
-import { sendCompleted, sendSigningInvite } from "../mail.js";
+import { sendCompleted, sendProgress, sendReminder } from "../mail.js";
 
-async function finalizeEnvelope(envId: string): Promise<void> {
-  const env = await pool.query(`select id, title, pdf_file from envelope where id = $1`, [envId]);
+// Seal the CURRENT state and email every participant a copy. On the last
+// signature it adds the certificate page, marks the envelope completed, and
+// stores the sealed file. Returns whether it's now fully complete.
+async function sealAndNotify(envId: string, signerName: string): Promise<boolean> {
+  const env = await pool.query(
+    `select id, title, pdf_file, sequential from envelope where id = $1`,
+    [envId],
+  );
   const e = env.rows[0];
-  if (!e?.pdf_file) return;
+  if (!e?.pdf_file) return false;
   const fields = await pool.query(
     `select type, page, x, y, w, h, value from field where envelope_id = $1`,
     [envId],
   );
   const recs = await pool.query(
-    `select name, email, sign_token, ip,
+    `select id, name, email, sign_token, ip, status,
             to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
      from recipient where envelope_id = $1 order by sign_order`,
     [envId],
   );
+  const allSigned = recs.rows.every((r) => r.status === "signed");
+
   const { bytes, sha256 } = await sealPdf(
     join(config.storageDir, e.pdf_file),
     fields.rows as SealField[],
     recs.rows as SealRecipient[],
     { title: e.title, envelopeId: e.id },
-  );
-  const sealedName = `${envId}-sealed.pdf`;
-  await writeFile(join(config.storageDir, sealedName), bytes);
-  await pool.query(
-    `update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`,
-    [sealedName, sha256, envId],
-  );
-  await pool.query(
-    `insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'completed', $2)`,
-    [envId, `Sealed. SHA-256 ${sha256}`],
+    allSigned,
   );
   const safeName = (e.title as string).replace(/[^a-z0-9\-_ ]/gi, "_").slice(0, 80) || "document";
   const attachment = { filename: `${safeName}.pdf`, content: Buffer.from(bytes) };
-  for (const r of recs.rows) {
-    await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment });
+
+  if (allSigned) {
+    const sealedName = `${envId}-sealed.pdf`;
+    await writeFile(join(config.storageDir, sealedName), bytes);
+    await pool.query(
+      `update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`,
+      [sealedName, sha256, envId],
+    );
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'completed', $2)`,
+      [envId, `Sealed. SHA-256 ${sha256}`],
+    );
+    for (const r of recs.rows) {
+      await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment });
+    }
+  } else {
+    await pool.query(
+      `update envelope set status = 'partially_completed' where id = $1 and status not in ('cancelled', 'completed')`,
+      [envId],
+    );
+    // Notify EVERY participant that a part was completed; anyone who hasn't
+    // signed yet also gets a "please complete your part" email with their link.
+    for (const r of recs.rows) {
+      if (r.status === "signed") {
+        await sendProgress({
+          to: r.email,
+          recipientName: r.name,
+          title: e.title,
+          signerName,
+          attachment,
+        });
+      } else {
+        if (r.status === "pending") {
+          await pool.query(`update recipient set status = 'sent' where id = $1`, [r.id]);
+        }
+        await sendReminder({
+          to: r.email,
+          recipientName: r.name,
+          signerName,
+          title: e.title,
+          url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+        });
+      }
+    }
   }
+  return allSigned;
 }
 
 export async function signRoutes(app: FastifyInstance) {
@@ -97,6 +139,10 @@ export async function signRoutes(app: FastifyInstance) {
     if (r.status === "signed") return reply.code(409).send({ error: "You have already signed." });
 
     const envId = r.envelope_id;
+    const envStatus = await pool.query(`select status from envelope where id = $1`, [envId]);
+    if (envStatus.rows[0]?.status === "cancelled") {
+      return reply.code(409).send({ error: "This document has been cancelled." });
+    }
     const ip = req.ip;
     const ua = (req.headers["user-agent"] as string) ?? "";
     const valueMap = new Map((body.fields ?? []).map((f) => [f.id, f.value]));
@@ -142,35 +188,8 @@ export async function signRoutes(app: FastifyInstance) {
     }
     client.release();
 
-    const pending = await pool.query(
-      `select count(*)::int n from recipient where envelope_id = $1 and role = 'signer' and status <> 'signed'`,
-      [envId],
-    );
-    let completed = false;
-    if (pending.rows[0].n === 0) {
-      await finalizeEnvelope(envId);
-      completed = true;
-    } else {
-      // Sequential envelopes: email the next recipient in order now.
-      const envRow = await pool.query(`select sequential, title from envelope where id = $1`, [envId]);
-      if (envRow.rows[0]?.sequential) {
-        const next = await pool.query(
-          `select * from recipient where envelope_id = $1 and status = 'pending' order by sign_order limit 1`,
-          [envId],
-        );
-        if (next.rowCount) {
-          const n = next.rows[0];
-          await pool.query(`update recipient set status = 'sent' where id = $1`, [n.id]);
-          await sendSigningInvite({
-            to: n.email,
-            recipientName: n.name,
-            senderName: "Axus Legal",
-            title: envRow.rows[0].title,
-            url: `${config.publicBaseUrl}/sign/${n.sign_token}`,
-          });
-        }
-      }
-    }
+    // Seal + email the current copy to everyone (final copy when all signed).
+    const completed = await sealAndNotify(envId, r.name);
     return { ok: true, completed };
   });
 }

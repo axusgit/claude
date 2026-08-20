@@ -198,7 +198,9 @@ export function EnvelopeList() {
             <option value="all">All statuses</option>
             <option value="draft">Draft</option>
             <option value="sent">Sent</option>
+            <option value="partially_completed">Partially Completed</option>
             <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
       )}

@@ -20,6 +20,8 @@ create table if not exists envelope (
 alter table envelope add column if not exists sequential boolean not null default false;
 alter table envelope add column if not exists doc_type text;   -- SOW | MSA | Quote
 alter table envelope add column if not exists company text;    -- associated company name
+alter table envelope add column if not exists reminder_interval text;      -- daily | weekly | monthly
+alter table envelope add column if not exists last_reminded_at timestamptz;
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),

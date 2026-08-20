@@ -11,6 +11,7 @@ export interface Envelope {
   sequential?: boolean;
   doc_type?: string | null;
   company?: string | null;
+  reminder_interval?: string | null;
 }
 
 export interface Recipient {
@@ -59,7 +60,12 @@ async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
 
 export const api = {
   listEnvelopes: () => req<{ envelopes: Envelope[] }>("/envelopes").then((r) => r.envelopes),
-  createEnvelope: (data: { title: string; doc_type?: string; company?: string }) =>
+  createEnvelope: (data: {
+    title: string;
+    doc_type?: string;
+    company?: string;
+    reminder_interval?: string;
+  }) =>
     req<{ envelope: Envelope }>("/envelopes", {
       method: "POST",
       body: JSON.stringify(data),
@@ -87,7 +93,13 @@ export const api = {
     }),
   updateEnvelope: (
     id: string,
-    patch: { sequential?: boolean; doc_type?: string; company?: string; title?: string },
+    patch: {
+      sequential?: boolean;
+      doc_type?: string;
+      company?: string;
+      title?: string;
+      reminder_interval?: string;
+    },
   ) =>
     req<{ envelope: Envelope }>(`/envelopes/${id}`, {
       method: "PATCH",
@@ -100,6 +112,8 @@ export const api = {
     }),
   deleteEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}`, { method: "DELETE" }),
+  cancelEnvelope: (id: string) =>
+    req<{ ok: boolean }>(`/envelopes/${id}/cancel`, { method: "POST", body: JSON.stringify({}) }),
   documentUrl: (id: string) => `/api/envelopes/${id}/document`,
 };
 

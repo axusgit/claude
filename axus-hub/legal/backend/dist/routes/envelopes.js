@@ -56,7 +56,9 @@ export async function envelopeRoutes(app) {
         const title = (body.title ?? "Untitled document").toString().trim().slice(0, 200) || "Untitled document";
         const docType = body.doc_type?.trim() || null;
         const company = body.company?.trim() || null;
-        const { rows } = await pool.query(`insert into envelope (title, created_by, doc_type, company) values ($1, $2, $3, $4) returning *`, [title, id.email, docType, company]);
+        const reminder = body.reminder_interval?.trim() || null;
+        const { rows } = await pool.query(`insert into envelope (title, created_by, doc_type, company, reminder_interval)
+       values ($1, $2, $3, $4, $5) returning *`, [title, id.email, docType, company, reminder]);
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`, [rows[0].id, id.email, title]);
         return reply.code(201).send({ envelope: rows[0] });
     });
@@ -67,6 +69,12 @@ export async function envelopeRoutes(app) {
             return;
         const envId = req.params.id;
         const body = (req.body ?? {});
+        if (body.reminder_interval !== undefined) {
+            await pool.query(`update envelope set reminder_interval = $1 where id = $2`, [
+                body.reminder_interval?.trim() || null,
+                envId,
+            ]);
+        }
         if (typeof body.sequential === "boolean") {
             await pool.query(`update envelope set sequential = $1 where id = $2`, [body.sequential, envId]);
         }
@@ -110,6 +118,19 @@ export async function envelopeRoutes(app) {
             }
         }
         await pool.query(`delete from envelope where id = $1`, [envId]); // cascades children
+        return { ok: true };
+    });
+    // Cancel a document (blocks further signing). Can't cancel a completed one.
+    app.post("/:id/cancel", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const envId = req.params.id;
+        const r = await pool.query(`update envelope set status = 'cancelled'
+       where id = $1 and status not in ('completed', 'cancelled') returning id`, [envId]);
+        if (!r.rowCount)
+            return reply.code(409).send({ error: "This document can't be cancelled." });
+        await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'cancelled', 'Cancelled')`, [envId, id.email]);
         return { ok: true };
     });
     // Fetch one envelope with its recipients + fields + events.

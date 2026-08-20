@@ -44,22 +44,24 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
   return <label className={cn("text-sm font-medium text-ink", className)} {...props} />;
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700",
-  sent: "bg-blue-100 text-blue-700",
-  completed: "bg-green-100 text-green-700",
-  voided: "bg-red-100 text-red-700",
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  draft: { label: "Draft", cls: "bg-gray-100 text-gray-700" },
+  sent: { label: "Sent", cls: "bg-blue-100 text-blue-700" },
+  partially_completed: { label: "Partially Completed", cls: "bg-amber-100 text-amber-700" },
+  completed: { label: "Completed", cls: "bg-green-100 text-green-700" },
+  cancelled: { label: "Cancelled", cls: "bg-red-100 text-red-700" },
 };
 
 export function StatusBadge({ status }: { status: string }) {
+  const s = STATUS_META[status] ?? { label: status, cls: "bg-gray-100 text-gray-700" };
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
-        STATUS_STYLES[status] ?? "bg-gray-100 text-gray-700",
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+        s.cls,
       )}
     >
-      {status}
+      {s.label}
     </span>
   );
 }

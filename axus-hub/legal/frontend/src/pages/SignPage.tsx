@@ -85,8 +85,25 @@ export function SignPage() {
     );
   }
 
+  const remaining = view.fields.filter((f) => f.required && !(values[f.id!] ?? "").length);
+  function scrollToNext() {
+    const next = remaining[0];
+    if (!next) return;
+    const el = document.getElementById("f-" + next.id);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    (el as HTMLElement | null)?.focus?.();
+  }
+
   return (
     <div className="min-h-full pb-28">
+      {remaining.length > 0 && (
+        <button
+          onClick={scrollToNext}
+          className="fixed right-5 top-20 z-10 rounded-full bg-brand px-4 py-2 text-sm font-medium text-brand-fg shadow-lg hover:bg-brand-hover"
+        >
+          Next field ({remaining.length})
+        </button>
+      )}
       <header className="sticky top-0 z-10 border-b border-line bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3">
           <div className="text-[13px] font-bold tracking-wide">
@@ -317,16 +334,28 @@ function FieldInput({
     height: field.h * pageSize.h,
   };
   const fontSize = Math.max(9, Math.min(field.h * pageSize.h * 0.7, 14));
+  const id = "f-" + field.id;
+  const filled = value.length > 0;
 
   if (field.type === "signature" || field.type === "initials") {
     return (
       <button
-        className="absolute grid place-items-center rounded-sm border-[1.5px] border-brand bg-brand/10 text-[11px] font-medium text-brand hover:bg-brand/20"
+        id={id}
+        className={
+          "absolute grid place-items-center overflow-hidden rounded-sm border-[1.5px] text-[11px] font-medium " +
+          (filled
+            ? "border-green-500 bg-green-50"
+            : "border-yellow-500 bg-yellow-200/70 text-yellow-800 hover:bg-yellow-200")
+        }
         style={style}
         onClick={openSignature}
       >
         {value ? (
-          <img src={value} alt="signature" className="max-h-full max-w-full object-contain" />
+          <img
+            src={value}
+            alt="signature"
+            className="absolute inset-0 h-full w-full object-contain p-[1px]"
+          />
         ) : (
           <span>{field.type === "initials" ? "Initials" : "Sign"}</span>
         )}
@@ -335,8 +364,14 @@ function FieldInput({
   }
   return (
     <input
+      id={id}
       type="text"
-      className="absolute rounded-sm border-[1.5px] border-brand bg-brand/5 px-1 leading-none outline-none focus:bg-white"
+      className={
+        "absolute rounded-sm border-[1.5px] px-1 leading-none outline-none " +
+        (filled
+          ? "border-green-500 bg-green-50 focus:bg-white"
+          : "border-yellow-500 bg-yellow-200/70 focus:bg-white")
+      }
       style={{ ...style, fontSize }}
       value={value}
       placeholder={
