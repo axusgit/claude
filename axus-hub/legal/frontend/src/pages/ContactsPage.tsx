@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, FileDown, Pencil, Plus, Trash2, Upload, Users, X } from "lucide-react";
+import { Check, FileDown, Pencil, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { companiesApi, contactsApi, type Company, type Contact } from "@/lib/api";
 import { Button, Card, Input } from "@/components/ui";
 
@@ -85,6 +85,9 @@ export function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
+  const [sort, setSort] = useState<"name" | "company">("name");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
@@ -204,6 +207,25 @@ export function ContactsPage() {
     }
   }
 
+  const companyPhone = (companyName?: string | null) =>
+    companies.find((c) => c.name === (companyName ?? ""))?.phone ?? "";
+  const q = query.trim().toLowerCase();
+  const filtered = contacts.filter((c) => {
+    const matchesQ =
+      !q || [c.name, c.email, c.company].some((v) => (v ?? "").toLowerCase().includes(q));
+    const matchesF =
+      !companyFilter ||
+      (companyFilter === "__none__" ? !c.company : (c.company ?? "") === companyFilter);
+    return matchesQ && matchesF;
+  });
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === "company") {
+      const byCo = (a.company ?? "").toLowerCase().localeCompare((b.company ?? "").toLowerCase());
+      if (byCo !== 0) return byCo;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
@@ -274,6 +296,39 @@ export function ContactsPage() {
       )}
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name, email, or company…"
+            className="pl-9"
+          />
+        </div>
+        <select
+          value={companyFilter}
+          onChange={(e) => setCompanyFilter(e.target.value)}
+          className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+        >
+          <option value="">All companies</option>
+          <option value="__none__">— No company —</option>
+          {companies.map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as "name" | "company")}
+          className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+        >
+          <option value="name">Sort by Name</option>
+          <option value="company">Sort by Company</option>
+        </select>
+      </div>
+
       <Card>
         {loading ? (
           <div className="p-8 text-center text-sm text-muted">Loading…</div>
@@ -283,29 +338,25 @@ export function ContactsPage() {
             <p className="mt-3 text-sm font-medium">No contacts yet</p>
             <p className="text-sm text-muted">Add people above to build your contact list.</p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center text-sm text-muted">No contacts match your search.</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Company</th>
+                <th className="px-4 py-3 font-medium">Email</th>
+                <th className="px-4 py-3 font-medium">Phone</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {contacts.map((c) =>
+              {sorted.map((c) =>
                 editId === c.id ? (
                   <tr key={c.id} className="border-b border-line last:border-0">
                     <td className="px-4 py-2">
                       <Input value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
-                    </td>
-                    <td className="px-4 py-2">
-                      <Input
-                        value={editEmail}
-                        type="email"
-                        onChange={(e) => setEditEmail(e.target.value)}
-                      />
                     </td>
                     <td className="px-4 py-2">
                       <select
@@ -324,6 +375,14 @@ export function ContactsPage() {
                         ))}
                       </select>
                     </td>
+                    <td className="px-4 py-2">
+                      <Input
+                        value={editEmail}
+                        type="email"
+                        onChange={(e) => setEditEmail(e.target.value)}
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-muted">{companyPhone(editCompany) || "—"}</td>
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
@@ -346,8 +405,9 @@ export function ContactsPage() {
                 ) : (
                   <tr key={c.id} className="group border-b border-line last:border-0">
                     <td className="px-4 py-3 font-medium">{c.name}</td>
-                    <td className="px-4 py-3 text-muted">{c.email}</td>
                     <td className="px-4 py-3 text-muted">{c.company ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted">{c.email}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted">{companyPhone(c.company) || "—"}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-3 opacity-0 transition-opacity group-hover:opacity-100">
                         <button

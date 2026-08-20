@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { Building2, Check, Pencil, Plus, Trash2, X } from "lucide-react";
-import { companiesApi, type Company } from "@/lib/api";
+import { Building2, Check, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { companiesApi, contactsApi, type Company, type Contact } from "@/lib/api";
 import { Button, Card, Input } from "@/components/ui";
 
 export function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "with" | "without">("all");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [addr, setAddr] = useState("");
@@ -29,7 +32,29 @@ export function CompaniesPage() {
   }
   useEffect(() => {
     void load();
+    contactsApi.list().then(setContacts).catch(() => {});
   }, []);
+
+  const contactsByCompany = new Map<string, string[]>();
+  for (const ct of contacts) {
+    const key = (ct.company ?? "").trim().toLowerCase();
+    if (!key) continue;
+    const arr = contactsByCompany.get(key) ?? [];
+    arr.push(ct.name);
+    contactsByCompany.set(key, arr);
+  }
+  const namesFor = (c: Company) => contactsByCompany.get(c.name.trim().toLowerCase()) ?? [];
+  const q = query.trim().toLowerCase();
+  const filtered = companies.filter((c) => {
+    const matchesQ =
+      !q ||
+      [c.name, c.phone, c.address, namesFor(c).join(" ")].some((v) =>
+        (v ?? "").toLowerCase().includes(q),
+      );
+    const has = namesFor(c).length > 0;
+    const matchesF = filter === "all" || (filter === "with" ? has : !has);
+    return matchesQ && matchesF;
+  });
 
   async function add() {
     if (!name.trim()) return;
@@ -107,6 +132,27 @@ export function CompaniesPage() {
 
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name, phone, or address…"
+            className="pl-9"
+          />
+        </div>
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as "all" | "with" | "without")}
+          className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+        >
+          <option value="all">All companies</option>
+          <option value="with">With contacts</option>
+          <option value="without">Without contacts</option>
+        </select>
+      </div>
+
       <Card>
         {loading ? (
           <div className="p-8 text-center text-sm text-muted">Loading…</div>
@@ -115,29 +161,37 @@ export function CompaniesPage() {
             <Building2 className="mx-auto h-8 w-8 text-muted" />
             <p className="mt-3 text-sm font-medium">No companies yet</p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center text-sm text-muted">
+            No companies match your search.
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-4 py-3 font-medium">Company ({companies.length})</th>
-                <th className="px-4 py-3 font-medium">Phone</th>
+                <th className="px-4 py-3 font-medium">
+                  Company ({filtered.length === companies.length ? companies.length : `${filtered.length} of ${companies.length}`})
+                </th>
                 <th className="px-4 py-3 font-medium">Address</th>
+                <th className="px-4 py-3 font-medium">Phone</th>
+                <th className="px-4 py-3 font-medium">Contacts</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {companies.map((c) =>
+              {filtered.map((c) =>
                 editId === c.id ? (
                   <tr key={c.id} className="border-b border-line last:border-0">
                     <td className="px-3 py-2">
                       <Input value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
                     </td>
                     <td className="px-3 py-2">
-                      <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Phone" />
-                    </td>
-                    <td className="px-3 py-2">
                       <Input value={editAddr} onChange={(e) => setEditAddr(e.target.value)} placeholder="Address" />
                     </td>
+                    <td className="px-3 py-2">
+                      <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Phone" />
+                    </td>
+                    <td className="px-4 py-2 text-muted">{namesFor(c).join(", ") || "—"}</td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => void saveEdit(c.id)} className="text-brand hover:opacity-80" title="Save">
@@ -152,8 +206,9 @@ export function CompaniesPage() {
                 ) : (
                   <tr key={c.id} className="group border-b border-line last:border-0">
                     <td className="px-4 py-3 font-medium">{c.name}</td>
-                    <td className="px-4 py-3 text-muted">{c.phone || "—"}</td>
                     <td className="px-4 py-3 text-muted">{c.address || "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted">{c.phone || "—"}</td>
+                    <td className="px-4 py-3 text-muted">{namesFor(c).join(", ") || "—"}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-3 opacity-0 transition-opacity group-hover:opacity-100">
                         <button onClick={() => startEdit(c)} className="text-muted hover:text-brand" title="Edit">
