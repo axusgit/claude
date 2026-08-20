@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Bell,
@@ -91,6 +91,7 @@ function HistoryCard({ events }: { events: EnvelopeDetail["events"] }) {
 
 export function EnvelopeEditor() {
   const { id = "" } = useParams();
+  const nav = useNavigate();
   const [detail, setDetail] = useState<EnvelopeDetail | null>(null);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
@@ -222,10 +223,9 @@ export function EnvelopeEditor() {
     setError(null);
     try {
       await api.sendEnvelope(id);
-      await load();
+      nav("/"); // back to the Documents list
     } catch (e) {
       setError(e instanceof Error ? e.message : "Send failed");
-    } finally {
       setSending(false);
     }
   }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, FileDown, Pencil, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
+import { ArrowUpDown, Check, FileDown, Pencil, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { companiesApi, contactsApi, type Company, type Contact } from "@/lib/api";
 import { Button, Card, Input } from "@/components/ui";
 
@@ -87,7 +87,7 @@ export function ContactsPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
-  const [sort, setSort] = useState<"name" | "company">("name");
+  const [sort, setSort] = useState<"name" | "company" | "email" | "phone">("name");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
@@ -218,12 +218,21 @@ export function ContactsPage() {
       (companyFilter === "__none__" ? !c.company : (c.company ?? "") === companyFilter);
     return matchesQ && matchesF;
   });
-  const sorted = [...filtered].sort((a, b) => {
-    if (sort === "company") {
-      const byCo = (a.company ?? "").toLowerCase().localeCompare((b.company ?? "").toLowerCase());
-      if (byCo !== 0) return byCo;
+  const sortKey = (c: Contact) => {
+    switch (sort) {
+      case "company":
+        return (c.company ?? "").toLowerCase();
+      case "email":
+        return (c.email ?? "").toLowerCase();
+      case "phone":
+        return companyPhone(c.company).toLowerCase();
+      default:
+        return "";
     }
-    return a.name.localeCompare(b.name);
+  };
+  const sorted = [...filtered].sort((a, b) => {
+    const primary = sortKey(a).localeCompare(sortKey(b));
+    return primary !== 0 ? primary : a.name.localeCompare(b.name);
   });
 
   return (
@@ -319,14 +328,6 @@ export function ContactsPage() {
             </option>
           ))}
         </select>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as "name" | "company")}
-          className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
-        >
-          <option value="name">Sort by Name</option>
-          <option value="company">Sort by Company</option>
-        </select>
       </div>
 
       <Card>
@@ -344,10 +345,42 @@ export function ContactsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Company</th>
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Phone</th>
+                <th className="px-4 py-3 font-medium">
+                  <button
+                    onClick={() => setSort("name")}
+                    className={`inline-flex items-center gap-1 uppercase tracking-wide ${sort === "name" ? "text-brand" : "hover:text-ink"}`}
+                    title="Sort by name"
+                  >
+                    Name <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <button
+                    onClick={() => setSort("company")}
+                    className={`inline-flex items-center gap-1 uppercase tracking-wide ${sort === "company" ? "text-brand" : "hover:text-ink"}`}
+                    title="Sort by company"
+                  >
+                    Company <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <button
+                    onClick={() => setSort("email")}
+                    className={`inline-flex items-center gap-1 uppercase tracking-wide ${sort === "email" ? "text-brand" : "hover:text-ink"}`}
+                    title="Sort by email"
+                  >
+                    Email <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <button
+                    onClick={() => setSort("phone")}
+                    className={`inline-flex items-center gap-1 uppercase tracking-wide ${sort === "phone" ? "text-brand" : "hover:text-ink"}`}
+                    title="Sort by phone"
+                  >
+                    Phone <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>

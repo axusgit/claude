@@ -36,7 +36,8 @@ function isLastEtDayOfMonth(now) {
     return etParts(new Date(now.getTime() + 24 * 60 * 60 * 1000)).day === 1;
 }
 export async function runReminders() {
-    const { rows } = await pool.query(`select id, title, reminder_interval, reminder_time, reminder_dow, reminder_dom, last_reminded_at
+    const { rows } = await pool.query(`select id, title, reminder_interval, reminder_time, reminder_dow, reminder_dom,
+            last_reminded_at, sent_at, created_at
      from envelope
      where status in ('sent', 'partially_completed') and reminder_interval is not null`);
     const now = new Date();
@@ -61,6 +62,13 @@ export async function runReminders() {
             continue;
         if (nowMin < schedMin)
             continue; // scheduled time hasn't arrived yet today
+        // Never send the FIRST reminder within 24h of the document being sent.
+        const sentAt = env.sent_at ?? env.created_at;
+        if (!env.last_reminded_at &&
+            sentAt &&
+            now.getTime() - new Date(sentAt).getTime() < 24 * 60 * 60 * 1000) {
+            continue;
+        }
         if (env.last_reminded_at && etParts(new Date(env.last_reminded_at)).dateKey === et.dateKey) {
             continue; // already reminded today
         }

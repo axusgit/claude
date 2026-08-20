@@ -15,6 +15,11 @@ const money = (n: number) =>
   "$" + (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const todayStr = () =>
   new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+const plusDaysStr = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+};
 const emptyItem = (): QuoteItem => ({ qty: 1, item: "", description: "", unit_price: 0, discount: 0 });
 
 export function QuoteBuilder() {
@@ -26,7 +31,7 @@ export function QuoteBuilder() {
   const [generating, setGenerating] = useState(false);
 
   const [quoteDate, setQuoteDate] = useState(todayStr());
-  const [validUntil, setValidUntil] = useState("");
+  const [validUntil, setValidUntil] = useState(plusDaysStr(30));
   const [company, setCompany] = useState(params.get("company") ?? "");
   const [contact, setContact] = useState("");
   const [address, setAddress] = useState("");
