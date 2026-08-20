@@ -27,7 +27,7 @@ INTERNAL_PORT = os.getenv("INTERNAL_PORT", "8443")
 # (served on :8443); non-internal apps are client-facing (:443).
 APP_CATALOG = [
     {"key": "support", "name": "Support", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False, "staff_path": "/staff"},
-    {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "url": "https://ain.axustechnologies.com/auth?sso=1"},
+    {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "url": "https://ain.axustechnologies.com/auth?sso=1", "health": "https://ain.axustechnologies.com/"},
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
     {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
     {"key": "esign", "name": "Axus eSign", "desc": "E-signatures, agreements & quotes", "group": "app-aesign", "icon": "✍️", "internal": False, "url": "https://aesign.axustechnologies.com"},
@@ -40,6 +40,7 @@ APP_CATALOG = [
 INTERNAL_URLS = {
     "support": os.getenv("SUPPORT_INTERNAL_URL", "http://support:8000"),
     "accounting": os.getenv("ACCOUNTING_INTERNAL_URL", "http://accounting:8000"),
+    "esign": os.getenv("ESIGN_INTERNAL_URL", "http://aesign:8000"),
     # "rmm": os.getenv("RMM_INTERNAL_URL", "http://rmm:8000"),
     # "engineering": os.getenv("ENGINEERING_INTERNAL_URL", "http://engineering:8000"),
 }
@@ -164,9 +165,11 @@ async def apps_health(request: Request):
     results = {}
     async with httpx.AsyncClient(timeout=2.5) as client:
         for a in _apps_for(identity):
-            target = INTERNAL_URLS.get(a["key"], a["url"])  # prefer the internal address
+            # An explicit per-app health URL wins; otherwise probe the internal
+            # address (or the app's own URL) at /api/health.
+            health_url = a.get("health") or f"{INTERNAL_URLS.get(a['key'], a['url'])}/api/health"
             try:
-                r = await client.get(f"{target}/api/health")
+                r = await client.get(health_url)
                 results[a["key"]] = "up" if r.status_code == 200 else "degraded"
             except Exception:
                 results[a["key"]] = "down"

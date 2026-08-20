@@ -80,7 +80,7 @@ a { text-decoration: none; color: inherit; }
 .app-desc { color: var(--text-soft); font-size: 12.5px; line-height: 1.5; flex: 1; }
 .launcher.compact .app-desc { display: none; }
 .app-launch { color: var(--orange); font-weight: 600; font-size: 12.5px; }
-.app-status { position: absolute; top: 16px; right: 16px; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.app-status { position: absolute; top: 14px; right: 14px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); }
 .app-status.up { background: #16a34a; } .app-status.down { background: #e5484d; } .app-status.degraded { background: var(--orange-2); }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 26px; }
