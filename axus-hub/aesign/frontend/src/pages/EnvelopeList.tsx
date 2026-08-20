@@ -58,21 +58,20 @@ export function EnvelopeList() {
       nav(`/quotes/new?company=${encodeURIComponent(company.trim())}`);
       return;
     }
+    // Template-backed types (BAA) are DEFERRED — open the editor in "new" mode
+    // showing the filled template; nothing is saved until the user clicks Save.
+    if (TEMPLATE_TYPES.includes(docType)) {
+      nav(
+        `/envelopes/new?doc_type=${encodeURIComponent(docType)}&company=${encodeURIComponent(company.trim())}`,
+      );
+      return;
+    }
     if (!title.trim()) return;
     const env = await api.createEnvelope({
       title: title.trim(),
       doc_type: docType,
       company: company.trim(),
     });
-    // Types backed by a stored template (BAA today) auto-attach it; if the
-    // template isn't present, this no-ops and the user uploads a doc manually.
-    if (TEMPLATE_TYPES.includes(docType)) {
-      try {
-        await api.applyTemplate(env.id);
-      } catch {
-        /* fall back to manual upload */
-      }
-    }
     nav(`/envelopes/${env.id}`);
   }
 
@@ -127,10 +126,14 @@ export function EnvelopeList() {
       {creating && (
         <Card className="space-y-3 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            {docType === "Quote" ? (
+            {docType === "Quote" || TEMPLATE_TYPES.includes(docType) ? (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Document</label>
-                <p className="pt-2 text-sm text-muted">You'll build the quote on the next step.</p>
+                <p className="pt-2 text-sm text-muted">
+                  {docType === "Quote"
+                    ? "You'll build the quote on the next step."
+                    : `The ${docType} template opens pre-filled with the company & date — nothing is saved until you click Save.`}
+                </p>
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -184,9 +187,13 @@ export function EnvelopeList() {
             <Button
               className="w-fit"
               onClick={() => void create()}
-              disabled={docType === "Quote" ? !company.trim() : !title.trim() || !company.trim()}
+              disabled={
+                docType === "Quote" || TEMPLATE_TYPES.includes(docType)
+                  ? !company.trim()
+                  : !title.trim() || !company.trim()
+              }
             >
-              {docType === "Quote" ? "Continue" : "Create & open"}
+              {docType === "Quote" || TEMPLATE_TYPES.includes(docType) ? "Continue" : "Create & open"}
             </Button>
           </div>
         </Card>

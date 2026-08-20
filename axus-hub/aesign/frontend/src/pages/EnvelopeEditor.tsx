@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Bell,
@@ -92,14 +92,18 @@ function HistoryCard({ events }: { events: EnvelopeDetail["events"] }) {
 export function EnvelopeEditor() {
   const { id = "" } = useParams();
   const nav = useNavigate();
+  const [sp] = useSearchParams();
+  // "new" mode = a deferred template-backed document (BAA): the template shows
+  // pre-filled but NOTHING is persisted until the user clicks Save/Send.
+  const isNew = id === "new";
   const [detail, setDetail] = useState<EnvelopeDetail | null>(null);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
   const [activeTool, setActiveTool] = useState<FieldType | null>(null);
   const [activeRecipientId, setActiveRecipientId] = useState<string | null>(null);
   const [sequential, setSequential] = useState(false);
-  const [docType, setDocType] = useState("SOW");
-  const [company, setCompany] = useState("");
+  const [docType, setDocType] = useState(isNew ? (sp.get("doc_type") ?? "BAA") : "SOW");
+  const [company, setCompany] = useState(isNew ? (sp.get("company") ?? "") : "");
   const [companies, setCompanies] = useState<Company[]>([]);
   const [reminder, setReminder] = useState("");
   const [reminderTime, setReminderTime] = useState("09:00");
@@ -111,6 +115,24 @@ export function EnvelopeEditor() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
+    if (isNew) {
+      const co = sp.get("company") ?? "";
+      const dt = sp.get("doc_type") ?? "BAA";
+      setDetail({
+        envelope: {
+          id: "new",
+          title: co ? `${co} ${dt}` : `New ${dt}`,
+          status: "draft",
+          doc_type: dt,
+          company: co,
+          created_at: "",
+        },
+        recipients: [],
+        fields: [],
+        events: [],
+      });
+      return;
+    }
     const d = await api.getEnvelope(id);
     setDetail(d);
     setRecipients(d.recipients);
@@ -123,7 +145,7 @@ export function EnvelopeEditor() {
     setReminderDow(d.envelope.reminder_dow ?? 1);
     setReminderDom(d.envelope.reminder_dom ?? 1);
     setActiveRecipientId((prev) => prev ?? d.recipients[0]?.id ?? null);
-  }, [id]);
+  }, [id, isNew, sp]);
 
   useEffect(() => {
     companiesApi.list().then(setCompanies).catch(() => {});
@@ -194,15 +216,39 @@ export function EnvelopeEditor() {
     }
   }
 
+  // Persist recipients/fields/settings. In "new" mode this first CREATES the
+  // envelope + applies the (pre-filled) template, then saves everything onto it.
+  // Returns the real envelope id. Does not navigate.
+  async function persist(): Promise<string> {
+    let realId = id;
+    if (isNew) {
+      const title = company ? `${company} ${docType}` : `New ${docType}`;
+      const env = await api.createEnvelope({ title, doc_type: docType, company });
+      realId = env.id;
+      await api.applyTemplate(realId); // bakes today's date + company into the BAA
+    }
+    const saved = await api.saveRecipients(realId, recipients);
+    setRecipients(saved);
+    await api.saveFields(realId, fields);
+    await api.updateEnvelope(realId, {
+      sequential,
+      doc_type: docType,
+      company,
+      reminder_interval: reminder,
+      reminder_time: reminderTime,
+      reminder_dow: reminderDow,
+      reminder_dom: reminderDom,
+    });
+    setDirty(false);
+    return realId;
+  }
+
   async function save() {
     setSaving(true);
     setError(null);
     try {
-      const saved = await api.saveRecipients(id, recipients);
-      setRecipients(saved);
-      await api.saveFields(id, fields);
-      await api.updateEnvelope(id, { sequential, doc_type: docType, company });
-      setDirty(false);
+      const realId = await persist();
+      if (isNew) nav(`/envelopes/${realId}`); // switch to the real (saved) document
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -212,7 +258,6 @@ export function EnvelopeEditor() {
 
   const [sending, setSending] = useState(false);
   async function send() {
-    if (dirty) await save();
     if (
       !window.confirm(
         "Send this document to all recipients for signature? Each will receive an email with their signing link.",
@@ -222,7 +267,8 @@ export function EnvelopeEditor() {
     setSending(true);
     setError(null);
     try {
-      await api.sendEnvelope(id);
+      const realId = isNew || dirty ? await persist() : id;
+      await api.sendEnvelope(realId);
       nav("/"); // back to the Documents list
     } catch (e) {
       setError(e instanceof Error ? e.message : "Send failed");
@@ -248,14 +294,14 @@ export function EnvelopeEditor() {
     if (patch.reminder_time !== undefined) setReminderTime(patch.reminder_time);
     if (patch.reminder_dow !== undefined) setReminderDow(patch.reminder_dow);
     if (patch.reminder_dom !== undefined) setReminderDom(patch.reminder_dom);
-    void api.updateEnvelope(id, patch);
+    if (!isNew) void api.updateEnvelope(id, patch); // new mode persists on Save
   }
 
   if (!detail) {
     return <div className="p-8 text-center text-sm text-muted">{error ?? "Loading…"}</div>;
   }
 
-  const hasPdf = !!detail.envelope.pdf_file;
+  const hasPdf = isNew || !!detail.envelope.pdf_file;
 
   return (
     <div className="space-y-4">
@@ -305,7 +351,11 @@ export function EnvelopeEditor() {
             </Button>
           )}
           {detail.envelope.status === "draft" && (
-            <Button variant="outline" onClick={() => void save()} disabled={saving || !dirty}>
+            <Button
+              variant="outline"
+              onClick={() => void save()}
+              disabled={saving || (!isNew && !dirty)}
+            >
               {saving ? "Saving…" : "Save"}
             </Button>
           )}
@@ -459,7 +509,7 @@ export function EnvelopeEditor() {
           {/* Document */}
           <div className="max-h-[calc(100vh-160px)] overflow-y-auto rounded-[var(--radius-card)] border border-line bg-canvas p-4">
             <PdfCanvas
-              url={api.documentUrl(id)}
+              url={isNew ? api.templatePreviewUrl(docType, company) : api.documentUrl(id)}
               fields={fields}
               recipients={recipients}
               colorFor={colorFor}

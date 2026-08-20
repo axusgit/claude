@@ -8,6 +8,7 @@ import { pool } from "../db.js";
 import { config } from "../config.js";
 import { getIdentity, hasEsignAccess, type Identity } from "../identity.js";
 import { sendSigningInvite } from "../mail.js";
+import { stampBaaPdf, etTodayLong } from "../baa.js";
 
 function requireStaff(req: FastifyRequest, reply: FastifyReply): Identity | null {
   const id = getIdentity(req);
@@ -254,13 +255,17 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const id = requireStaff(req, reply);
     if (!id) return;
     const envId = (req.params as { id: string }).id;
-    const env = await pool.query(`select id, doc_type, pdf_file from envelope where id = $1`, [envId]);
+    const env = await pool.query(
+      `select id, doc_type, company, pdf_file from envelope where id = $1`,
+      [envId],
+    );
     if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
     const row = env.rows[0];
     if (row.pdf_file) return { ok: true, applied: false, reason: "already has a document" };
 
+    const type = (row.doc_type ?? "").toUpperCase();
     const TEMPLATE_FILES: Record<string, string> = { BAA: "axus-baa.pdf" };
-    const base = TEMPLATE_FILES[(row.doc_type ?? "").toUpperCase()];
+    const base = TEMPLATE_FILES[type];
     if (!base) return { ok: true, applied: false, reason: "no template for this type" };
 
     // Prefer a PDF; accept a .docx sibling (converted via Gotenberg).
@@ -278,7 +283,17 @@ export async function envelopeRoutes(app: FastifyInstance) {
 
     const ext = (tmplName.split(".").pop() ?? "pdf").toLowerCase();
     const stored = `${envId}-source.${ext}`;
-    await writeFile(join(config.storageDir, stored), await readFile(tmplPath));
+    // For the BAA PDF, fill the page-1 blanks (Effective Date = today, Covered
+    // Entity = this envelope's company) before storing.
+    if (type === "BAA" && ext === "pdf") {
+      const stamped = await stampBaaPdf(await readFile(tmplPath), {
+        company: row.company ?? undefined,
+        dateLong: etTodayLong(),
+      });
+      await writeFile(join(config.storageDir, stored), stamped);
+    } else {
+      await writeFile(join(config.storageDir, stored), await readFile(tmplPath));
+    }
     const pdfFile =
       ext === "pdf" ? stored : await convertToPdf(join(config.storageDir, stored), tmplName, envId);
     if (!pdfFile) return reply.code(422).send({ error: "Could not prepare the template PDF." });
@@ -293,6 +308,26 @@ export async function envelopeRoutes(app: FastifyInstance) {
       [envId, id.email, `${(row.doc_type ?? "").toUpperCase()} template applied`],
     );
     return { ok: true, applied: true, pdf: pdfFile };
+  });
+
+  // Preview a template baked with today's date + a company, WITHOUT creating an
+  // envelope — feeds the deferred "new BAA" editor so nothing persists until Save.
+  app.get("/template-preview", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const q = req.query as { type?: string; company?: string };
+    const type = (q.type ?? "").toUpperCase();
+    const TEMPLATE_FILES: Record<string, string> = { BAA: "axus-baa.pdf" };
+    const base = TEMPLATE_FILES[type];
+    if (!base) return reply.code(404).send({ error: "No template for this type" });
+    const p = join(process.cwd(), "templates", base);
+    if (!existsSync(p)) return reply.code(404).send({ error: "Template file not found" });
+    let bytes: Uint8Array = await readFile(p);
+    if (type === "BAA") {
+      bytes = await stampBaaPdf(bytes, { company: q.company, dateLong: etTodayLong() });
+    }
+    reply.header("Content-Type", "application/pdf");
+    return reply.send(Buffer.from(bytes));
   });
 
   // Stream the signing PDF (staff editor; a tokenized signer route comes later).

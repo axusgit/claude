@@ -128,6 +128,8 @@ export const api = {
   cancelEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}/cancel`, { method: "POST", body: JSON.stringify({}) }),
   documentUrl: (id: string) => `/api/envelopes/${id}/document`,
+  templatePreviewUrl: (type: string, company: string) =>
+    `/api/envelopes/template-preview?type=${encodeURIComponent(type)}&company=${encodeURIComponent(company)}`,
 };
 
 // --- Contacts (reusable recipient list, shared across staff) ---
