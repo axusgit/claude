@@ -202,6 +202,8 @@
     $("loading").classList.add("hidden");
     $("app").classList.remove("hidden");
     loadHealth();
+    // Auto-refresh product health every 60s (skip while the tab is hidden).
+    setInterval(() => { if (!document.hidden) loadHealth(); }, 60000);
   }
 
   document.addEventListener("DOMContentLoaded", start);

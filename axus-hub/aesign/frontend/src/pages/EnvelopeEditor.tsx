@@ -46,6 +46,7 @@ const EVENT_LABELS: Record<string, string> = {
   document_uploaded: "Document uploaded",
   sent: "Sent",
   viewed: "Viewed",
+  reminded: "Reminder sent",
   consented: "Consented",
   signed: "Signed",
   completed: "Completed",
@@ -268,6 +269,22 @@ export function EnvelopeEditor() {
       setSending(false);
     }
   }
+  const [remindingId, setRemindingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  async function remind(rid: string) {
+    setRemindingId(rid);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await api.remindRecipient(id, rid);
+      setNotice(res.sent ? "Reminder emailed." : "Reminder could not be emailed.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Reminder failed");
+    } finally {
+      setRemindingId(null);
+    }
+  }
   async function cancelDoc() {
     if (!window.confirm("Cancel this document? Recipients will no longer be able to sign it.")) return;
     try {
@@ -364,6 +381,9 @@ export function EnvelopeEditor() {
       </div>
 
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {notice && (
+        <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700">{notice}</div>
+      )}
 
       {!hasPdf ? (
         <Card className="p-10 text-center">
@@ -401,6 +421,9 @@ export function EnvelopeEditor() {
                 setSequential(v);
                 setDirty(true);
               }}
+              envelopeStatus={detail.envelope.status}
+              onRemind={remind}
+              remindingId={remindingId}
             />
             {detail.envelope.status === "draft" ? (
               <Card className="p-3">
@@ -579,6 +602,9 @@ function RecipientsPanel({
   onRemove,
   sequential,
   onToggleSequential,
+  envelopeStatus,
+  onRemind,
+  remindingId,
 }: {
   recipients: Recipient[];
   activeId: string | null;
@@ -588,7 +614,13 @@ function RecipientsPanel({
   onRemove: (id: string) => void;
   sequential: boolean;
   onToggleSequential: (v: boolean) => void;
+  envelopeStatus: string;
+  onRemind: (id: string) => void;
+  remindingId: string | null;
 }) {
+  // A document that's out for signature can have individual recipients nudged.
+  const outForSignature =
+    envelopeStatus === "sent" || envelopeStatus === "partially_completed";
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -702,6 +734,29 @@ function RecipientsPanel({
                   <span className="block truncate text-xs text-muted">{r.email}</span>
                 </span>
               </button>
+              {outForSignature &&
+                (r.status === "signed" ? (
+                  <span
+                    className="flex shrink-0 items-center gap-1 text-xs font-medium text-green-600"
+                    title="Completed"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Signed
+                  </span>
+                ) : r.status === "pending" ? (
+                  <span className="shrink-0 text-xs text-muted" title="Waiting for their turn to sign">
+                    Waiting
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => onRemind(r.id!)}
+                    disabled={remindingId === r.id}
+                    title="Email this recipient a reminder to complete their part"
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-brand hover:text-brand disabled:opacity-50"
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    {remindingId === r.id ? "Sending…" : "Remind"}
+                  </button>
+                ))}
               <div className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
                   onClick={() => startEdit(r)}
