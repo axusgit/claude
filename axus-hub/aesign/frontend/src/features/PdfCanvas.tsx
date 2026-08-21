@@ -3,7 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { X } from "lucide-react";
-import type { Field, FieldType, Recipient } from "@/lib/api";
+import type { Field, FieldType, Recipient, SignField, SignSlot } from "@/lib/api";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -51,6 +51,60 @@ function computeRuns(
   return runs;
 }
 
+// Detect signature-block fields on one page from its text runs — the same
+// blank-after-label logic as click-to-place, applied to standard labels
+// (Signature / Date / Printed Name / Title). Used to AUTO-PLACE on uploads.
+function detectFields(runs: Run[], pageNumber: number): SignField[] {
+  const out: SignField[] = [];
+  const mk = (type: SignField["type"], startFrac: number, endFrac: number, r: Run): SignField => {
+    const runW = r.x1 - r.x0;
+    const x = Math.min(r.x0 + runW * startFrac + 0.004, r.x1 - 0.03);
+    // Use the blank width if the underscores share the label's run; otherwise
+    // (label-only run, blanks in a separate run) fall back to a sensible width.
+    const wRaw = r.x0 + runW * endFrac - x;
+    const w = Math.min(Math.max(wRaw, FIELD_DEFAULTS[type].w), 1 - x - 0.01);
+    const h = Math.min(r.height * 1.7, 0.06);
+    const y = Math.min(Math.max(r.baseline - h, 0), 1 - h);
+    return { type, page: pageNumber, x, y, w, h };
+  };
+  for (const r of runs) {
+    const s = r.str;
+    const len = s.length || 1;
+    const low = s.toLowerCase();
+    const sig = low.match(/signature\s*:/);
+    const date = low.match(/date\s*:/);
+    const name = low.match(/print(?:ed)?\s*name\s*:/);
+    const title = low.match(/title\s*:/);
+    if (sig) {
+      const start = (sig.index ?? 0) + sig[0].length;
+      const end = date && (date.index ?? 0) > (sig.index ?? 0) ? (date.index ?? len) : len;
+      out.push(mk("signature", start / len, end / len, r));
+    }
+    if (date) out.push(mk("date", ((date.index ?? 0) + date[0].length) / len, 1, r));
+    if (name) out.push(mk("name", ((name.index ?? 0) + name[0].length) / len, 1, r));
+    if (title) out.push(mk("title", ((title.index ?? 0) + title[0].length) / len, 1, r));
+  }
+  return out;
+}
+
+// Group detected fields into signer slots. A new slot starts at each
+// "Signature:"; date/name/title after it belong to that block. Slots without a
+// signature are dropped (avoids stray "Effective Date:" etc.).
+function assembleSlots(all: SignField[]): SignSlot[] {
+  const sorted = [...all].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
+  const slots: SignSlot[] = [];
+  let cur: SignField[] | null = null;
+  for (const f of sorted) {
+    if (f.type === "signature") {
+      cur = [f];
+      slots.push({ role: `Signer ${slots.length + 1}`, fields: cur });
+    } else if (cur) {
+      cur.push(f);
+    }
+  }
+  return slots.filter((s) => s.fields.some((f) => f.type === "signature"));
+}
+
 interface PdfCanvasProps {
   url: string;
   fields: Field[];
@@ -62,18 +116,26 @@ interface PdfCanvasProps {
   onAddField: (field: Field) => void;
   onUpdateField: (index: number, patch: Partial<Field>) => void;
   onDeleteField: (index: number) => void;
+  onDetectLayout?: (slots: SignSlot[]) => void;
 }
 
 export function PdfCanvas(props: PdfCanvasProps) {
-  const { url } = props;
+  const { url, onDetectLayout } = props;
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const pageDet = useRef<Record<number, SignField[]>>({});
+
+  function handlePageDetected(page: number, detected: SignField[]) {
+    pageDet.current[page] = detected;
+    onDetectLayout?.(assembleSlots(Object.values(pageDet.current).flat()));
+  }
 
   useEffect(() => {
     let cancelled = false;
     setDoc(null);
     setError(null);
+    pageDet.current = {};
     const task = pdfjsLib.getDocument(url);
     task.promise.then(
       (pdf) => {
@@ -97,7 +159,7 @@ export function PdfCanvas(props: PdfCanvasProps) {
   return (
     <div className="flex flex-col items-center gap-5 py-2">
       {Array.from({ length: numPages }, (_, i) => (
-        <PdfPage key={i} doc={doc} pageNumber={i + 1} {...props} />
+        <PdfPage key={i} doc={doc} pageNumber={i + 1} onPageDetected={handlePageDetected} {...props} />
       ))}
     </div>
   );
@@ -114,7 +176,12 @@ function PdfPage({
   onAddField,
   onUpdateField,
   onDeleteField,
-}: PdfCanvasProps & { doc: PDFDocumentProxy; pageNumber: number }) {
+  onPageDetected,
+}: PdfCanvasProps & {
+  doc: PDFDocumentProxy;
+  pageNumber: number;
+  onPageDetected: (page: number, detected: SignField[]) => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -143,7 +210,11 @@ function PdfPage({
       }
       try {
         const tc = await page.getTextContent();
-        if (!cancelled) setRuns(computeRuns(tc, viewport));
+        if (!cancelled) {
+          const rs = computeRuns(tc, viewport);
+          setRuns(rs);
+          onPageDetected(pageNumber, detectFields(rs, pageNumber));
+        }
       } catch {
         /* no text layer */
       }

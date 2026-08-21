@@ -50,6 +50,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   partially_completed: { label: "Partially Completed", cls: "bg-amber-100 text-amber-700" },
   completed: { label: "Completed", cls: "bg-green-100 text-green-700" },
   cancelled: { label: "Cancelled", cls: "bg-red-100 text-red-700" },
+  declined: { label: "Declined", cls: "bg-red-100 text-red-700" },
 };
 
 export function StatusBadge({ status }: { status: string }) {

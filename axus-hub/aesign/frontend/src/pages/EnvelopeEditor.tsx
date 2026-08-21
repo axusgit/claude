@@ -27,10 +27,34 @@ import {
   type Field,
   type FieldType,
   type Recipient,
+  type SignSlot,
 } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 import { recipientColor } from "@/lib/utils";
 import { PdfCanvas } from "@/features/PdfCanvas";
+
+// The BAA template is a fixed file, so its signature-block positions are known.
+// (Quote layouts are computed at generation time and come from envelope.field_layout.)
+const BAA_LAYOUT: SignSlot[] = [
+  {
+    role: "Covered Entity",
+    fields: [
+      { type: "signature", page: 4, x: 0.2032, y: 0.1705, w: 0.3436, h: 0.0215 },
+      { type: "date", page: 4, x: 0.652, y: 0.1705, w: 0.1487, h: 0.0215 },
+      { type: "name", page: 4, x: 0.2401, y: 0.1957, w: 0.3066, h: 0.0215 },
+      { type: "title", page: 4, x: 0.1543, y: 0.221, w: 0.3924, h: 0.0215 },
+    ],
+  },
+  {
+    role: "Axus Technologies",
+    fields: [
+      { type: "signature", page: 4, x: 0.2032, y: 0.2904, w: 0.3436, h: 0.0215 },
+      { type: "date", page: 4, x: 0.652, y: 0.2904, w: 0.1487, h: 0.0215 },
+      { type: "name", page: 4, x: 0.2401, y: 0.3157, w: 0.3066, h: 0.0215 },
+      { type: "title", page: 4, x: 0.1543, y: 0.3409, w: 0.3924, h: 0.0215 },
+    ],
+  },
+];
 
 const TOOLS: { type: FieldType; label: string; icon: typeof PenLine }[] = [
   { type: "signature", label: "Signature", icon: PenLine },
@@ -50,6 +74,7 @@ const EVENT_LABELS: Record<string, string> = {
   consented: "Consented",
   signed: "Signed",
   completed: "Completed",
+  declined: "Declined",
   voided: "Voided",
 };
 
@@ -110,6 +135,8 @@ export function EnvelopeEditor() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Signature blocks auto-detected in an uploaded PDF (SOW/MSA/etc.).
+  const [detectedSlots, setDetectedSlots] = useState<SignSlot[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -149,6 +176,32 @@ export function EnvelopeEditor() {
     void load().catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
   }, [load]);
 
+  // If a signature block is detected AFTER recipients were added (uploaded docs),
+  // place fields for any recipient that doesn't have them yet.
+  useEffect(() => {
+    if (!detectedSlots.length) return;
+    recipients.forEach((r, i) => {
+      if (!r.id || fields.some((f) => f.recipient_id === r.id)) return;
+      const slot = autoLayoutSlot(i);
+      if (!slot?.length) return;
+      setFields((fs) => [
+        ...fs,
+        ...slot.map((f) => ({
+          recipient_id: r.id,
+          type: f.type,
+          page: f.page,
+          x: f.x,
+          y: f.y,
+          w: f.w,
+          h: f.h,
+          required: true,
+        })),
+      ]);
+      setDirty(true);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detectedSlots]);
+
   function colorFor(rid: string | null | undefined) {
     const idx = recipients.findIndex((r) => r.id === rid);
     return idx >= 0 ? recipientColor(idx) : "#9ca3af";
@@ -157,16 +210,40 @@ export function EnvelopeEditor() {
     return recipients.find((r) => r.id === rid)?.name ?? "Unassigned";
   }
 
+  // For Quote/BAA the signature-block positions are known, so we AUTO-PLACE this
+  // signer's fields onto the matching block instead of making the sender click.
+  function autoLayoutSlot(index: number): SignSlot["fields"] | undefined {
+    // BAA = known template; Quote = layout stored on the envelope; uploads
+    // (SOW/MSA/…) = signature blocks auto-detected from the PDF.
+    const layout =
+      docType === "BAA" ? BAA_LAYOUT : detail?.envelope.field_layout ?? detectedSlots;
+    return layout?.[index]?.fields;
+  }
   function addRecipient(name: string, email: string) {
+    const index = recipients.length; // 0-based slot for this new signer
     const rec: Recipient = {
       id: crypto.randomUUID(),
       name,
       email,
       role: "signer",
-      sign_order: recipients.length + 1,
+      sign_order: index + 1,
     };
     setRecipients((r) => [...r, rec]);
     setActiveRecipientId(rec.id!);
+    const slot = autoLayoutSlot(index);
+    if (slot?.length) {
+      const placed: Field[] = slot.map((f) => ({
+        recipient_id: rec.id,
+        type: f.type,
+        page: f.page,
+        x: f.x,
+        y: f.y,
+        w: f.w,
+        h: f.h,
+        required: true,
+      }));
+      setFields((fs) => [...fs, ...placed]);
+    }
     setDirty(true);
   }
   function updateRecipient(rid: string, patch: Partial<Recipient>) {
@@ -484,6 +561,7 @@ export function EnvelopeEditor() {
               onAddField={addField}
               onUpdateField={updateField}
               onDeleteField={deleteField}
+              onDetectLayout={setDetectedSlots}
             />
           </div>
         </div>

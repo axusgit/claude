@@ -22,6 +22,11 @@ export function SignPage() {
   const [done, setDone] = useState(false);
   const [sigField, setSigField] = useState<Field | null>(null);
   const [sigData, setSigData] = useState<string | null>(null);
+  const [declined, setDeclined] = useState(false);
+  const [showDecline, setShowDecline] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
+  const [declining, setDeclining] = useState(false);
+  const declineWords = declineReason.trim().split(/\s+/).filter(Boolean).length;
 
   useEffect(() => {
     signApi.get(token).then(
@@ -35,6 +40,7 @@ export function SignPage() {
         setValues(init);
         setView(v);
         if (v.alreadySigned) setDone(true);
+        if (v.recipient.status === "declined") setDeclined(true);
       },
       (e: unknown) => setError(e instanceof Error ? e.message : "Could not load"),
     );
@@ -63,6 +69,21 @@ export function SignPage() {
     }
   }
 
+  async function submitDecline() {
+    if (declineWords < 10) return;
+    setDeclining(true);
+    setError(null);
+    try {
+      await signApi.decline(token, declineReason.trim());
+      setShowDecline(false);
+      setDeclined(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not submit");
+    } finally {
+      setDeclining(false);
+    }
+  }
+
   if (error && !view) {
     return (
       <Centered>
@@ -87,6 +108,26 @@ export function SignPage() {
         <p className="mt-1 text-sm text-muted">
           Your signature on <span className="font-medium">{view.envelope.title}</span> has been
           recorded. Once all parties have signed, a completed copy will be emailed to everyone.
+        </p>
+      </Centered>
+    );
+  }
+
+  if (declined) {
+    return (
+      <Centered>
+        <img
+          src={axusLogo}
+          alt="Axus Technologies"
+          width={130}
+          className="mx-auto mb-6 h-auto w-[130px]"
+        />
+        <ScrollText className="mx-auto h-10 w-10 text-red-500" />
+        <h1 className="mt-3 text-lg font-semibold">You declined to sign</h1>
+        <p className="mt-1 text-sm text-muted">
+          We've let the sender know you declined{" "}
+          <span className="font-medium">{view.envelope.title}</span> and shared your reason. No
+          signatures will be collected on this document.
         </p>
       </Centered>
     );
@@ -158,11 +199,59 @@ export function SignPage() {
               (U.S. ESIGN Act / UETA).
             </span>
           </label>
-          <Button onClick={() => void submit()} disabled={!canSubmit}>
-            {submitting ? "Submitting…" : "Finish & Sign"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              className="text-red-600 hover:bg-red-50"
+              onClick={() => setShowDecline(true)}
+              disabled={submitting}
+            >
+              Decline
+            </Button>
+            <Button onClick={() => void submit()} disabled={!canSubmit}>
+              {submitting ? "Submitting…" : "Finish & Sign"}
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* Decline modal */}
+      {showDecline && (
+        <div className="fixed inset-0 z-30 grid place-items-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-[var(--radius-card)] border border-line bg-white p-5">
+            <h3 className="font-semibold">Decline to sign</h3>
+            <p className="mt-1 text-sm text-muted">
+              Please explain why you're declining{" "}
+              <span className="font-medium">{view.envelope.title}</span>. An explanation of at least
+              10 words is required — the sender will see it.
+            </p>
+            <textarea
+              value={declineReason}
+              onChange={(e) => setDeclineReason(e.target.value)}
+              rows={4}
+              autoFocus
+              className="mt-3 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              placeholder="I'm declining because…"
+            />
+            <div className={"mt-1 text-xs " + (declineWords >= 10 ? "text-muted" : "text-red-600")}>
+              {declineWords}/10 words minimum
+            </div>
+            {error && <div className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-700">{error}</div>}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowDecline(false)} disabled={declining}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void submitDecline()}
+                disabled={declineWords < 10 || declining}
+              >
+                {declining ? "Submitting…" : "Decline to sign"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Signature modal */}
       {sigField && (

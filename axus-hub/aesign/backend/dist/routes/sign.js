@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { sealPdf } from "../seal.js";
-import { sendCompleted, sendProgress, sendReminder } from "../mail.js";
+import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail.js";
 // Seal the CURRENT state and email every participant a copy. On the last
 // signature it adds the certificate page, marks the envelope completed, and
 // stores the sealed file. Returns whether it's now fully complete.
@@ -109,8 +109,9 @@ export async function signRoutes(app) {
             return reply.code(409).send({ error: "You have already signed." });
         const envId = r.envelope_id;
         const envStatus = await pool.query(`select status from envelope where id = $1`, [envId]);
-        if (envStatus.rows[0]?.status === "cancelled") {
-            return reply.code(409).send({ error: "This document has been cancelled." });
+        const st = envStatus.rows[0]?.status;
+        if (st === "cancelled" || st === "declined") {
+            return reply.code(409).send({ error: `This document has been ${st}.` });
         }
         const ip = req.ip;
         const ua = req.headers["user-agent"] ?? "";
@@ -146,6 +147,52 @@ export async function signRoutes(app) {
         // Seal + email the current copy to everyone (final copy when all signed).
         const completed = await sealAndNotify(envId, r.name);
         return { ok: true, completed };
+    });
+    // Decline to sign — requires a reason of >= 10 words. Blocks the whole
+    // document (status 'declined') and notifies the sender + other participants.
+    app.post("/:token/decline", async (req, reply) => {
+        const token = req.params.token;
+        const body = (req.body ?? {});
+        const reason = (body.reason ?? "").trim();
+        if (reason.split(/\s+/).filter(Boolean).length < 10) {
+            return reply
+                .code(400)
+                .send({ error: "Please explain why you're declining, in at least 10 words." });
+        }
+        const rec = await pool.query(`select * from recipient where sign_token = $1`, [token]);
+        if (!rec.rowCount)
+            return reply.code(404).send({ error: "Invalid link" });
+        const r = rec.rows[0];
+        if (r.status === "signed")
+            return reply.code(409).send({ error: "You have already signed." });
+        if (r.status === "declined")
+            return reply.code(409).send({ error: "You have already declined." });
+        const envId = r.envelope_id;
+        const envq = await pool.query(`select title, created_by, status from envelope where id = $1`, [envId]);
+        const env = envq.rows[0];
+        if (!env)
+            return reply.code(404).send({ error: "Not found" });
+        if (env.status === "completed" || env.status === "cancelled") {
+            return reply.code(409).send({ error: `This document is already ${env.status}.` });
+        }
+        const ip = req.ip;
+        const ua = req.headers["user-agent"] ?? "";
+        await pool.query(`update recipient set status = 'declined', declined_at = now(), decline_reason = $1,
+         ip = $2, user_agent = $3 where id = $4`, [reason, ip, ua, r.id]);
+        await pool.query(`update envelope set status = 'declined' where id = $1`, [envId]);
+        await pool.query(`insert into event (envelope_id, actor, type, detail, ip) values ($1, $2, 'declined', $3, $4)`, [envId, r.email, reason, ip]);
+        // Notify the sender + every other participant, with the reason.
+        const others = await pool.query(`select name, email from recipient where envelope_id = $1 and id <> $2`, [envId, r.id]);
+        const notify = [
+            { name: "Axus Team", email: env.created_by },
+            ...others.rows.map((o) => ({ name: o.name, email: o.email })),
+        ];
+        for (const p of notify) {
+            if (!p.email)
+                continue;
+            await sendDeclined({ to: p.email, recipientName: p.name, declinerName: r.name, title: env.title, reason });
+        }
+        return { ok: true, declined: true };
     });
 }
 //# sourceMappingURL=sign.js.map

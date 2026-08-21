@@ -26,6 +26,9 @@ alter table envelope add column if not exists reminder_time text;          -- "H
 alter table envelope add column if not exists reminder_dow  int;           -- 0-6 (Sun=0), weekly
 alter table envelope add column if not exists reminder_dom  int;           -- 1-31, monthly
 alter table envelope add column if not exists quote_data jsonb;            -- generated-quote source data
+alter table envelope add column if not exists field_layout jsonb;          -- auto-place signer-field layout (Quote)
+alter table recipient add column if not exists decline_reason text;        -- why a signer declined (>= 10 words)
+alter table recipient add column if not exists declined_at timestamptz;
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),

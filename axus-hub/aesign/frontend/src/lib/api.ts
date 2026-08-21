@@ -1,3 +1,16 @@
+export interface SignField {
+  type: "signature" | "date" | "name" | "title";
+  page: number; // 1-based
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+export interface SignSlot {
+  role: string;
+  fields: SignField[];
+}
+
 export interface Envelope {
   id: string;
   title: string;
@@ -17,6 +30,7 @@ export interface Envelope {
   reminder_dom?: number | null;
   recipients?: { name: string; status: string }[];
   quote_data?: QuoteData | null;
+  field_layout?: SignSlot[] | null;
 }
 
 export interface Recipient {
@@ -246,5 +260,14 @@ export const signApi = {
     }).then(async (r) => {
       if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error || `HTTP ${r.status}`);
       return r.json() as Promise<{ ok: boolean; completed: boolean }>;
+    }),
+  decline: (token: string, reason: string) =>
+    fetch(`/api/sign/${token}/decline`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error || `HTTP ${r.status}`);
+      return r.json() as Promise<{ ok: boolean; declined: boolean }>;
     }),
 };

@@ -150,6 +150,38 @@ export async function sendReminder(opts) {
         return false;
     }
 }
+// A signer DECLINED — notify the sender + other participants, with the reason.
+export async function sendDeclined(opts) {
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br />");
+    const html = shell("Document declined", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">Hi ' +
+        opts.recipientName +
+        ',</p><p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#374151;"><strong>' +
+        opts.declinerName +
+        "</strong> declined to sign <strong>" +
+        opts.title +
+        "</strong>. No further signatures can be collected on this document.</p>" +
+        '<div style="border-left:3px solid #ea580c;background:#fff7ed;padding:10px 14px;font-size:14px;color:#374151;border-radius:0 8px 8px 0;">' +
+        "<strong>Reason given:</strong><br />" +
+        esc(opts.reason) +
+        "</div>");
+    const text = `Hi ${opts.recipientName},\n\n${opts.declinerName} declined to sign "${opts.title}". ` +
+        `No further signatures can be collected.\n\nReason given:\n${opts.reason}\n\n— Axus eSign`;
+    try {
+        await transport.sendMail({
+            from: config.mail.from,
+            envelope: { from: config.mail.sender, to: opts.to },
+            to: opts.to,
+            subject: `Declined: ${opts.title}`,
+            text,
+            html,
+            attachments: withLogo(),
+        });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
 // Periodic reminder (scheduled) to a signer who hasn't completed yet.
 export async function sendPendingReminder(opts) {
     const html = shell("Reminder: your signature is needed", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">Hi ' +

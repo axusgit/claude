@@ -216,6 +216,7 @@ export function EnvelopeList() {
             <option value="sent">Sent</option>
             <option value="partially_completed">Partially Completed</option>
             <option value="completed">Completed</option>
+            <option value="declined">Declined</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
@@ -293,8 +294,14 @@ export function EnvelopeList() {
                       )}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-muted">
-                    {new Date(e.created_at).toLocaleDateString()}
+                  <td className="whitespace-nowrap px-4 py-3 text-muted">
+                    {new Date(e.created_at).toLocaleString([], {
+                      month: "numeric",
+                      day: "numeric",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">

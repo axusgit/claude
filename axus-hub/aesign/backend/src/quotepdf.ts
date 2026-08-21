@@ -35,11 +35,29 @@ const H = 792;
 const M = 54;
 const MAX_ROW_Y = 700; // items break to a new page past this (top-based Y)
 
+// Normalized (0..1, top-left) signature-field rectangles, so the editor can
+// AUTO-PLACE signer fields onto the blanks instead of the sender clicking them.
+export interface SignField {
+  type: "signature" | "date" | "name" | "title";
+  page: number; // 1-based (matches the Field model)
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+export interface SignSlot {
+  role: string;
+  fields: SignField[];
+}
+
 function money(n: number): string {
   return "$" + (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export async function generateQuotePdf(d: QuoteData, opts: { template?: boolean } = {}): Promise<Uint8Array> {
+export async function generateQuotePdf(
+  d: QuoteData,
+  opts: { template?: boolean } = {},
+): Promise<{ bytes: Uint8Array; layout: SignSlot[] }> {
   const tmpl = !!opts.template;
   const pdf = await PDFDocument.create();
   const helv = await pdf.embedFont(StandardFonts.Helvetica);
@@ -233,13 +251,39 @@ export async function generateQuotePdf(d: QuoteData, opts: { template?: boolean 
   py += 24;
   put(p2, "To accept this quotation, sign, print, date and return.", M, py, { size: 10, bold: true });
   py += 30;
-  put(p2, "Signature: ______________________________________      Date: __________________", M, py, { size: 10 });
+  const SIG_LINE = "Signature: ______________________________________      Date: __________________";
+  const NAME_LINE = "Print Name: ______________________________________";
+  const sigY = py;
+  put(p2, SIG_LINE, M, py, { size: 10 });
   py += 28;
-  put(p2, "Print Name: ______________________________________", M, py, { size: 10 });
+  const nameY = py;
+  put(p2, NAME_LINE, M, py, { size: 10 });
 
   put(p2, "Thank you for your business!", M, 772, { size: 11, bold: true, color: ORANGE });
 
-  return pdf.save();
+  // Signature-field layout (1 signer, page 2 — 1-based). Widths from exact text.
+  const wAt = (s: string) => helv.widthOfTextAtSize(s, 10);
+  const rect = (type: SignField["type"], x0: number, x1: number, baseY: number): SignField => ({
+    type,
+    page: 2,
+    x: +(x0 / W).toFixed(4),
+    y: +((baseY - 15) / H).toFixed(4),
+    w: +((x1 - x0) / W).toFixed(4),
+    h: +(17 / H).toFixed(4),
+  });
+  const sigPart = SIG_LINE.split("      Date:")[0]; // "Signature: ____…____"
+  const layout: SignSlot[] = [
+    {
+      role: "Customer",
+      fields: [
+        rect("signature", M + wAt("Signature: "), M + wAt(sigPart), sigY),
+        rect("date", M + wAt(`${sigPart}      Date: `), M + wAt(SIG_LINE), sigY),
+        rect("name", M + wAt("Print Name: "), M + wAt(NAME_LINE), nameY),
+      ],
+    },
+  ];
+
+  return { bytes: await pdf.save(), layout };
 }
 
 // A blank, Axus-branded quote template for sales to fill in and hand back
@@ -252,7 +296,7 @@ export async function generateQuoteTemplatePdf(): Promise<Uint8Array> {
     unit_price: 0,
     discount: 0,
   }));
-  return generateQuotePdf(
+  const { bytes } = await generateQuotePdf(
     {
       quote_number: "",
       quote_date: "",
@@ -268,4 +312,5 @@ export async function generateQuoteTemplatePdf(): Promise<Uint8Array> {
     },
     { template: true },
   );
+  return bytes;
 }

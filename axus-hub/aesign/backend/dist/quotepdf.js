@@ -195,11 +195,36 @@ export async function generateQuotePdf(d, opts = {}) {
     py += 24;
     put(p2, "To accept this quotation, sign, print, date and return.", M, py, { size: 10, bold: true });
     py += 30;
-    put(p2, "Signature: ______________________________________      Date: __________________", M, py, { size: 10 });
+    const SIG_LINE = "Signature: ______________________________________      Date: __________________";
+    const NAME_LINE = "Print Name: ______________________________________";
+    const sigY = py;
+    put(p2, SIG_LINE, M, py, { size: 10 });
     py += 28;
-    put(p2, "Print Name: ______________________________________", M, py, { size: 10 });
+    const nameY = py;
+    put(p2, NAME_LINE, M, py, { size: 10 });
     put(p2, "Thank you for your business!", M, 772, { size: 11, bold: true, color: ORANGE });
-    return pdf.save();
+    // Signature-field layout (1 signer, page 2 — 1-based). Widths from exact text.
+    const wAt = (s) => helv.widthOfTextAtSize(s, 10);
+    const rect = (type, x0, x1, baseY) => ({
+        type,
+        page: 2,
+        x: +(x0 / W).toFixed(4),
+        y: +((baseY - 15) / H).toFixed(4),
+        w: +((x1 - x0) / W).toFixed(4),
+        h: +(17 / H).toFixed(4),
+    });
+    const sigPart = SIG_LINE.split("      Date:")[0]; // "Signature: ____…____"
+    const layout = [
+        {
+            role: "Customer",
+            fields: [
+                rect("signature", M + wAt("Signature: "), M + wAt(sigPart), sigY),
+                rect("date", M + wAt(`${sigPart}      Date: `), M + wAt(SIG_LINE), sigY),
+                rect("name", M + wAt("Print Name: "), M + wAt(NAME_LINE), nameY),
+            ],
+        },
+    ];
+    return { bytes: await pdf.save(), layout };
 }
 // A blank, Axus-branded quote template for sales to fill in and hand back
 // (they upload the finished .pdf/.doc). Same layout, empty cells.
@@ -211,7 +236,7 @@ export async function generateQuoteTemplatePdf() {
         unit_price: 0,
         discount: 0,
     }));
-    return generateQuotePdf({
+    const { bytes } = await generateQuotePdf({
         quote_number: "",
         quote_date: "",
         customer: { company: "" },
@@ -224,5 +249,6 @@ export async function generateQuoteTemplatePdf() {
         items: blankRows,
         tax: "EXEMPT",
     }, { template: true });
+    return bytes;
 }
 //# sourceMappingURL=quotepdf.js.map

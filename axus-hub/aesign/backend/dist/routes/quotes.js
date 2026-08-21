@@ -42,10 +42,10 @@ export async function quoteRoutes(app) {
         const cnt = await pool.query(`select count(*)::int n from envelope where doc_type = 'Quote' and quote_data->>'quote_number' like $1`, [`${prefix}.%`]);
         q.quote_number = `${prefix}.${String(cnt.rows[0].n + 1).padStart(3, "0")}`;
         const title = `${q.customer.company.trim()} — Quote ${q.quote_number}`.slice(0, 200);
-        const env = await pool.query(`insert into envelope (title, created_by, doc_type, company, quote_data)
-       values ($1, $2, 'Quote', $3, $4) returning id`, [title, id.email, q.customer.company.trim(), JSON.stringify(q)]);
+        const { bytes, layout } = await generateQuotePdf(q);
+        const env = await pool.query(`insert into envelope (title, created_by, doc_type, company, quote_data, field_layout)
+       values ($1, $2, 'Quote', $3, $4, $5) returning id`, [title, id.email, q.customer.company.trim(), JSON.stringify(q), JSON.stringify(layout)]);
         const envId = env.rows[0].id;
-        const bytes = await generateQuotePdf(q);
         const fname = `${envId}-quote.pdf`;
         await writeFile(join(config.storageDir, fname), Buffer.from(bytes));
         await pool.query(`update envelope set source_file = $1, pdf_file = $1 where id = $2`, [fname, envId]);
@@ -69,11 +69,11 @@ export async function quoteRoutes(app) {
         if (cur.rows[0].status !== "draft") {
             return reply.code(409).send({ error: "Only draft quotes can be edited." });
         }
-        const bytes = await generateQuotePdf(q);
+        const { bytes, layout } = await generateQuotePdf(q);
         const fname = `${envId}-quote.pdf`;
         await writeFile(join(config.storageDir, fname), Buffer.from(bytes));
         await pool.query(`update envelope set quote_data = $1, company = $2, source_file = $3, pdf_file = $3,
-              title = coalesce($4, title) where id = $5`, [JSON.stringify(q), q.customer.company.trim(), fname, body.title?.trim() || null, envId]);
+              field_layout = $4, title = coalesce($5, title) where id = $6`, [JSON.stringify(q), q.customer.company.trim(), fname, JSON.stringify(layout), body.title?.trim() || null, envId]);
         const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
         return { envelope: updated.rows[0] };
     });
