@@ -156,6 +156,33 @@ a { text-decoration: none; color: inherit; }
   .global-search { width: 160px; }
 }
 
+/* ===== dashboard: system status + quick actions + live-metrics ===== */
+.card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+.card-head .card-title { margin-bottom: 0; }
+
+.status-list { display: flex; flex-direction: column; }
+.status-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+.status-row:last-child { border-bottom: none; }
+.status-ic { width: 30px; height: 30px; border-radius: 9px; background: var(--surface-2); display: grid; place-items: center; font-size: 15px; flex-shrink: 0; }
+.status-name { font-weight: 600; font-size: 14px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-open { color: var(--muted); font-weight: 600; font-size: 12.5px; flex-shrink: 0; transition: color .15s; }
+.status-row:hover .status-open { color: var(--orange); }
+.status-tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+
+.action-list { display: flex; flex-direction: column; gap: 9px; }
+.action-row { display: flex; align-items: center; gap: 12px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 12px; transition: border-color .15s, background .15s; }
+.action-row:hover { border-color: var(--orange); background: var(--surface-2); }
+.action-ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-2); display: grid; place-items: center; font-size: 16px; flex-shrink: 0; }
+.action-row:hover .action-ic { background: var(--surface); }
+.action-meta { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.action-label { font-weight: 600; font-size: 13.5px; }
+.action-sub { font-size: 12px; color: var(--muted); }
+.action-arrow { margin-left: auto; color: var(--muted); font-weight: 700; font-size: 15px; transition: color .15s, transform .15s; }
+.action-row:hover .action-arrow { color: var(--orange); transform: translateX(2px); }
+
+.metrics-wrap { display: block; }
+.metrics-empty { padding: 22px 24px; text-align: center; border: 1.5px dashed var(--border); border-radius: 14px; font-size: 13px; line-height: 1.6; }
+
 /* Coming-soon product placeholder */
 .app-tile.coming-soon { cursor: default; opacity: .68; }
 .app-tile.coming-soon:hover { transform: none; box-shadow: var(--shadow); border-color: var(--border); }

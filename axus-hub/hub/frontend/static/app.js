@@ -60,25 +60,91 @@
   }
 
   async function renderDashboard() {
-    $("dash-health").innerHTML = me.apps.filter(a => !a.coming_soon).map(a => `
-      <div class="health-row"><span class="health-dot ${health[a.key] || ""}" data-health="${a.key}"></span>
-        <span>${esc(a.name)}</span><span class="health-state" data-state="${a.key}">${health[a.key] || "checking…"}</span></div>`).join("")
-      || `<div class="muted">No products.</div>`;
+    renderStats();
+    renderStatusList();
+    renderActions();
     try {
       const d = await api("/api/dashboard");
       renderCommandCenter(d.systems);
     } catch (e) {
-      $("command-center").innerHTML = `<div class="muted">Unable to load metrics.</div>`;
+      renderCommandCenter([]);
     }
   }
 
-  function renderCommandCenter(systems) {
-    $("command-center").innerHTML = systems.map(s => {
-      if (!s.available) {
-        return `<div class="sys-panel unavailable">
-          <div class="sys-head"><div class="sys-title"><span class="sys-icon">${s.icon}</span>${esc(s.name)}</div></div>
-          <div class="sys-empty muted">Not yet connected</div></div>`;
+  // Aggregate platform counts derived from the app catalog + live health.
+  function dashCounts() {
+    const live = me.apps.filter(a => !a.coming_soon);
+    return {
+      total: live.length,
+      soon: me.apps.filter(a => a.coming_soon).length,
+      up: live.filter(a => health[a.key] === "up").length,
+      issues: live.filter(a => health[a.key] === "down" || health[a.key] === "degraded").length,
+    };
+  }
+
+  function renderStats() {
+    const c = dashCounts();
+    $("dash-stats").innerHTML =
+      stat(c.total, "Products", "accent") +
+      stat(c.up, "Online now", "good") +
+      stat(c.issues, "Needs attention", c.issues ? "bad" : "") +
+      stat(c.soon, "In development", "");
+    const parts = [`${c.total} product${c.total === 1 ? "" : "s"}`];
+    if (c.up) parts.push(`${c.up} online`);
+    if (c.issues) parts.push(`${c.issues} need${c.issues === 1 ? "s" : ""} attention`);
+    parts.push(`you're ${me.is_admin ? "an administrator" : "a " + me.role}`);
+    $("hero-sub").textContent = parts.join(" · ");
+    const ss = $("status-summary"); if (ss) ss.textContent = `${c.up}/${c.total} online`;
+  }
+
+  // Compact live-status list of every product (distinct from the launcher tiles).
+  function renderStatusList() {
+    $("dash-health").innerHTML = me.apps.map(a => {
+      if (a.coming_soon) {
+        return `<div class="status-row">
+          <span class="status-ic">${a.icon}</span>
+          <span class="status-name">${esc(a.name)}</span>
+          <span class="status-tag">Planned</span></div>`;
       }
+      return `<div class="status-row">
+        <span class="status-ic">${a.icon}</span>
+        <span class="status-name">${esc(a.name)}</span>
+        <span class="pill ${health[a.key] || ""}" data-mon="${a.key}">${health[a.key] || "checking…"}</span>
+        <a class="status-open" href="${a.url}" target="_blank" rel="noopener">Open →</a></div>`;
+    }).join("") || `<div class="muted">No products.</div>`;
+  }
+
+  // Role-aware shortcuts — useful things to DO, not a second launcher grid.
+  function renderActions() {
+    const base = me.authentik_url;
+    const acts = [
+      { icon: "🧩", label: "Browse all products", sub: "Open the product launcher", goto: "apps" },
+      { icon: "👤", label: "Account settings", sub: "Profile, password & MFA", href: me.account_url || "#" },
+    ];
+    if (me.is_admin) {
+      acts.push({ icon: "👥", label: "Manage users", sub: "Add or edit platform accounts", href: `${base}/if/admin/#/identity/users` });
+      acts.push({ icon: "📡", label: "Platform monitoring", sub: "Live status of every service", goto: "monitoring" });
+    }
+    $("dash-actions").innerHTML = acts.map(a => {
+      const attrs = a.goto ? `data-goto="${a.goto}" href="#"` : `href="${a.href}" target="_blank" rel="noopener"`;
+      return `<a class="action-row" ${attrs}>
+        <span class="action-ic">${a.icon}</span>
+        <span class="action-meta"><span class="action-label">${esc(a.label)}</span><span class="action-sub">${esc(a.sub)}</span></span>
+        <span class="action-arrow">→</span></a>`;
+    }).join("");
+  }
+
+  // Live metrics: ONLY systems actually reporting data — no empty "not connected" cards.
+  function renderCommandCenter(systems) {
+    const live = (systems || []).filter(s => s.available);
+    const cc = $("command-center");
+    if (!live.length) {
+      cc.className = "metrics-wrap";
+      cc.innerHTML = `<div class="metrics-empty muted">Live product metrics appear here as each product connects its data. Until then, the status panel below shows what's online.</div>`;
+      return;
+    }
+    cc.className = "command-center";
+    cc.innerHTML = live.map(s => {
       const kpis = s.kpis.map(k =>
         `<div class="kpi"><div class="kpi-val ${k.tone || ""}">${k.value}</div><div class="kpi-label">${esc(k.label)}</div></div>`).join("");
       return `<div class="sys-panel">
@@ -171,10 +237,9 @@
     try { health = await api("/api/apps/health"); } catch (e) { return; }
     for (const [key, state] of Object.entries(health)) {
       document.querySelectorAll(`[data-app="${key}"]`).forEach(el => { el.className = "app-status " + state; });
-      const dot = document.querySelector(`[data-health="${key}"]`); if (dot) dot.className = "health-dot " + state;
-      const st = document.querySelector(`[data-state="${key}"]`); if (st) st.textContent = state;
-      const mon = document.querySelector(`[data-mon="${key}"]`); if (mon) { mon.className = "pill " + state; mon.textContent = state; }
+      document.querySelectorAll(`[data-mon="${key}"]`).forEach(el => { el.className = "pill " + state; el.textContent = state; });
     }
+    if (me) renderStats();  // refresh Online / Needs-attention counts + hero summary
   }
 
   function wireSearch() {

@@ -55,16 +55,17 @@
             <h2 id="hero-title">Welcome</h2>
             <p class="muted" id="hero-sub"></p>
           </div>
-          <div class="section-head"><h3>Command center</h3><a class="link" data-goto="apps">All apps →</a></div>
+          <div class="stats-row" id="dash-stats"></div>
+          <div class="section-head"><h3>Live metrics</h3><a class="link" data-goto="apps">All products →</a></div>
           <div id="command-center" class="command-center"></div>
           <div class="grid-2">
             <div class="card">
-              <h3 class="card-title">System health</h3>
-              <div id="dash-health" class="health-list"></div>
+              <div class="card-head"><h3 class="card-title">System status</h3><span class="muted" id="status-summary"></span></div>
+              <div id="dash-health" class="status-list"></div>
             </div>
             <div class="card">
-              <h3 class="card-title">Activity</h3>
-              <div id="dash-activity" class="notif-list"><div class="muted notif-empty">No recent activity.</div></div>
+              <h3 class="card-title">Quick actions</h3>
+              <div id="dash-actions" class="action-list"></div>
             </div>
           </div>
         </section>
