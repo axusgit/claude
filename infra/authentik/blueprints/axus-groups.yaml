@@ -29,6 +29,11 @@ entries:
   - model: authentik_core.group
     identifiers: {name: app-aesign}
     attrs: {name: app-aesign}
+  # Controls On-Call TILE visibility in the Hub only. On-Call keeps its own
+  # login — this group does NOT gate access inside the app (no forward-auth).
+  - model: authentik_core.group
+    identifiers: {name: app-oncall}
+    attrs: {name: app-oncall}
   # --- eSign app roles (app-scoped, like ain-role-*; read by the eSign app) ---
   - model: authentik_core.group
     identifiers: {name: aesign-role-admin}
