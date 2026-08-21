@@ -7,6 +7,7 @@ import { CheckCircle2, ScrollText } from "lucide-react";
 import { signApi, type Field, type SignView } from "@/lib/api";
 import { Button } from "@/components/ui";
 import { SignaturePad } from "@/features/SignaturePad";
+import axusLogo from "@/assets/axus-logo.png";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 const TARGET_WIDTH = 800;
@@ -75,6 +76,12 @@ export function SignPage() {
   if (done) {
     return (
       <Centered>
+        <img
+          src={axusLogo}
+          alt="Axus Technologies"
+          width={130}
+          className="mx-auto mb-6 h-auto w-[130px]"
+        />
         <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" />
         <h1 className="mt-3 text-lg font-semibold">Thank you — you're all set</h1>
         <p className="mt-1 text-sm text-muted">
