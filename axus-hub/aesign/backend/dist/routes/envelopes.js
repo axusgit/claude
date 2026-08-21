@@ -138,6 +138,45 @@ export async function envelopeRoutes(app) {
         await pool.query(`delete from envelope where id = $1`, [envId]); // cascades children
         return { ok: true };
     });
+    // Bulk cleanup: permanently delete documents older than a chosen age.
+    const PURGE_DAYS = new Set([90, 183, 365, 1095, 1825, 3650]);
+    // How many documents WOULD be deleted (shown before confirming).
+    app.get("/purge-preview", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const days = Number(req.query.days);
+        if (!PURGE_DAYS.has(days))
+            return reply.code(400).send({ error: "Invalid age." });
+        const cnt = await pool.query(`select count(*)::int n from envelope where created_at < now() - ($1 || ' days')::interval`, [days]);
+        return { days, count: cnt.rows[0].n };
+    });
+    app.post("/purge", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const days = Number(req.body?.days);
+        if (!PURGE_DAYS.has(days))
+            return reply.code(400).send({ error: "Invalid age." });
+        const cond = `created_at < now() - ($1 || ' days')::interval`;
+        const rows = await pool.query(`select source_file, pdf_file, sealed_file from envelope where ${cond}`, [days]);
+        for (const r of rows.rows) {
+            for (const f of [r.source_file, r.pdf_file, r.sealed_file]) {
+                if (!f)
+                    continue;
+                const p = join(config.storageDir, f);
+                try {
+                    if (existsSync(p))
+                        await unlink(p);
+                }
+                catch {
+                    /* best effort */
+                }
+            }
+        }
+        const del = await pool.query(`delete from envelope where ${cond}`, [days]);
+        return { ok: true, deleted: del.rowCount ?? 0 };
+    });
     // Cancel a document (blocks further signing). Can't cancel a completed one.
     app.post("/:id/cancel", async (req, reply) => {
         const id = requireStaff(req, reply);
@@ -145,11 +184,42 @@ export async function envelopeRoutes(app) {
             return;
         const envId = req.params.id;
         const r = await pool.query(`update envelope set status = 'cancelled'
-       where id = $1 and status not in ('completed', 'cancelled') returning id`, [envId]);
+       where id = $1 and status not in ('completed', 'cancelled', 'declined', 'expired') returning id`, [envId]);
         if (!r.rowCount)
             return reply.code(409).send({ error: "This document can't be cancelled." });
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'cancelled', 'Cancelled')`, [envId, id.email]);
         return { ok: true };
+    });
+    // Resend the signing link to everyone who hasn't signed or declined yet.
+    app.post("/:id/resend", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const envId = req.params.id;
+        const envq = await pool.query(`select title, status from envelope where id = $1`, [envId]);
+        if (!envq.rowCount)
+            return reply.code(404).send({ error: "Not found" });
+        const env = envq.rows[0];
+        if (env.status !== "sent" && env.status !== "partially_completed") {
+            return reply.code(409).send({ error: "Only documents out for signature can be resent." });
+        }
+        const recs = await pool.query(`select name, email, sign_token, status from recipient where envelope_id = $1 order by sign_order`, [envId]);
+        let sent = 0;
+        for (const r of recs.rows) {
+            if (!r.sign_token || r.status === "signed" || r.status === "declined")
+                continue;
+            const ok = await sendSigningInvite({
+                to: r.email,
+                recipientName: r.name,
+                senderName: id.name,
+                title: env.title,
+                url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+            });
+            if (ok)
+                sent++;
+        }
+        await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'reminded', $3)`, [envId, id.email, `Resent signing link to ${sent} recipient(s)`]);
+        return { ok: true, sent };
     });
     // Fetch one envelope with its recipients + fields + events.
     app.get("/:id", async (req, reply) => {
@@ -160,7 +230,7 @@ export async function envelopeRoutes(app) {
         const env = await pool.query(`select * from envelope where id = $1`, [envId]);
         if (!env.rowCount)
             return reply.code(404).send({ error: "Not found" });
-        const recipients = await pool.query(`select id, envelope_id, name, email, role, sign_order, status, signed_at
+        const recipients = await pool.query(`select id, envelope_id, name, email, role, sign_order, status, signed_at, decline_reason
        from recipient where envelope_id = $1 order by sign_order`, [envId]);
         const fields = await pool.query(`select * from field where envelope_id = $1`, [envId]);
         const events = await pool.query(`select actor, type, detail, ip, at from event where envelope_id = $1 order by at`, [envId]);

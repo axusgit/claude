@@ -14,7 +14,7 @@ import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail
 // stores the sealed file. Returns whether it's now fully complete.
 async function sealAndNotify(envId: string, signerName: string): Promise<boolean> {
   const env = await pool.query(
-    `select id, title, pdf_file, sequential from envelope where id = $1`,
+    `select id, title, pdf_file, sequential, created_by from envelope where id = $1`,
     [envId],
   );
   const e = env.rows[0];
@@ -54,6 +54,10 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     );
     for (const r of recs.rows) {
       await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment });
+    }
+    // Also notify the sender (staff) with the final signed copy.
+    if (e.created_by && !recs.rows.some((r) => r.email === e.created_by)) {
+      await sendCompleted({ to: e.created_by, recipientName: "Axus Team", title: e.title, attachment });
     }
   } else {
     await pool.query(

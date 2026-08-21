@@ -38,7 +38,24 @@ function isLastEtDayOfMonth(now: Date): boolean {
   return etParts(new Date(now.getTime() + 24 * 60 * 60 * 1000)).day === 1;
 }
 
+const EXPIRE_DAYS = 183; // auto-void documents left unsigned this long
+
 export async function runReminders(): Promise<number> {
+  // Auto-void (expire) documents that have been out for signature too long.
+  const expired = await pool.query(
+    `update envelope set status = 'expired'
+     where status in ('sent', 'partially_completed')
+       and sent_at is not null and sent_at < now() - ($1 || ' days')::interval
+     returning id`,
+    [EXPIRE_DAYS],
+  );
+  for (const row of expired.rows) {
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'expired', $2)`,
+      [row.id, `Auto-voided after ${EXPIRE_DAYS} days unsigned`],
+    );
+  }
+
   const { rows } = await pool.query(
     `select id, title, reminder_interval, reminder_time, reminder_dow, reminder_dom,
             last_reminded_at, sent_at, created_at

@@ -9,7 +9,7 @@ import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail
 // signature it adds the certificate page, marks the envelope completed, and
 // stores the sealed file. Returns whether it's now fully complete.
 async function sealAndNotify(envId, signerName) {
-    const env = await pool.query(`select id, title, pdf_file, sequential from envelope where id = $1`, [envId]);
+    const env = await pool.query(`select id, title, pdf_file, sequential, created_by from envelope where id = $1`, [envId]);
     const e = env.rows[0];
     if (!e?.pdf_file)
         return false;
@@ -28,6 +28,10 @@ async function sealAndNotify(envId, signerName) {
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'completed', $2)`, [envId, `Sealed. SHA-256 ${sha256}`]);
         for (const r of recs.rows) {
             await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment });
+        }
+        // Also notify the sender (staff) with the final signed copy.
+        if (e.created_by && !recs.rows.some((r) => r.email === e.created_by)) {
+            await sendCompleted({ to: e.created_by, recipientName: "Axus Team", title: e.title, attachment });
         }
     }
     else {

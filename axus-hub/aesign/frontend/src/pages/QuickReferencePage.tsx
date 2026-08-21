@@ -7,6 +7,7 @@ const STATUS_FLOW: { status: string; when: string }[] = [
   { status: "partially_completed", when: "At least one party has signed, but not everyone yet." },
   { status: "completed", when: "Everyone has signed — sealed PDF + certificate emailed to all." },
   { status: "declined", when: "A recipient declined to sign (with a reason) — no further signatures." },
+  { status: "expired", when: "Auto-voided after 183 days unsigned — recipients can no longer sign." },
   { status: "cancelled", when: "Manually cancelled — recipients can no longer sign." },
 ];
 

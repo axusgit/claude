@@ -75,6 +75,7 @@ const EVENT_LABELS: Record<string, string> = {
   signed: "Signed",
   completed: "Completed",
   declined: "Declined",
+  expired: "Expired",
   voided: "Voided",
 };
 
@@ -461,6 +462,17 @@ export function EnvelopeEditor() {
       {notice && (
         <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700">{notice}</div>
       )}
+
+      {detail.envelope.status === "declined" &&
+        (() => {
+          const d = recipients.find((r) => r.status === "declined");
+          return (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <span className="font-semibold">Declined{d ? ` by ${d.name}` : ""}.</span>{" "}
+              {d?.decline_reason || "No reason provided."}
+            </div>
+          );
+        })()}
 
       {!hasPdf ? (
         <Card className="p-10 text-center">

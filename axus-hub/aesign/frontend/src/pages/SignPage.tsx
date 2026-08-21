@@ -11,6 +11,27 @@ import axusLogo from "@/assets/axus-logo.png";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 const TARGET_WIDTH = 800;
+const SCRIPT_FONT = '"Segoe Script","Brush Script MT","Snell Roundhand",cursive';
+
+// Render a typed name as a script-font PNG (same data-URL shape as a drawn sig).
+function typedSignatureDataUrl(text: string): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = 600;
+  canvas.height = 200;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.fillStyle = "#111827";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  let size = 92;
+  ctx.font = `italic ${size}px ${SCRIPT_FONT}`;
+  while (size > 24 && ctx.measureText(text).width > 560) {
+    size -= 4;
+    ctx.font = `italic ${size}px ${SCRIPT_FONT}`;
+  }
+  ctx.fillText(text, 300, 108);
+  return canvas.toDataURL("image/png");
+}
 
 export function SignPage() {
   const { token = "" } = useParams();
@@ -22,6 +43,8 @@ export function SignPage() {
   const [done, setDone] = useState(false);
   const [sigField, setSigField] = useState<Field | null>(null);
   const [sigData, setSigData] = useState<string | null>(null);
+  const [sigMode, setSigMode] = useState<"draw" | "type">("draw");
+  const [typedName, setTypedName] = useState("");
   const [declined, setDeclined] = useState(false);
   const [showDecline, setShowDecline] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
@@ -180,6 +203,8 @@ export function SignPage() {
           openSignature={(f) => {
             setSigField(f);
             setSigData(values[f.id!] ?? null);
+            setSigMode("draw");
+            setTypedName(f.type === "initials" ? "" : view.recipient.name);
           }}
         />
       </div>
@@ -257,18 +282,52 @@ export function SignPage() {
       {sigField && (
         <div className="fixed inset-0 z-20 grid place-items-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-[var(--radius-card)] border border-line bg-white p-5">
-            <h3 className="mb-3 font-semibold">Add your {sigField.type === "initials" ? "initials" : "signature"}</h3>
-            <SignaturePad onChange={setSigData} />
+            <h3 className="mb-3 font-semibold">
+              Add your {sigField.type === "initials" ? "initials" : "signature"}
+            </h3>
+            <div className="mb-3 inline-flex rounded-lg border border-line p-0.5 text-sm">
+              {(["draw", "type"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setSigMode(m)}
+                  className={
+                    "rounded-md px-3 py-1 font-medium capitalize transition-colors " +
+                    (sigMode === m ? "bg-brand text-brand-fg" : "text-muted hover:text-ink")
+                  }
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            {sigMode === "draw" ? (
+              <SignaturePad onChange={setSigData} />
+            ) : (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={typedName}
+                  onChange={(e) => setTypedName(e.target.value)}
+                  placeholder={sigField.type === "initials" ? "Your initials" : "Type your full name"}
+                  className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                />
+                <div className="grid h-28 place-items-center rounded-lg border border-line bg-canvas">
+                  <span style={{ fontFamily: SCRIPT_FONT, fontStyle: "italic", fontSize: 40 }}>
+                    {typedName || "Preview"}
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setSigField(null)}>
                 Cancel
               </Button>
               <Button
                 onClick={() => {
-                  if (sigData) setValue(sigField.id!, sigData);
+                  const value = sigMode === "type" ? typedSignatureDataUrl(typedName.trim()) : sigData;
+                  if (value) setValue(sigField.id!, value);
                   setSigField(null);
                 }}
-                disabled={!sigData}
+                disabled={sigMode === "type" ? !typedName.trim() : !sigData}
               >
                 Apply
               </Button>

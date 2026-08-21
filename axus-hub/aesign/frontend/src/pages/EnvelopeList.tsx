@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, Circle, Download, FileSignature, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Circle, Download, FileSignature, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
@@ -12,6 +12,58 @@ export function EnvelopeList() {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function resend(e: Envelope) {
+    try {
+      const r = await api.resendEnvelope(e.id);
+      setNotice(`Resent the signing link to ${r.sent} recipient(s).`);
+      setTimeout(() => setNotice(null), 4000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Resend failed");
+    }
+  }
+
+  // Bulk cleanup by document age.
+  const PURGE_OPTIONS = [
+    { days: 90, label: "90 days" },
+    { days: 183, label: "183 days" },
+    { days: 365, label: "1 year" },
+    { days: 1095, label: "3 years" },
+    { days: 1825, label: "5 years" },
+    { days: 3650, label: "10 years" },
+  ];
+  const [showPurge, setShowPurge] = useState(false);
+  const [purgeDays, setPurgeDays] = useState(365);
+  const [purgeCount, setPurgeCount] = useState<number | null>(null);
+  const [purging, setPurging] = useState(false);
+
+  async function loadPurgeCount(days: number) {
+    setPurgeCount(null);
+    try {
+      setPurgeCount((await api.purgePreview(days)).count);
+    } catch {
+      setPurgeCount(null);
+    }
+  }
+  function openPurge() {
+    setShowPurge(true);
+    void loadPurgeCount(purgeDays);
+  }
+  async function doPurge() {
+    setPurging(true);
+    try {
+      const r = await api.purgeOld(purgeDays);
+      setShowPurge(false);
+      setNotice(`Deleted ${r.deleted} document(s) older than the selected age.`);
+      setTimeout(() => setNotice(null), 4000);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setPurging(false);
+    }
+  }
   const [creating, setCreating] = useState(false);
   const [docType, setDocType] = useState("SOW");
   const [company, setCompany] = useState("");
@@ -118,10 +170,20 @@ export function EnvelopeList() {
           <h1 className="text-xl font-semibold">Documents</h1>
           <p className="text-sm text-muted">Send SOWs, MSAs, and contracts for signature.</p>
         </div>
-        <Button onClick={() => setCreating((v) => !v)}>
-          <Plus className="h-4 w-4" /> New document
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={openPurge}>
+            <Trash2 className="h-4 w-4" /> Delete old…
+          </Button>
+          <Button onClick={() => setCreating((v) => !v)}>
+            <Plus className="h-4 w-4" /> New document
+          </Button>
+        </div>
       </div>
+
+      {notice && (
+        <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700">{notice}</div>
+      )}
+      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       {creating && (
         <Card className="space-y-3 p-4">
@@ -217,6 +279,7 @@ export function EnvelopeList() {
             <option value="partially_completed">Partially Completed</option>
             <option value="completed">Completed</option>
             <option value="declined">Declined</option>
+            <option value="expired">Expired</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
@@ -315,6 +378,18 @@ export function EnvelopeList() {
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
+                      {(e.status === "sent" || e.status === "partially_completed") && (
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            void resend(e);
+                          }}
+                          className="text-muted hover:text-brand"
+                          title="Resend the signing link to anyone who hasn't signed"
+                        >
+                          <Send className="h-4 w-4" />
+                        </button>
+                      )}
                       {e.pdf_file && (
                         <a
                           href={api.documentUrl(e.id)}
@@ -409,6 +484,56 @@ export function EnvelopeList() {
                 disabled={!editTitle.trim() || !editCompany.trim()}
               >
                 Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPurge && (
+        <div className="fixed inset-0 z-30 grid place-items-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-white p-5">
+            <h3 className="font-semibold">Delete old documents</h3>
+            <p className="mt-1 text-sm text-muted">
+              Permanently delete every document older than the selected age — including its files and
+              audit trail. This cannot be undone.
+            </p>
+            <label className="mt-3 block text-sm font-medium">Older than</label>
+            <select
+              value={purgeDays}
+              onChange={(e) => {
+                const d = Number(e.target.value);
+                setPurgeDays(d);
+                void loadPurgeCount(d);
+              }}
+              className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+            >
+              {PURGE_OPTIONS.map((o) => (
+                <option key={o.days} value={o.days}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <div className="mt-3 rounded-lg bg-canvas p-3 text-sm">
+              {purgeCount === null ? (
+                "Counting…"
+              ) : (
+                <span>
+                  <span className="font-semibold text-red-700">{purgeCount}</span> document
+                  {purgeCount === 1 ? "" : "s"} will be permanently deleted.
+                </span>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowPurge(false)} disabled={purging}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void doPurge()}
+                disabled={purging || !purgeCount}
+              >
+                {purging ? "Deleting…" : `Delete ${purgeCount ?? 0}`}
               </Button>
             </div>
           </div>

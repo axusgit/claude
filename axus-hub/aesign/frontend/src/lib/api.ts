@@ -40,6 +40,7 @@ export interface Recipient {
   role: string; // signer | viewer | approver
   sign_order: number;
   status?: string;
+  decline_reason?: string | null;
 }
 
 export type FieldType = "signature" | "name" | "title" | "initials" | "date" | "text";
@@ -139,8 +140,20 @@ export const api = {
     }),
   deleteEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}`, { method: "DELETE" }),
+  purgePreview: (days: number) =>
+    req<{ days: number; count: number }>(`/envelopes/purge-preview?days=${days}`),
+  purgeOld: (days: number) =>
+    req<{ ok: boolean; deleted: number }>(`/envelopes/purge`, {
+      method: "POST",
+      body: JSON.stringify({ days }),
+    }),
   cancelEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}/cancel`, { method: "POST", body: JSON.stringify({}) }),
+  resendEnvelope: (id: string) =>
+    req<{ ok: boolean; sent: number }>(`/envelopes/${id}/resend`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   remindRecipient: (id: string, rid: string) =>
     req<{ ok: boolean; sent: boolean }>(`/envelopes/${id}/recipients/${rid}/remind`, {
       method: "POST",
