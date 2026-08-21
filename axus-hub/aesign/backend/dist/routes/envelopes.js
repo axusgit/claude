@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { getIdentity, hasEsignAccess } from "../identity.js";
-import { sendSigningInvite } from "../mail.js";
+import { sendSigningInvite, sendPendingReminder } from "../mail.js";
 import { stampBaaPdf, etTodayLong } from "../baa.js";
 function requireStaff(req, reply) {
     const id = getIdentity(req);
@@ -449,6 +449,49 @@ export async function envelopeRoutes(app) {
         await pool.query(`update envelope set status = 'sent', sent_at = now() where id = $1`, [envId]);
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'sent', $3)`, [envId, id.email, `Sent to ${recips.rowCount} recipient(s)`]);
         return { ok: true, results };
+    });
+    // Manually email a reminder to a single recipient who hasn't completed their
+    // part yet. Complements the automatic scheduled reminders — staff can nudge an
+    // individual on demand from the document editor.
+    app.post("/:id/recipients/:rid/remind", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const { id: envId, rid } = req.params;
+        const envq = await pool.query(`select id, title, status from envelope where id = $1`, [envId]);
+        if (!envq.rowCount)
+            return reply.code(404).send({ error: "Not found" });
+        const env = envq.rows[0];
+        if (env.status !== "sent" && env.status !== "partially_completed") {
+            return reply
+                .code(409)
+                .send({ error: "Reminders can only be sent for a document that is out for signature." });
+        }
+        const recq = await pool.query(`select id, name, email, status, sign_token from recipient where id = $1 and envelope_id = $2`, [rid, envId]);
+        if (!recq.rowCount)
+            return reply.code(404).send({ error: "Recipient not found" });
+        const r = recq.rows[0];
+        if (r.status === "signed") {
+            return reply.code(409).send({ error: `${r.name} has already completed this document.` });
+        }
+        if (r.status === "pending" || !r.sign_token) {
+            return reply
+                .code(409)
+                .send({ error: `It isn't ${r.name}'s turn to sign yet.` });
+        }
+        const ok = await sendPendingReminder({
+            to: r.email,
+            recipientName: r.name,
+            title: env.title,
+            url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+        });
+        if (!ok)
+            return reply.code(502).send({ error: "The reminder email could not be sent." });
+        await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'reminded', $3)`, [envId, id.email, `Reminder sent to ${r.name} <${r.email}>`]);
+        // Suppress the automatic reminder for the rest of today so the recipient
+        // isn't double-nudged.
+        await pool.query(`update envelope set last_reminded_at = now() where id = $1`, [envId]);
+        return { ok: true, sent: true };
     });
 }
 //# sourceMappingURL=envelopes.js.map

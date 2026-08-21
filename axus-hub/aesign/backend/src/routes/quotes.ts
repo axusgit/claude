@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { requireStaff } from "../identity.js";
-import { generateQuotePdf, type QuoteData } from "../quotepdf.js";
+import { generateQuotePdf, generateQuoteTemplatePdf, type QuoteData } from "../quotepdf.js";
 
 // Today's date in Eastern Time as MMDDYYYY (the quote-number prefix).
 function etDatePrefix(): string {
@@ -19,6 +19,17 @@ function etDatePrefix(): string {
 }
 
 export async function quoteRoutes(app: FastifyInstance) {
+  // Download a blank, Axus-branded quote template for sales to fill in and hand
+  // back (they upload the finished .pdf/.doc when creating a Quote).
+  app.get("/template", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const bytes = await generateQuoteTemplatePdf();
+    reply.header("Content-Type", "application/pdf");
+    reply.header("Content-Disposition", 'attachment; filename="Axus-Quote-Template.pdf"');
+    return reply.send(Buffer.from(bytes));
+  });
+
   // Create a Quote — generates the branded PDF and a Quote envelope.
   app.post("/", async (req, reply) => {
     const id = requireStaff(req, reply);

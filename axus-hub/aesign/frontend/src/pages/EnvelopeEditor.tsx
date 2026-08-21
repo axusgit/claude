@@ -391,8 +391,8 @@ export function EnvelopeEditor() {
           <p className="mt-3 font-medium">Upload the document</p>
           <p className="mb-4 text-sm text-muted">
             Upload a <span className="font-medium">PDF</span> or{" "}
-            <span className="font-medium">Word (.docx)</span> document — Word files are converted to
-            PDF automatically.
+            <span className="font-medium">Word (.doc / .docx)</span> — Word files are converted to PDF
+            automatically.
           </p>
           <input
             ref={fileRef}

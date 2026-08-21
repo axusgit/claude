@@ -196,6 +196,7 @@ export interface QuoteData {
 }
 
 export const quotesApi = {
+  templateUrl: () => "/api/quotes/template",
   create: (title: string, quote: QuoteData) =>
     req<{ envelope: Envelope }>("/quotes", {
       method: "POST",

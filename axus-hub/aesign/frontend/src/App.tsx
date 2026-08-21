@@ -1,5 +1,5 @@
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { FileSignature, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { EnvelopeList } from "@/pages/EnvelopeList";
 import { EnvelopeEditor } from "@/pages/EnvelopeEditor";
 import { ContactsPage } from "@/pages/ContactsPage";
@@ -27,12 +27,8 @@ export function App() {
       <header className="border-b border-line bg-white">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-5">
           <Link to="/" className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-brand-fg">
-              <FileSignature className="h-4.5 w-4.5" />
-            </span>
-            <span className="text-[15px] font-semibold">
-              Axus <span className="text-muted">eSign</span>
-            </span>
+            <img src="/assets/axus-logo.png" alt="Axus Technologies" className="h-8 w-auto" />
+            <span className="text-[15px] font-semibold text-muted">eSign</span>
           </Link>
           <nav className="flex items-center gap-1">
             <NavLink to="/" end className={navCls}>

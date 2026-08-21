@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, FileUp, Plus, Trash2 } from "lucide-react";
 import {
+  api,
   companiesApi,
   contactsApi,
   quotesApi,
@@ -29,6 +30,7 @@ export function QuoteBuilder() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [creatingUpload, setCreatingUpload] = useState(false);
 
   const [quoteDate, setQuoteDate] = useState(todayStr());
   const [validUntil, setValidUntil] = useState(plusDaysStr(30));
@@ -119,6 +121,28 @@ export function QuoteBuilder() {
     }
   }
 
+  // "Upload a ready quote" — a salesperson already has the quote populated.
+  // Create the Quote envelope and hand off to the editor to upload the file.
+  async function createForUpload() {
+    if (!company.trim()) {
+      setError("Select a company first, then upload the quote file.");
+      return;
+    }
+    setCreatingUpload(true);
+    setError(null);
+    try {
+      const env = await api.createEnvelope({
+        title: `${company.trim()} Quote`,
+        doc_type: "Quote",
+        company: company.trim(),
+      });
+      nav(`/envelopes/${env.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start the upload");
+      setCreatingUpload(false);
+    }
+  }
+
   const field = "w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand";
   const lbl = "text-xs font-medium text-muted";
 
@@ -129,7 +153,23 @@ export function QuoteBuilder() {
           <ArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="text-xl font-semibold">New Quote</h1>
+        <div className="ml-auto flex items-center gap-2">
+          <a
+            href={quotesApi.templateUrl()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-medium text-muted hover:text-ink"
+            title="Download a blank Axus quote template to fill in"
+          >
+            <Download className="h-4 w-4" /> Quote template
+          </a>
+          <Button variant="outline" onClick={() => void createForUpload()} disabled={creatingUpload}>
+            <FileUp className="h-4 w-4" /> {creatingUpload ? "Opening…" : "Upload a ready quote"}
+          </Button>
+        </div>
       </div>
+      <p className="text-xs text-muted">
+        Build the quote below, or — if a salesperson already prepared one — pick the company and click
+        <span className="font-medium"> Upload a ready quote</span> to attach their finished .pdf / .doc.
+      </p>
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       <div className="grid gap-4 md:grid-cols-2">
