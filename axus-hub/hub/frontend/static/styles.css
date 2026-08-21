@@ -155,3 +155,9 @@ a { text-decoration: none; color: inherit; }
   .grid-2 { grid-template-columns: 1fr; }
   .global-search { width: 160px; }
 }
+
+/* Coming-soon product placeholder */
+.app-tile.coming-soon { cursor: default; opacity: .68; }
+.app-tile.coming-soon:hover { transform: none; box-shadow: var(--shadow); border-color: var(--border); }
+.app-tile.coming-soon .app-status { display: none; }
+.app-tile.coming-soon .app-launch { display: inline-block; align-self: flex-start; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); }

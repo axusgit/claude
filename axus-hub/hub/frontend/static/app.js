@@ -35,8 +35,8 @@
 
   /* ---------- shared render helpers ---------- */
   function appTile(a, compact) {
-    const t = document.createElement("a");
-    t.className = "app-tile";
+    const t = document.createElement(a.coming_soon ? "div" : "a");
+    t.className = a.coming_soon ? "app-tile coming-soon" : "app-tile";
     t.href = a.url;
     t.target = "_blank";           // launch each app in its own tab
     t.rel = "noopener";
@@ -45,7 +45,7 @@
       <div class="app-icon">${a.icon}</div>
       <div class="app-name">${esc(a.name)}</div>
       <div class="app-desc">${esc(a.desc)}</div>
-      <div class="app-launch">Launch →</div>`;
+      <div class="app-launch">${a.coming_soon ? "Coming soon" : "Launch →"}</div>`;
     return t;
   }
 
@@ -60,7 +60,7 @@
   }
 
   async function renderDashboard() {
-    $("dash-health").innerHTML = me.apps.map(a => `
+    $("dash-health").innerHTML = me.apps.filter(a => !a.coming_soon).map(a => `
       <div class="health-row"><span class="health-dot ${health[a.key] || ""}" data-health="${a.key}"></span>
         <span>${esc(a.name)}</span><span class="health-state" data-state="${a.key}">${health[a.key] || "checking…"}</span></div>`).join("")
       || `<div class="muted">No products.</div>`;
@@ -99,7 +99,7 @@
   }
 
   function renderMonitoring() {
-    $("mon-rows").innerHTML = me.apps.map(a => {
+    $("mon-rows").innerHTML = me.apps.filter(a => !a.coming_soon).map(a => {
       const s = health[a.key] || "";
       return `<tr><td>${esc(a.name)}</td>
         <td><span class="pill ${s}" data-mon="${a.key}">${s || "checking…"}</span></td>
@@ -109,7 +109,7 @@
 
   function renderReports() {
     $("report-stats").innerHTML = `
-      ${stat(me.apps.length, "Connected apps", "accent")}
+      ${stat(me.apps.filter(a => !a.coming_soon).length, "Connected apps", "accent")}
       ${stat(Object.values(health).filter(s => s === "up").length, "Online now", "good")}
       ${stat("—", "Open tickets", "")}
       ${stat("—", "Revenue (MTD)", "")}`;

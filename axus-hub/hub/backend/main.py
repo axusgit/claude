@@ -35,6 +35,7 @@ APP_CATALOG = [
     # NOT gated by Authentik forward-auth (app-oncall just controls tile visibility).
     {"key": "oncall", "name": "On-Call", "desc": "After-hours on-call answering & escalation", "group": "app-oncall", "icon": "📞", "internal": False, "url": "https://oncall.axustechnologies.com", "health": "https://oncall.axustechnologies.com/health"},
     {"key": "engineering", "name": "Engineering", "desc": "Projects, docs & dev-ops", "group": "app-engineering", "icon": "🛠️", "internal": True},
+    {"key": "marketing", "name": "Axus Marketing", "desc": "Newsletters, email campaigns & automation", "group": "app-marketing", "icon": "📣", "internal": True, "coming_soon": True},
 ]
 
 # Internal (Docker-network) URLs used to pull each app's KPI summary
@@ -72,7 +73,7 @@ def _apps_for(identity: Identity):
             path = "" if is_client else a.get("staff_path", "")
             # Apps hosted outside *.hub (e.g. Insights at ain.axustechnologies.com)
             # can pin an explicit URL; others are derived from the key + domain.
-            url = a.get("url") or f"https://{a['key']}.{PLATFORM_DOMAIN}{port}{path}"
+            url = "#" if a.get("coming_soon") else (a.get("url") or f"https://{a['key']}.{PLATFORM_DOMAIN}{port}{path}")
             apps.append({**a, "url": url})
     return apps
 
@@ -106,6 +107,8 @@ async def dashboard(request: Request):
     systems = []
     async with httpx.AsyncClient(timeout=2.5) as client:
         for a in _apps_for(identity):
+            if a.get("coming_soon"):
+                continue
             base = {"app": a["key"], "name": a["name"], "icon": a["icon"], "url": a["url"]}
             internal = INTERNAL_URLS.get(a["key"])
             if internal:
@@ -168,6 +171,8 @@ async def apps_health(request: Request):
     results = {}
     async with httpx.AsyncClient(timeout=2.5) as client:
         for a in _apps_for(identity):
+            if a.get("coming_soon"):
+                continue
             # An explicit per-app health URL wins; otherwise probe the internal
             # address (or the app's own URL) at /api/health.
             health_url = a.get("health") or f"{INTERNAL_URLS.get(a['key'], a['url'])}/api/health"
