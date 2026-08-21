@@ -1,0 +1,14 @@
+# Keep host build artifacts out of the Docker build context. Every app image
+# installs its own dependencies (npm ci / pip install) and builds from source
+# inside the container, so host node_modules/dist/venv must never be copied in —
+# doing so clobbers the clean in-container install (e.g. non-executable .bin/tsc
+# from a host install → "tsc: Permission denied").
+**/node_modules
+**/dist
+**/.output
+**/venv
+**/__pycache__
+**/*.pyc
+**/.git
+**/.vite
+**/.DS_Store
