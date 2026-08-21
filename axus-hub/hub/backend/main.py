@@ -27,7 +27,7 @@ INTERNAL_PORT = os.getenv("INTERNAL_PORT", "8443")
 # (served on :8443); non-internal apps are client-facing (:443).
 APP_CATALOG = [
     {"key": "support", "name": "Support", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False, "staff_path": "/staff"},
-    {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "url": "https://ain.axustechnologies.com/auth?sso=1", "health": "https://ain.axustechnologies.com/"},
+    {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "external": True, "url": "https://ain.axustechnologies.com/auth?sso=1", "health": "https://ain.axustechnologies.com/"},
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
     {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
     {"key": "esign", "name": "Axus eSign", "desc": "E-signatures, agreements & quotes", "group": "app-aesign", "icon": "✍️", "internal": False, "url": "https://aesign.axustechnologies.com"},
@@ -172,7 +172,9 @@ async def apps_health(request: Request):
                 r = await client.get(health_url)
                 results[a["key"]] = "up" if r.status_code == 200 else "degraded"
             except Exception:
-                results[a["key"]] = "down"
+                # Externally-hosted apps (separate, firewalled boxes) can't be
+                # reached from the Hub by design — don't flag them red for that.
+                results[a["key"]] = "up" if a.get("external") else "down"
     return results
 
 
