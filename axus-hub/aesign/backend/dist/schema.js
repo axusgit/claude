@@ -29,6 +29,8 @@ alter table envelope add column if not exists quote_data jsonb;            -- ge
 alter table envelope add column if not exists field_layout jsonb;          -- auto-place signer-field layout (Quote)
 alter table recipient add column if not exists decline_reason text;        -- why a signer declined (>= 10 words)
 alter table recipient add column if not exists declined_at timestamptz;
+alter table envelope add column if not exists archived boolean not null default false;  -- moved to the Archive tab
+alter table envelope add column if not exists archived_at timestamptz;
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),

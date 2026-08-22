@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, Circle, Download, FileSignature, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Archive, Check, Circle, Download, FileSignature, HardDrive, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
@@ -8,11 +8,27 @@ const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "Quote"];
 // Types that auto-attach a stored template on creation (Quotes are generated separately).
 const TEMPLATE_TYPES = ["BAA"];
 
+function fmtBytes(n: number): string {
+  if (!n) return "0 B";
+  if (n < 1024) return `${n} B`;
+  const u = ["KB", "MB", "GB", "TB"];
+  let v = n;
+  let i = -1;
+  do {
+    v /= 1024;
+    i++;
+  } while (v >= 1024 && i < u.length - 1);
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
+}
+
 export function EnvelopeList() {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [storage, setStorage] = useState<{ bytes: number; files: number; documents: number } | null>(
+    null,
+  );
 
   async function resend(e: Envelope) {
     try {
@@ -25,7 +41,11 @@ export function EnvelopeList() {
   }
 
   // Bulk cleanup by document age.
-  const PURGE_OPTIONS = [
+  const ARCHIVE_OPTIONS = [
+    { days: 1, label: "1 day" },
+    { days: 7, label: "7 days" },
+    { days: 30, label: "30 days" },
+    { days: 60, label: "60 days" },
     { days: 90, label: "90 days" },
     { days: 183, label: "183 days" },
     { days: 365, label: "1 year" },
@@ -33,35 +53,35 @@ export function EnvelopeList() {
     { days: 1825, label: "5 years" },
     { days: 3650, label: "10 years" },
   ];
-  const [showPurge, setShowPurge] = useState(false);
-  const [purgeDays, setPurgeDays] = useState(365);
-  const [purgeCount, setPurgeCount] = useState<number | null>(null);
-  const [purging, setPurging] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
+  const [archiveDays, setArchiveDays] = useState(365);
+  const [archiveCount, setArchiveCount] = useState<number | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  async function loadPurgeCount(days: number) {
-    setPurgeCount(null);
+  async function loadArchiveCount(days: number) {
+    setArchiveCount(null);
     try {
-      setPurgeCount((await api.purgePreview(days)).count);
+      setArchiveCount((await api.archivePreview(days)).count);
     } catch {
-      setPurgeCount(null);
+      setArchiveCount(null);
     }
   }
-  function openPurge() {
-    setShowPurge(true);
-    void loadPurgeCount(purgeDays);
+  function openArchive() {
+    setShowArchive(true);
+    void loadArchiveCount(archiveDays);
   }
-  async function doPurge() {
-    setPurging(true);
+  async function doArchive() {
+    setArchiving(true);
     try {
-      const r = await api.purgeOld(purgeDays);
-      setShowPurge(false);
-      setNotice(`Deleted ${r.deleted} document(s) older than the selected age.`);
+      const r = await api.archiveOld(archiveDays);
+      setShowArchive(false);
+      setNotice(`Archived ${r.archived} document(s) — moved to the Archive tab.`);
       setTimeout(() => setNotice(null), 4000);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
+      setError(e instanceof Error ? e.message : "Archive failed");
     } finally {
-      setPurging(false);
+      setArchiving(false);
     }
   }
   const [creating, setCreating] = useState(false);
@@ -91,6 +111,7 @@ export function EnvelopeList() {
     setLoading(true);
     try {
       setEnvelopes(await api.listEnvelopes());
+      api.storageUsage().then(setStorage).catch(() => {});
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -169,15 +190,19 @@ export function EnvelopeList() {
         <div>
           <h1 className="text-xl font-semibold">Documents</h1>
           <p className="text-sm text-muted">Send SOWs, MSAs, and contracts for signature.</p>
+          {storage && (
+            <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted">
+              <HardDrive className="h-3.5 w-3.5" />
+              <span>
+                <span className="font-medium text-ink">{fmtBytes(storage.bytes)}</span> used across{" "}
+                {storage.documents} document{storage.documents === 1 ? "" : "s"}
+              </span>
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={openPurge}>
-            <Trash2 className="h-4 w-4" /> Delete old…
-          </Button>
-          <Button onClick={() => setCreating((v) => !v)}>
-            <Plus className="h-4 w-4" /> New document
-          </Button>
-        </div>
+        <Button onClick={() => setCreating((v) => !v)}>
+          <Plus className="h-4 w-4" /> New document
+        </Button>
       </div>
 
       {notice && (
@@ -305,7 +330,15 @@ export function EnvelopeList() {
                 <th className="px-4 py-3 font-medium">Company</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Created</th>
-                <th className="px-4 py-3 font-medium"></th>
+                <th className="px-4 py-3 text-right">
+                  <button
+                    onClick={openArchive}
+                    className="text-muted hover:text-brand"
+                    title="Archive documents older than a chosen age"
+                  >
+                    <Archive className="h-4 w-4" />
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -490,50 +523,46 @@ export function EnvelopeList() {
         </div>
       )}
 
-      {showPurge && (
+      {showArchive && (
         <div className="fixed inset-0 z-30 grid place-items-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-white p-5">
-            <h3 className="font-semibold">Delete old documents</h3>
+            <h3 className="font-semibold">Archive old documents</h3>
             <p className="mt-1 text-sm text-muted">
-              Permanently delete every document older than the selected age — including its files and
-              audit trail. This cannot be undone.
+              Move every document older than the selected age to the <span className="font-medium">Archive</span> tab.
+              Nothing is deleted — they stay downloadable there, and you can delete them individually later.
             </p>
             <label className="mt-3 block text-sm font-medium">Older than</label>
             <select
-              value={purgeDays}
+              value={archiveDays}
               onChange={(e) => {
                 const d = Number(e.target.value);
-                setPurgeDays(d);
-                void loadPurgeCount(d);
+                setArchiveDays(d);
+                void loadArchiveCount(d);
               }}
               className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
             >
-              {PURGE_OPTIONS.map((o) => (
+              {ARCHIVE_OPTIONS.map((o) => (
                 <option key={o.days} value={o.days}>
                   {o.label}
                 </option>
               ))}
             </select>
             <div className="mt-3 rounded-lg bg-canvas p-3 text-sm">
-              {purgeCount === null ? (
+              {archiveCount === null ? (
                 "Counting…"
               ) : (
                 <span>
-                  <span className="font-semibold text-red-700">{purgeCount}</span> document
-                  {purgeCount === 1 ? "" : "s"} will be permanently deleted.
+                  <span className="font-semibold text-brand">{archiveCount}</span> document
+                  {archiveCount === 1 ? "" : "s"} will be moved to Archive.
                 </span>
               )}
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowPurge(false)} disabled={purging}>
+              <Button variant="ghost" onClick={() => setShowArchive(false)} disabled={archiving}>
                 Cancel
               </Button>
-              <Button
-                variant="danger"
-                onClick={() => void doPurge()}
-                disabled={purging || !purgeCount}
-              >
-                {purging ? "Deleting…" : `Delete ${purgeCount ?? 0}`}
+              <Button onClick={() => void doArchive()} disabled={archiving || !archiveCount}>
+                {archiving ? "Archiving…" : `Archive ${archiveCount ?? 0}`}
               </Button>
             </div>
           </div>

@@ -6,6 +6,7 @@ import { ContactsPage } from "@/pages/ContactsPage";
 import { CompaniesPage } from "@/pages/CompaniesPage";
 import { QuoteBuilder } from "@/pages/QuoteBuilder";
 import { QuickReferencePage } from "@/pages/QuickReferencePage";
+import { ArchivePage } from "@/pages/ArchivePage";
 import { SignPage } from "@/pages/SignPage";
 
 const navCls = ({ isActive }: { isActive: boolean }) =>
@@ -43,6 +44,9 @@ export function App() {
             <NavLink to="/reference" className={navCls}>
               Quick reference
             </NavLink>
+            <NavLink to="/archive" className={navCls}>
+              Archive
+            </NavLink>
           </nav>
           <a
             href="/outpost.goauthentik.io/sign_out"
@@ -62,6 +66,7 @@ export function App() {
           <Route path="/companies" element={<CompaniesPage />} />
           <Route path="/quotes/new" element={<QuoteBuilder />} />
           <Route path="/reference" element={<QuickReferencePage />} />
+          <Route path="/archive" element={<ArchivePage />} />
         </Routes>
       </main>
     </div>

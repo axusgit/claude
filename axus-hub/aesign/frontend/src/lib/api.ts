@@ -31,6 +31,8 @@ export interface Envelope {
   recipients?: { name: string; status: string }[];
   quote_data?: QuoteData | null;
   field_layout?: SignSlot[] | null;
+  archived?: boolean;
+  archived_at?: string | null;
 }
 
 export interface Recipient {
@@ -79,7 +81,8 @@ async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  listEnvelopes: () => req<{ envelopes: Envelope[] }>("/envelopes").then((r) => r.envelopes),
+  listEnvelopes: (archived = false) =>
+    req<{ envelopes: Envelope[] }>(`/envelopes?archived=${archived}`).then((r) => r.envelopes),
   createEnvelope: (data: {
     title: string;
     doc_type?: string;
@@ -140,13 +143,15 @@ export const api = {
     }),
   deleteEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}`, { method: "DELETE" }),
-  purgePreview: (days: number) =>
-    req<{ days: number; count: number }>(`/envelopes/purge-preview?days=${days}`),
-  purgeOld: (days: number) =>
-    req<{ ok: boolean; deleted: number }>(`/envelopes/purge`, {
+  archivePreview: (days: number) =>
+    req<{ days: number; count: number }>(`/envelopes/archive-preview?days=${days}`),
+  archiveOld: (days: number) =>
+    req<{ ok: boolean; archived: number }>(`/envelopes/archive`, {
       method: "POST",
       body: JSON.stringify({ days }),
     }),
+  storageUsage: () =>
+    req<{ bytes: number; files: number; documents: number }>(`/envelopes/storage`),
   cancelEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}/cancel`, { method: "POST", body: JSON.stringify({}) }),
   resendEnvelope: (id: string) =>

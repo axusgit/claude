@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
-import { readFile, unlink, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -49,14 +49,16 @@ export async function envelopeRoutes(app: FastifyInstance) {
   app.get("/", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
+    const archived = (req.query as { archived?: string }).archived === "true";
     const { rows } = await pool.query(
       `select e.id, e.title, e.status, e.created_by, e.created_at, e.sent_at, e.completed_at,
-              e.pdf_file, e.doc_type, e.company,
+              e.pdf_file, e.doc_type, e.company, e.archived, e.archived_at,
               coalesce((
                 select json_agg(json_build_object('name', r.name, 'status', r.status) order by r.sign_order)
                 from recipient r where r.envelope_id = e.id
               ), '[]') as recipients
-       from envelope e order by e.created_at desc limit 200`,
+       from envelope e where e.archived = $1 order by e.created_at desc limit 500`,
+      [archived],
     );
     return { envelopes: rows };
   });
@@ -164,45 +166,55 @@ export async function envelopeRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // Bulk cleanup: permanently delete documents older than a chosen age.
-  const PURGE_DAYS = new Set([90, 183, 365, 1095, 1825, 3650]);
+  // Total disk used by stored document files (source / generated / sealed PDFs).
+  app.get("/storage", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    let bytes = 0;
+    let files = 0;
+    try {
+      for (const n of await readdir(config.storageDir)) {
+        try {
+          const s = await stat(join(config.storageDir, n));
+          if (s.isFile()) {
+            bytes += s.size;
+            files++;
+          }
+        } catch {
+          /* skip */
+        }
+      }
+    } catch {
+      /* dir missing */
+    }
+    const docs = await pool.query(`select count(*)::int n from envelope`);
+    return { bytes, files, documents: docs.rows[0].n };
+  });
 
-  // How many documents WOULD be deleted (shown before confirming).
-  app.get("/purge-preview", async (req, reply) => {
+  // Bulk archive: move documents older than a chosen age to the Archive tab.
+  const ARCHIVE_DAYS = new Set([1, 7, 30, 60, 90, 183, 365, 1095, 1825, 3650]);
+  const olderThan = `archived = false and created_at < now() - ($1 || ' days')::interval`;
+
+  // How many (non-archived) documents WOULD be archived (shown before confirming).
+  app.get("/archive-preview", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
     const days = Number((req.query as { days?: string }).days);
-    if (!PURGE_DAYS.has(days)) return reply.code(400).send({ error: "Invalid age." });
-    const cnt = await pool.query(
-      `select count(*)::int n from envelope where created_at < now() - ($1 || ' days')::interval`,
-      [days],
-    );
+    if (!ARCHIVE_DAYS.has(days)) return reply.code(400).send({ error: "Invalid age." });
+    const cnt = await pool.query(`select count(*)::int n from envelope where ${olderThan}`, [days]);
     return { days, count: cnt.rows[0].n };
   });
 
-  app.post("/purge", async (req, reply) => {
+  app.post("/archive", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
     const days = Number((req.body as { days?: number })?.days);
-    if (!PURGE_DAYS.has(days)) return reply.code(400).send({ error: "Invalid age." });
-    const cond = `created_at < now() - ($1 || ' days')::interval`;
-    const rows = await pool.query(
-      `select source_file, pdf_file, sealed_file from envelope where ${cond}`,
+    if (!ARCHIVE_DAYS.has(days)) return reply.code(400).send({ error: "Invalid age." });
+    const upd = await pool.query(
+      `update envelope set archived = true, archived_at = now() where ${olderThan}`,
       [days],
     );
-    for (const r of rows.rows) {
-      for (const f of [r.source_file, r.pdf_file, r.sealed_file]) {
-        if (!f) continue;
-        const p = join(config.storageDir, f);
-        try {
-          if (existsSync(p)) await unlink(p);
-        } catch {
-          /* best effort */
-        }
-      }
-    }
-    const del = await pool.query(`delete from envelope where ${cond}`, [days]);
-    return { ok: true, deleted: del.rowCount ?? 0 };
+    return { ok: true, archived: upd.rowCount ?? 0 };
   });
 
   // Cancel a document (blocks further signing). Can't cancel a completed one.

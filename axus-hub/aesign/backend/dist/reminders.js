@@ -39,7 +39,7 @@ const EXPIRE_DAYS = 183; // auto-void documents left unsigned this long
 export async function runReminders() {
     // Auto-void (expire) documents that have been out for signature too long.
     const expired = await pool.query(`update envelope set status = 'expired'
-     where status in ('sent', 'partially_completed')
+     where status in ('sent', 'partially_completed') and archived = false
        and sent_at is not null and sent_at < now() - ($1 || ' days')::interval
      returning id`, [EXPIRE_DAYS]);
     for (const row of expired.rows) {
@@ -48,7 +48,7 @@ export async function runReminders() {
     const { rows } = await pool.query(`select id, title, reminder_interval, reminder_time, reminder_dow, reminder_dom,
             last_reminded_at, sent_at, created_at
      from envelope
-     where status in ('sent', 'partially_completed') and reminder_interval is not null`);
+     where status in ('sent', 'partially_completed') and reminder_interval is not null and archived = false`);
     const now = new Date();
     const et = etParts(now);
     const nowMin = et.hour * 60 + et.minute;
