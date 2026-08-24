@@ -190,6 +190,17 @@ export async function envelopeRoutes(app) {
         const upd = await pool.query(`update envelope set archived = true, archived_at = now() where ${olderThan}`, [days]);
         return { ok: true, archived: upd.rowCount ?? 0 };
     });
+    // Restore a single document from the Archive back to Documents.
+    app.post("/:id/unarchive", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const envId = req.params.id;
+        const r = await pool.query(`update envelope set archived = false, archived_at = null where id = $1 returning id`, [envId]);
+        if (!r.rowCount)
+            return reply.code(404).send({ error: "Not found" });
+        return { ok: true };
+    });
     // Cancel a document (blocks further signing). Can't cancel a completed one.
     app.post("/:id/cancel", async (req, reply) => {
         const id = requireStaff(req, reply);

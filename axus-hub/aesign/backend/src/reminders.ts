@@ -46,13 +46,18 @@ export async function runReminders(): Promise<number> {
     `update envelope set status = 'expired'
      where status in ('sent', 'partially_completed') and archived = false
        and sent_at is not null and sent_at < now() - ($1 || ' days')::interval
-     returning id`,
+     returning id, title`,
     [EXPIRE_DAYS],
   );
   for (const row of expired.rows) {
     await pool.query(
       `insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'expired', $2)`,
       [row.id, `Auto-voided after ${EXPIRE_DAYS} days unsigned`],
+    );
+    // Awaited (not fire-and-forget) since this runner exits right after.
+    await pool.query(
+      `insert into activity (actor, action, detail, envelope_id) values ('system', 'Expired document', $1, $2)`,
+      [row.title, row.id],
     );
   }
 

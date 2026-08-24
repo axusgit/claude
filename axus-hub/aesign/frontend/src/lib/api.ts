@@ -150,6 +150,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ days }),
     }),
+  restoreEnvelope: (id: string) =>
+    req<{ ok: boolean }>(`/envelopes/${id}/unarchive`, { method: "POST", body: JSON.stringify({}) }),
   storageUsage: () =>
     req<{ bytes: number; files: number; documents: number }>(`/envelopes/storage`),
   cancelEnvelope: (id: string) =>
@@ -167,6 +169,22 @@ export const api = {
   documentUrl: (id: string) => `/api/envelopes/${id}/document`,
   templatePreviewUrl: (type: string, company: string) =>
     `/api/envelopes/template-preview?type=${encodeURIComponent(type)}&company=${encodeURIComponent(company)}`,
+};
+
+// --- Activity log (system-wide movement trail) ---
+export interface ActivityEntry {
+  id: string;
+  at: string;
+  actor: string | null;
+  action: string;
+  detail: string | null;
+}
+
+export const activityApi = {
+  list: (q = "") =>
+    req<{ activity: ActivityEntry[] }>(`/activity${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`).then(
+      (r) => r.activity,
+    ),
 };
 
 // --- Contacts (reusable recipient list, shared across staff) ---

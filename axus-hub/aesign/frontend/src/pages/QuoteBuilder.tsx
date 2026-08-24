@@ -65,6 +65,45 @@ export function QuoteBuilder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companies, contacts]);
 
+  // Duplicate an existing quote: carry over the line items (item # / description /
+  // unit price) but reset quantities, discounts, and all client info so you start
+  // fresh for a new customer. Works from any quote, even a completed one.
+  const from = params.get("from");
+  useEffect(() => {
+    if (!from) return;
+    api
+      .getEnvelope(from)
+      .then((d) => {
+        const q = d.envelope.quote_data;
+        if (!q) return;
+        setItems(
+          q.items && q.items.length
+            ? q.items.map((it) => ({
+                qty: 1,
+                item: it.item,
+                description: it.description,
+                unit_price: it.unit_price,
+                discount: 0,
+              }))
+            : [emptyItem()],
+        );
+        if (q.salesperson) setSalesperson(q.salesperson);
+        if (q.shipping_method) setShipping(q.shipping_method);
+        if (q.payment_terms) setPaymentTerms(q.payment_terms);
+        if (q.tax) setTax(q.tax);
+        // Start fresh — client + per-deal fields cleared.
+        setCompany("");
+        setContact("");
+        setAddress("");
+        setPhone("");
+        setJob("");
+        setDeliveryDate("");
+        setDueDate("");
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from]);
+
   function selectCompany(name: string) {
     setCompany(name);
     const co = companies.find((c) => c.name === name);

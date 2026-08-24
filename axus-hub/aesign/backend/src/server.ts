@@ -9,6 +9,7 @@ import { contactRoutes } from "./routes/contacts.js";
 import { companyRoutes } from "./routes/companies.js";
 import { quoteRoutes } from "./routes/quotes.js";
 import { signRoutes } from "./routes/sign.js";
+import { activityRoutes } from "./routes/activity.js";
 import { registerStatic } from "./static.js";
 
 async function main() {
@@ -24,6 +25,7 @@ async function main() {
   await app.register(companyRoutes, { prefix: "/api/companies" });
   await app.register(quoteRoutes, { prefix: "/api/quotes" });
   await app.register(signRoutes, { prefix: "/api/sign" });
+  await app.register(activityRoutes, { prefix: "/api/activity" });
   registerStatic(app, config.frontendDir);
 
   await migrate();

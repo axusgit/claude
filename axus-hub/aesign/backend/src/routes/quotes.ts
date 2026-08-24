@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 import { config } from "../config.js";
 import { requireStaff } from "../identity.js";
 import { generateQuotePdf, generateQuoteTemplatePdf, type QuoteData } from "../quotepdf.js";
+import { logActivity, renameActivity } from "./activity.js";
 
 // Today's date in Eastern Time as MMDDYYYY (the quote-number prefix).
 function etDatePrefix(): string {
@@ -63,6 +64,7 @@ export async function quoteRoutes(app: FastifyInstance) {
       [envId, id.email, title],
     );
     const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
+    logActivity(id.email, "Created quote", title, envId);
     return reply.code(201).send({ envelope: updated.rows[0] });
   });
 
@@ -88,6 +90,7 @@ export async function quoteRoutes(app: FastifyInstance) {
       [JSON.stringify(q), q.customer.company.trim(), fname, JSON.stringify(layout), body.title?.trim() || null, envId],
     );
     const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
+    if (body.title?.trim()) renameActivity(envId, body.title.trim().slice(0, 200));
     return { envelope: updated.rows[0] };
   });
 }

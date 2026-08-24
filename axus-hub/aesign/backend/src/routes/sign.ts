@@ -8,6 +8,7 @@ import { pool } from "../db.js";
 import { config } from "../config.js";
 import { sealPdf, type SealField, type SealRecipient } from "../seal.js";
 import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail.js";
+import { logActivity } from "./activity.js";
 
 // Seal the CURRENT state and email every participant a copy. On the last
 // signature it adds the certificate page, marks the envelope completed, and
@@ -30,6 +31,7 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     [envId],
   );
   const allSigned = recs.rows.every((r) => r.status === "signed");
+  logActivity(signerName, "Signed document", e.title, e.id);
 
   const { bytes, sha256 } = await sealPdf(
     join(config.storageDir, e.pdf_file),
@@ -52,6 +54,7 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
       `insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'completed', $2)`,
       [envId, `Sealed. SHA-256 ${sha256}`],
     );
+    logActivity("system", "Completed document", e.title, e.id);
     for (const r of recs.rows) {
       await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment });
     }
@@ -235,6 +238,7 @@ export async function signRoutes(app: FastifyInstance) {
       `insert into event (envelope_id, actor, type, detail, ip) values ($1, $2, 'declined', $3, $4)`,
       [envId, r.email, reason, ip],
     );
+    logActivity(r.email, "Declined document", env.title, envId);
 
     // Notify the sender + every other participant, with the reason.
     const others = await pool.query(

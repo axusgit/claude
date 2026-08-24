@@ -169,7 +169,10 @@ export async function generateQuotePdf(d, opts = {}) {
     totRow("SUBTOTAL", tmpl ? "" : money(subtotal));
     totRow("TOTAL DISCOUNT", tmpl ? "" : money(totalDisc));
     totRow("SALES TAX", tmpl ? "" : taxExempt ? "EXEMPT" : money(taxAmt));
-    page.drawLine({ start: { x: labelX, y: T(qy - 4) }, end: { x: W - M, y: T(qy - 4) }, color: LINE, thickness: 0.7 });
+    // Divider sits in a clear gap between SALES TAX and TOTAL (no text overlap).
+    qy += 4;
+    page.drawLine({ start: { x: labelX, y: T(qy) }, end: { x: W - M, y: T(qy) }, color: LINE, thickness: 0.7 });
+    qy += 14;
     totRow("TOTAL", tmpl ? "" : money(total), true);
     put(page, "Thank you for your business!", M, 772, { size: 11, bold: true, color: ORANGE });
     // ================= TERMS + SIGNATURE (own page) =================

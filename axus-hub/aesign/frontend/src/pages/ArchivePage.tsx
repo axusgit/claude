@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Archive, Download, Search, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Archive, ArchiveRestore, Copy, Download, Search, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
 import { Card, Input, StatusBadge } from "@/components/ui";
 
@@ -11,6 +12,7 @@ export function ArchivePage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
+  const nav = useNavigate();
 
   async function load() {
     setLoading(true);
@@ -26,6 +28,15 @@ export function ArchivePage() {
   useEffect(() => {
     void load();
   }, []);
+
+  async function restore(docId: string) {
+    try {
+      await api.restoreEnvelope(docId);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Restore failed");
+    }
+  }
 
   async function del(docId: string, docTitle: string) {
     if (
@@ -134,6 +145,22 @@ export function ArchivePage() {
                   <td className="whitespace-nowrap px-4 py-3 text-muted">{when(e.archived_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">
+                      <button
+                        onClick={() => void restore(e.id)}
+                        className="text-muted hover:text-brand"
+                        title="Restore to Documents"
+                      >
+                        <ArchiveRestore className="h-4 w-4" />
+                      </button>
+                      {e.doc_type === "Quote" && (
+                        <button
+                          onClick={() => nav(`/quotes/new?from=${e.id}`)}
+                          className="text-muted hover:text-brand"
+                          title="Duplicate this quote (reuse its line items)"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                      )}
                       {e.pdf_file && (
                         <a
                           href={api.documentUrl(e.id)}

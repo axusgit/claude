@@ -95,4 +95,15 @@ create table if not exists company (
 create unique index if not exists uq_company_name on company (lower(name));
 alter table company add column if not exists address text;
 alter table company add column if not exists phone text;
+
+-- System-wide activity log (who did what, when) — a simple movement trail.
+create table if not exists activity (
+  id     uuid primary key default gen_random_uuid(),
+  at     timestamptz not null default now(),
+  actor  text,
+  action text not null,
+  detail text
+);
+alter table activity add column if not exists envelope_id uuid;
+create index if not exists idx_activity_at on activity(at desc);
 `;

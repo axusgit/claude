@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Archive, Check, Circle, Download, FileSignature, HardDrive, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Archive, Check, Circle, Copy, Download, FileSignature, HardDrive, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
@@ -401,6 +401,18 @@ export function EnvelopeList() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">
+                      {e.doc_type === "Quote" && (
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            nav(`/quotes/new?from=${e.id}`);
+                          }}
+                          className="text-muted hover:text-brand"
+                          title="Duplicate this quote (reuse its line items)"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                      )}
                       <button
                         onClick={(ev) => {
                           ev.stopPropagation();

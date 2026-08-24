@@ -9,6 +9,7 @@ import { config } from "../config.js";
 import { getIdentity, hasEsignAccess, type Identity } from "../identity.js";
 import { sendSigningInvite, sendPendingReminder } from "../mail.js";
 import { stampBaaPdf, etTodayLong } from "../baa.js";
+import { logActivity, renameActivity } from "./activity.js";
 
 function requireStaff(req: FastifyRequest, reply: FastifyReply): Identity | null {
   const id = getIdentity(req);
@@ -86,6 +87,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`,
       [rows[0].id, id.email, title],
     );
+    logActivity(id.email, "Created document", title, rows[0].id);
     return reply.code(201).send({ envelope: rows[0] });
   });
 
@@ -126,10 +128,9 @@ export async function envelopeRoutes(app: FastifyInstance) {
       await pool.query(`update envelope set sequential = $1 where id = $2`, [body.sequential, envId]);
     }
     if (body.title !== undefined && body.title.trim()) {
-      await pool.query(`update envelope set title = $1 where id = $2`, [
-        body.title.trim().slice(0, 200),
-        envId,
-      ]);
+      const newTitle = body.title.trim().slice(0, 200);
+      await pool.query(`update envelope set title = $1 where id = $2`, [newTitle, envId]);
+      renameActivity(envId, newTitle);
     }
     if (body.doc_type !== undefined) {
       await pool.query(`update envelope set doc_type = $1 where id = $2`, [body.doc_type?.trim() || null, envId]);
@@ -148,7 +149,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
     if (!id) return;
     const envId = (req.params as { id: string }).id;
     const env = await pool.query(
-      `select source_file, pdf_file, sealed_file from envelope where id = $1`,
+      `select title, source_file, pdf_file, sealed_file from envelope where id = $1`,
       [envId],
     );
     if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
@@ -163,6 +164,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
       }
     }
     await pool.query(`delete from envelope where id = $1`, [envId]); // cascades children
+    logActivity(id.email, "Deleted document", r.title, envId);
     return { ok: true };
   });
 
@@ -214,7 +216,22 @@ export async function envelopeRoutes(app: FastifyInstance) {
       `update envelope set archived = true, archived_at = now() where ${olderThan}`,
       [days],
     );
+    logActivity(id.email, "Archived documents", `${upd.rowCount ?? 0} document(s) older than ${days} day(s)`);
     return { ok: true, archived: upd.rowCount ?? 0 };
+  });
+
+  // Restore a single document from the Archive back to Documents.
+  app.post("/:id/unarchive", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const r = await pool.query(
+      `update envelope set archived = false, archived_at = null where id = $1 returning title`,
+      [envId],
+    );
+    if (!r.rowCount) return reply.code(404).send({ error: "Not found" });
+    logActivity(id.email, "Restored document", r.rows[0].title, envId);
+    return { ok: true };
   });
 
   // Cancel a document (blocks further signing). Can't cancel a completed one.
@@ -224,7 +241,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const envId = (req.params as { id: string }).id;
     const r = await pool.query(
       `update envelope set status = 'cancelled'
-       where id = $1 and status not in ('completed', 'cancelled', 'declined', 'expired') returning id`,
+       where id = $1 and status not in ('completed', 'cancelled', 'declined', 'expired') returning title`,
       [envId],
     );
     if (!r.rowCount) return reply.code(409).send({ error: "This document can't be cancelled." });
@@ -232,6 +249,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'cancelled', 'Cancelled')`,
       [envId, id.email],
     );
+    logActivity(id.email, "Cancelled document", r.rows[0].title, envId);
     return { ok: true };
   });
 
@@ -266,6 +284,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'reminded', $3)`,
       [envId, id.email, `Resent signing link to ${sent} recipient(s)`],
     );
+    logActivity(id.email, "Resent signing link", `${env.title} → ${sent} recipient(s)`, envId);
     return { ok: true, sent };
   });
 
@@ -330,6 +349,9 @@ export async function envelopeRoutes(app: FastifyInstance) {
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'document_uploaded', $3)`,
       [envId, id.email, file.filename],
     );
+    // The uploaded file's name is now the document's real name — keep the
+    // activity log in sync so its creation entry shows the same name.
+    renameActivity(envId, docTitle);
     if (!pdfFile) {
       return reply
         .code(422)
@@ -620,6 +642,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'sent', $3)`,
       [envId, id.email, `Sent to ${recips.rowCount} recipient(s)`],
     );
+    logActivity(id.email, "Sent for signature", `${env.title} → ${recips.rowCount} recipient(s)`, envId);
     return { ok: true, results };
   });
 
