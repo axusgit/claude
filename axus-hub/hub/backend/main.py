@@ -30,12 +30,12 @@ APP_CATALOG = [
     {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "url": "https://ain.axustechnologies.com/auth?sso=1", "health": "https://ain.axustechnologies.com/"},
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
     {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
-    {"key": "esign", "name": "Axus eSign", "desc": "E-signatures, agreements & quotes", "group": "app-aesign", "icon": "✍️", "internal": False, "url": "https://aesign.axustechnologies.com"},
+    {"key": "esign", "name": "eSign", "desc": "E-signatures, agreements & quotes", "group": "app-aesign", "icon": "✍️", "internal": False, "url": "https://aesign.axustechnologies.com"},
     # On-Call: launcher tile + live health only. It keeps its OWN login/auth —
     # NOT gated by Authentik forward-auth (app-oncall just controls tile visibility).
     {"key": "oncall", "name": "On-Call", "desc": "After-hours on-call answering & escalation", "group": "app-oncall", "icon": "📞", "internal": False, "url": "https://oncall.axustechnologies.com", "health": "https://oncall.axustechnologies.com/health"},
     {"key": "engineering", "name": "Engineering", "desc": "Projects, docs & dev-ops", "group": "app-engineering", "icon": "🛠️", "internal": True},
-    {"key": "marketing", "name": "Axus Marketing", "desc": "Newsletters, email campaigns & automation", "group": "app-marketing", "icon": "📣", "internal": True, "coming_soon": True},
+    {"key": "marketing", "name": "Marketing", "desc": "Newsletters, email campaigns & automation", "group": "app-marketing", "icon": "📣", "internal": True, "coming_soon": True},
     # --- Axus Tools: standalone utilities on axus-server01 with their OWN login
     # (like On-Call). app-tools gates TILE visibility only; no forward-auth. The
     # `category` field groups them under an "Axus Tools" section in the launcher.
