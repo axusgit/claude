@@ -36,6 +36,11 @@ APP_CATALOG = [
     {"key": "oncall", "name": "On-Call", "desc": "After-hours on-call answering & escalation", "group": "app-oncall", "icon": "📞", "internal": False, "url": "https://oncall.axustechnologies.com", "health": "https://oncall.axustechnologies.com/health"},
     {"key": "engineering", "name": "Engineering", "desc": "Projects, docs & dev-ops", "group": "app-engineering", "icon": "🛠️", "internal": True},
     {"key": "marketing", "name": "Axus Marketing", "desc": "Newsletters, email campaigns & automation", "group": "app-marketing", "icon": "📣", "internal": True, "coming_soon": True},
+    # --- Axus Tools: standalone utilities on axus-server01 with their OWN login
+    # (like On-Call). app-tools gates TILE visibility only; no forward-auth. The
+    # `category` field groups them under an "Axus Tools" section in the launcher.
+    {"key": "syslog", "name": "Syslog", "desc": "Network syslog collector & search", "group": "app-tools", "category": "Axus Tools", "icon": "📜", "internal": False, "url": "https://syslog.axustechnologies.com", "health": "https://syslog.axustechnologies.com/healthz"},
+    {"key": "fileshare", "name": "File Share", "desc": "Secure two-way file transfer", "group": "app-tools", "category": "Axus Tools", "icon": "📁", "internal": False, "url": "https://sp.axustechnologies.com"},
 ]
 
 # Internal (Docker-network) URLs used to pull each app's KPI summary

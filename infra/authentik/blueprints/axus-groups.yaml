@@ -34,6 +34,13 @@ entries:
   - model: authentik_core.group
     identifiers: {name: app-oncall}
     attrs: {name: app-oncall}
+  # Controls the "Axus Tools" section (Syslog + File Share) TILE visibility in the
+  # Hub, and library visibility of their link-apps in Authentik. Both tools keep
+  # their OWN login — this group does NOT gate access inside them (no forward-auth),
+  # same model as app-oncall.
+  - model: authentik_core.group
+    identifiers: {name: app-tools}
+    attrs: {name: app-tools}
   # --- eSign app roles (app-scoped, like ain-role-*; read by the eSign app) ---
   - model: authentik_core.group
     identifiers: {name: aesign-role-admin}

@@ -73,6 +73,8 @@ a { text-decoration: none; color: inherit; }
 /* launcher */
 .launcher { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
 .launcher.compact { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.launcher-section { grid-column: 1 / -1; margin: 12px 0 -2px; font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.launcher-section:first-child { margin-top: 0; }
 .app-tile { background: var(--surface); border: 1px solid var(--border); border-radius: 15px; padding: 20px; box-shadow: var(--shadow); cursor: pointer; transition: transform .15s, box-shadow .2s, border-color .2s; display: flex; flex-direction: column; gap: 9px; position: relative; }
 .app-tile:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); border-color: var(--orange); }
 .app-icon { width: 48px; height: 48px; border-radius: 13px; background: var(--surface-2); display: grid; place-items: center; font-size: 24px; }

@@ -1,0 +1,5 @@
+# Let the Axus Syslog service (runs as the ubuntu user) manage ufw rules from
+# the web dashboard's Firewall panel. Scoped to the ufw binary only — the app
+# never runs any other command as root, and only ever issues rules for the
+# syslog ingest port. Install to /etc/sudoers.d/axus-syslog (mode 0440).
+ubuntu ALL=(root) NOPASSWD: /usr/sbin/ufw

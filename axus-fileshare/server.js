@@ -26,7 +26,17 @@ const UPLOAD_DIR = path.join(DATA_DIR, 'uploads'); // inbound: files people send
 const SEND_DIR = path.join(DATA_DIR, 'sends'); // outbound: files admin shares OUT
 const BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, ''); // optional override
 
-if (!ADMIN_PASSWORD) {
+// Single sign-on via OpenID Connect against Authentik (Axus Hub identity). When
+// enabled, admins sign in through the Hub — no local password. The local
+// ADMIN_USER/ADMIN_PASSWORD login stays as break-glass at /admin/login.
+const OIDC_ENABLED = process.env.OIDC_ENABLED === '1';
+const OIDC_BASE = (process.env.OIDC_BASE || '').replace(/\/$/, ''); // https://id.hub.axustechnologies.com/application/o
+const OIDC_SLUG = process.env.OIDC_SLUG || ''; // per-app slug, for end-session
+const OIDC_CLIENT_ID = process.env.OIDC_CLIENT_ID || '';
+const OIDC_CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET || '';
+const OIDC_REDIRECT = `${BASE_URL}/auth/callback`;
+
+if (!ADMIN_PASSWORD && !OIDC_ENABLED) {
   console.error(
     '\n[FATAL] ADMIN_PASSWORD is not set. Copy .env.example to .env and set a password.\n'
   );
@@ -69,7 +79,7 @@ function sendStatusOf(send) {
 
 function requireAdmin(req, res, next) {
   if (req.session && req.session.admin) return next();
-  return res.redirect('/admin/login');
+  return res.redirect(OIDC_ENABLED ? '/auth/login' : '/admin/login');
 }
 
 function timingSafeEq(a, b) {
@@ -144,7 +154,8 @@ const sendUpload = multer({
 // Public: landing
 // ---------------------------------------------------------------------------
 app.get('/', (req, res) => {
-  res.redirect(req.session && req.session.admin ? '/admin' : '/admin/login');
+  if (req.session && req.session.admin) return res.redirect('/admin');
+  return res.redirect(OIDC_ENABLED ? '/auth/login' : '/admin/login');
 });
 
 // ---------------------------------------------------------------------------
@@ -171,7 +182,60 @@ app.post('/admin/login', (req, res) => {
 
 app.get('/admin/logout', (req, res) => {
   req.session = null;
+  if (OIDC_ENABLED && OIDC_BASE && OIDC_SLUG) {
+    return res.redirect(`${OIDC_BASE}/${OIDC_SLUG}/end-session/`);
+  }
   res.redirect('/admin/login');
+});
+
+// ---------------------------------------------------------------------------
+// Single sign-on (Authentik / Axus Hub, OpenID Connect)
+// ---------------------------------------------------------------------------
+app.get('/auth/login', (req, res) => {
+  if (!OIDC_ENABLED) return res.redirect('/admin/login');
+  const state = crypto.randomBytes(16).toString('hex');
+  req.session.oidcState = state;
+  const u = new URL(`${OIDC_BASE}/authorize/`);
+  u.searchParams.set('response_type', 'code');
+  u.searchParams.set('client_id', OIDC_CLIENT_ID);
+  u.searchParams.set('redirect_uri', OIDC_REDIRECT);
+  u.searchParams.set('scope', 'openid email profile');
+  u.searchParams.set('state', state);
+  res.redirect(u.toString());
+});
+
+app.get('/auth/callback', async (req, res) => {
+  if (!OIDC_ENABLED) return res.redirect('/admin/login');
+  try {
+    const { code, state } = req.query;
+    if (!code || !state || !req.session || state !== req.session.oidcState) {
+      return res.status(400).send(views.loginPage({ error: 'SSO state mismatch — please try again.' }));
+    }
+    req.session.oidcState = null;
+    const tokenRes = await fetch(`${OIDC_BASE}/token/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: String(code),
+        redirect_uri: OIDC_REDIRECT,
+        client_id: OIDC_CLIENT_ID,
+        client_secret: OIDC_CLIENT_SECRET,
+      }),
+    });
+    if (!tokenRes.ok) throw new Error(`token exchange failed (${tokenRes.status})`);
+    const tok = await tokenRes.json();
+    // Identity is optional here (access is already gated by Authentik's policy);
+    // fetch userinfo best-effort so the session reflects a real sign-in.
+    try {
+      await fetch(`${OIDC_BASE}/userinfo/`, { headers: { Authorization: `Bearer ${tok.access_token}` } });
+    } catch (_) { /* ignore */ }
+    req.session.admin = true;
+    res.redirect('/admin');
+  } catch (err) {
+    console.error('[oidc] callback error:', err.message);
+    res.status(502).send(views.loginPage({ error: 'SSO sign-in failed. Try again, or use break-glass login.' }));
+  }
 });
 
 // ---------------------------------------------------------------------------

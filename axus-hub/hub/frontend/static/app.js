@@ -161,7 +161,23 @@
     const wrap = $("launcher"); wrap.innerHTML = "";
     $("apps-count").textContent = me.apps.length ? `${me.apps.length} available` : "";
     $("no-apps").classList.toggle("hidden", me.apps.length > 0);
-    me.apps.forEach(a => wrap.appendChild(appTile(a, false)));
+    // Group tiles by category. Uncategorized apps render first (no header);
+    // categorized ones (e.g. "Axus Tools") get a full-width section heading.
+    const cats = {}, order = [];
+    me.apps.forEach(a => {
+      const c = a.category || "";
+      if (!(c in cats)) { cats[c] = []; order.push(c); }
+      cats[c].push(a);
+    });
+    order.forEach(c => {
+      if (c) {
+        const h = document.createElement("h3");
+        h.className = "launcher-section";
+        h.textContent = c;
+        wrap.appendChild(h);
+      }
+      cats[c].forEach(a => wrap.appendChild(appTile(a, false)));
+    });
   }
 
   function renderMonitoring() {

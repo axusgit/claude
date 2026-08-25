@@ -239,6 +239,34 @@ services:
     restart: unless-stopped
     networks: [axus]
 
+  # Self-hosted ntfy — push notifications for all Axus alerts (VM uptime, disk
+  # capacity, syslog keyword alerts). Replaces ntfy.sh (whose free per-IP daily
+  # quota was being exhausted by the boxes' heartbeats). NO Authentik middleware:
+  # the alert scripts and the phone app publish/subscribe directly, and topics are
+  # unguessable secrets. Open access (like ntfy.sh anonymous) but private + unlimited.
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    restart: unless-stopped
+    command: serve
+    environment:
+      NTFY_BASE_URL: https://ntfy.hub.axustechnologies.com
+      NTFY_BEHIND_PROXY: "true"
+      NTFY_CACHE_FILE: /var/lib/ntfy/cache.db
+      NTFY_CACHE_DURATION: "24h"
+      NTFY_ATTACHMENT_CACHE_DIR: /var/lib/ntfy/attachments
+      NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+      NTFY_AUTH_DEFAULT_ACCESS: read-write
+      TZ: America/New_York
+    volumes:
+      - ntfy_data:/var/lib/ntfy
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.ntfy.rule: Host(`ntfy.hub.axustechnologies.com`)
+      traefik.http.routers.ntfy.entrypoints: websecure
+      traefik.http.routers.ntfy.tls.certresolver: letsencrypt
+      traefik.http.services.ntfy.loadbalancer.server.port: "80"
+    networks: [axus]
+
 networks:
   axus:
 
@@ -251,3 +279,4 @@ volumes:
   hub_data:
   support_uploads:
   aesign_data:
+  ntfy_data:
