@@ -21,7 +21,7 @@ scp -q "$TMP/app.tgz" "$HOST:/tmp/axsyslog-app.tgz"
 ssh "$HOST" "sudo mkdir -p $APP_DIR && sudo chown ubuntu:ubuntu $APP_DIR && \
   tar -xzf /tmp/axsyslog-app.tgz -C $APP_DIR && rm /tmp/axsyslog-app.tgz && \
   cd $APP_DIR && npm install --omit=dev --no-audit --no-fund && \
-  sudo systemctl restart axus-syslog && sleep 1 && \
-  systemctl is-active axus-syslog"
+  sudo systemctl restart syslog && sleep 1 && \
+  systemctl is-active syslog"
 rm -rf "$TMP"
 echo "==> Done. https://syslog.axustechnologies.com"

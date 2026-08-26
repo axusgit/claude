@@ -66,6 +66,11 @@ input[type=text],input[type=password],input[type=number],input[type=search],sele
   font-size:14px;font-family:inherit;background:#fff;color:var(--text);
 }
 input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(249,115,22,.15)}
+label.switch{display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;font-size:14px;font-weight:600;color:var(--text);cursor:pointer;user-select:none;margin:0;box-sizing:border-box}
+label.switch input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin:0}
+.fieldrow{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px}
+.field{display:flex;flex-direction:column}
+.btnbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:6px;
   background:var(--accent);color:#fff;border:none;border-radius:8px;
@@ -75,6 +80,12 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
 .btn.sm{padding:6px 10px;font-size:12px}
 .btn.ghost{background:#fff;color:var(--text);border:1px solid var(--border)}
 .btn.ghost:hover{background:#f9fafb;color:var(--text)}
+.btn.danger{background:#fff;color:var(--err);border:1px solid var(--border)}
+.btn.danger:hover{background:#fef2f2;color:var(--err);border-color:#fecaca}
+.actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+a.btn:hover{text-decoration:none}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.row>div{min-width:0}
 .callout{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:8px;padding:10px 14px;font-size:13px;margin:0 0 16px}
 .callout strong{color:#7c2d12}
 .flash{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
@@ -184,6 +195,7 @@ function dashboardPage() {
   <div class="tabs">
     <button class="tab active" data-tab="messages">Messages</button>
     <button class="tab" data-tab="firewall">Firewall</button>
+    <button class="tab" data-tab="watchdog">Watchdog</button>
   </div>
 
   <div class="panel active" id="panel-messages">
@@ -193,18 +205,7 @@ function dashboardPage() {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;flex-wrap:wrap">
       <h2 style="margin:0">Messages</h2>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:6px" title="Automatically delete logs older than this (applies now and continuously)">
-          <span class="muted" style="font-size:12px;white-space:nowrap">Auto-clear:</span>
-          <select id="retention" style="width:auto;padding:6px 9px;font-size:13px">
-            <option value="0">Keep forever</option>
-            <option value="60000">After 1 minute</option>
-            <option value="3600000">After 1 hour</option>
-            <option value="86400000">After 1 day</option>
-            <option value="604800000">After 1 week</option>
-            <option value="2592000000">After 1 month</option>
-            <option value="31536000000">After 1 year</option>
-          </select>
-        </div>
+        <span class="muted" style="font-size:12px;white-space:nowrap" title="Logs older than 7 days are removed automatically">Auto-clears after 7 days</span>
         <div style="display:flex;align-items:center;gap:6px">
           <select id="fmt" style="width:auto;padding:6px 9px;font-size:13px">
             <option value="csv">CSV</option>
@@ -232,11 +233,14 @@ function dashboardPage() {
         <option value="7">Debug</option>
       </select></div>
       <div><label>Range</label><select id="range">
-        <option value="0">Any time</option>
+        <option value="0.0166667">Last 1 minute</option>
+        <option value="0.166667">Last 10 minutes</option>
         <option value="1">Last hour</option>
+        <option value="4">Last 4h</option>
+        <option value="12">Last 12h</option>
+        <option value="18">Last 18h</option>
         <option value="24" selected>Last 24h</option>
         <option value="168">Last 7 days</option>
-        <option value="720">Last 30 days</option>
         <option value="custom">Custom range…</option>
       </select></div>
       <div style="display:flex;gap:8px">
@@ -312,6 +316,53 @@ function dashboardPage() {
     </div>
   </div>
   </div><!-- /panel-firewall -->
+
+  <div class="panel" id="panel-watchdog">
+  <div class="card">
+    <h2 style="margin:0 0 4px">Watchdog</h2>
+    <p class="muted" style="margin:0 0 18px">Alerts via ntfy if <strong>no syslog is received</strong> for the selected time — catches the phones going down, losing service, or a network drop. A recovery alert fires when logs resume.</p>
+    <div id="wdFlash"></div>
+    <div class="fieldrow">
+      <div class="field">
+        <label>Alerting</label>
+        <label class="switch"><input type="checkbox" id="wdEnabled"><span>Enabled</span></label>
+      </div>
+      <div class="field">
+        <label>Check window</label>
+        <select id="wdSec" style="width:190px">
+          <option value="60">60 seconds</option>
+          <option value="120">120 seconds</option>
+          <option value="180">3 minutes</option>
+          <option value="300">5 minutes</option>
+          <option value="600">10 minutes</option>
+        </select>
+      </div>
+    </div>
+    <div class="btnbar">
+      <button class="btn" id="wdSave">Save</button>
+      <button class="btn ghost" id="wdTest" title="Send a test notification to your ntfy topic">Send test alert</button>
+    </div>
+    <p class="muted" id="wdStatus" style="margin:16px 0 0"></p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin:0 0 4px">Clear logs</h2>
+    <p class="muted" style="margin:0 0 18px">Logs auto-clear after <strong>7 days</strong>. To free space sooner, manually remove anything older than a shorter window:</p>
+    <div id="clFlash"></div>
+    <div class="fieldrow">
+      <div class="field">
+        <label>Delete logs older than</label>
+        <select id="clDays" style="width:160px">
+          <option value="1">1 day</option>
+          <option value="3">3 days</option>
+          <option value="5">5 days</option>
+          <option value="7">7 days</option>
+        </select>
+      </div>
+      <div class="field"><button class="btn danger" id="clRun">Clear now</button></div>
+    </div>
+  </div>
+  </div><!-- /panel-watchdog -->
 
   <div class="foot">${esc(BRAND)} · UDP syslog collector</div>
 </div>`;
@@ -398,7 +449,6 @@ async function loadStats(){
     '</span><span class="bar"><span style="width:'+(h.c/max*100)+'%"></span></span><span class="c">'+fmtNum(h.c)+'</span></div>').join('');
   $('hostsEmpty').style.display=s.topHosts.length?'none':'block';
   $('ingest').textContent='Ingest: '+fmtNum(s.received)+' pkts';
-  if($('retention')&&s.retentionMs!=null)$('retention').value=String(s.retentionMs);
 }
 
 async function loadHosts(){
@@ -461,19 +511,6 @@ $('download').onclick=()=>{
   window.location.href='/api/export?'+qs(f);
 };
 
-// ---- retention (auto-clear) ----
-$('retention').onchange=async()=>{
-  const sel=$('retention'), ms=Number(sel.value), label=sel.options[sel.selectedIndex].text;
-  if(ms>0 && !confirm('Auto-clear logs "'+label+'"?\\n\\nThis permanently deletes any messages older than that — now and continuously going forward. This cannot be undone.')){
-    loadStats(); // revert the dropdown to the stored value
-    return;
-  }
-  const res=await fetch('/api/settings/retention',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ms})});
-  if(!res.ok){alert('Could not update the auto-clear setting.');loadStats();return;}
-  const d=await res.json();
-  if(d.pruned)alert('Cleared '+fmtNum(d.pruned)+' message(s) older than "'+label+'".');
-  offset=0; load(); loadStats();
-};
 
 // ---- firewall ----
 function fwFlash(msg,ok){
@@ -514,6 +551,46 @@ async function fwDeny(src){
 $('fwAdd').onclick=fwAdd;
 ['fwSrc','fwName'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter')fwAdd();}));
 
+// ---- watchdog ----
+function wdFlash(msg,ok){$('wdFlash').innerHTML='<div class="flash '+(ok?'':'err')+'" style="'+(ok?'background:#f0fdf4;border:1px solid #bbf7d0;color:#166534':'')+'">'+esc(msg)+'</div>';if(ok)setTimeout(()=>{$('wdFlash').innerHTML='';},4000);}
+async function loadWatchdog(){
+  const res=await fetch('/api/watchdog'); if(res.status===401){location.href='/login';return;} if(!res.ok)return;
+  const d=await res.json();
+  $('wdEnabled').checked=!!d.enabled;
+  $('wdSec').value=String(d.sec);
+  let st='Last message '+ (d.lastMessageAgeSec<120? d.lastMessageAgeSec+'s':Math.round(d.lastMessageAgeSec/60)+'m') +' ago.';
+  if(!d.topicConfigured)st+=' ⚠ No ntfy topic configured — alerts cannot be sent.';
+  $('wdStatus').textContent=st;
+}
+$('wdSave').onclick=async()=>{
+  const enabled=$('wdEnabled').checked, sec=Number($('wdSec').value);
+  const res=await fetch('/api/watchdog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled,sec})});
+  const d=await res.json().catch(()=>({}));
+  if(res.ok)wdFlash('Saved — watchdog '+(d.enabled?'ON, alert after '+d.sec+'s of silence':'OFF'),true);
+  else wdFlash(d.error||'Save failed',false);
+  loadWatchdog();
+};
+$('wdTest').onclick=async()=>{
+  $('wdTest').disabled=true; wdFlash('Sending test alert…',true);
+  let d={}; try{const res=await fetch('/api/alert/test',{method:'POST'});d=await res.json().catch(()=>({}));d._ok=res.ok;}catch(e){d={error:e.message};}
+  $('wdTest').disabled=false;
+  if(d._ok)wdFlash('Test alert sent ✓ — check your phone (ntfy).',true);
+  else wdFlash('Test failed: '+(d.error||'unknown'),false);
+};
+
+// ---- clear logs ----
+function clFlash(msg,ok){$('clFlash').innerHTML='<div class="flash '+(ok?'':'err')+'" style="'+(ok?'background:#f0fdf4;border:1px solid #bbf7d0;color:#166534':'')+'">'+esc(msg)+'</div>';if(ok)setTimeout(()=>{$('clFlash').innerHTML='';},5000);}
+$('clRun').onclick=async()=>{
+  const days=Number($('clDays').value);
+  if(!confirm('Delete all logs older than '+days+' day(s)?\\n\\nThis permanently removes those messages now and cannot be undone.'))return;
+  $('clRun').disabled=true;
+  const res=await fetch('/api/clearlogs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days})});
+  const d=await res.json().catch(()=>({}));
+  $('clRun').disabled=false;
+  if(res.ok){clFlash('Cleared '+fmtNum(d.deleted)+' message(s) older than '+days+' day(s).',true);loadStats();if(!live)load();}
+  else clFlash(d.error||'Clear failed',false);
+};
+
 // ---- tabs ----
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -521,6 +598,7 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   t.classList.add('active');
   document.getElementById('panel-'+t.dataset.tab).classList.add('active');
   if(t.dataset.tab==='firewall')loadFirewall();
+  if(t.dataset.tab==='watchdog')loadWatchdog();
 });
 
 load();loadStats();loadHosts();loadFirewall();

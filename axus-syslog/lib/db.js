@@ -132,6 +132,32 @@ function iterate(opts = {}, order = 'asc') {
     .iterate(params);
 }
 
+// Complete UTC days (older than cutoffMs) that still have rows — for archiving.
+// Returns [{ day: 'YYYY-MM-DD', count, startMs, endMs }] oldest-first.
+function archivableDays(cutoffMs) {
+  const rows = db
+    .prepare(
+      `SELECT strftime('%Y-%m-%d', ts/1000, 'unixepoch') AS day, COUNT(*) AS c
+       FROM messages WHERE ts < @cutoff GROUP BY day ORDER BY day ASC`
+    )
+    .all({ cutoff: Number(cutoffMs) });
+  return rows.map((r) => {
+    const [y, m, d] = r.day.split('-').map(Number);
+    const startMs = Date.UTC(y, m - 1, d);
+    return { day: r.day, count: r.c, startMs, endMs: startMs + 86400000 };
+  });
+}
+
+// Delete rows in [startMs, endMs). Returns rows deleted. Used after a day is
+// safely uploaded to the archive.
+function deleteRange(startMs, endMs) {
+  const n = db
+    .prepare('DELETE FROM messages WHERE ts >= ? AND ts < ?')
+    .run(Number(startMs), Number(endMs)).changes;
+  if (n > 0) db.pragma('wal_checkpoint(TRUNCATE)');
+  return n;
+}
+
 function stats() {
   const now = Date.now();
   const dayAgo = now - 86400000;
@@ -204,5 +230,7 @@ module.exports = {
   dbSize,
   getSetting,
   setSetting,
+  archivableDays,
+  deleteRange,
   DB_PATH,
 };

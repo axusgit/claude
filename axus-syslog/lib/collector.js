@@ -16,6 +16,7 @@ class Collector extends EventEmitter {
     this.bind = bind;
     this.flushMs = flushMs;
     this.received = 0;
+    this.lastMessageTs = Date.now(); // for the silence watchdog (grace at startup)
     this.socket = null;
     this.flushTimer = null;
   }
@@ -23,6 +24,7 @@ class Collector extends EventEmitter {
   start() {
     const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     this.socket = socket;
+    this.lastMessageTs = Date.now();
 
     socket.on('message', (buf, rinfo) => {
       const now = Date.now();
@@ -37,6 +39,7 @@ class Collector extends EventEmitter {
         };
       }
       this.received++;
+      this.lastMessageTs = now;
       db.enqueue(row);
       // Keyword alerts (e.g. "No Service") — never let this break ingest.
       try { alerts.maybeAlert(row); } catch (err) { console.error('[collector] alert error:', err.message); }

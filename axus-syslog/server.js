@@ -8,6 +8,7 @@ const crypto = require('crypto');
 
 const db = require('./lib/db');
 const fw = require('./lib/firewall');
+const alerts = require('./lib/alerts');
 const { Collector } = require('./lib/collector');
 const { severityName, facilityName } = require('./lib/parser');
 const { loginPage, dashboardPage } = require('./lib/views');
@@ -40,40 +41,30 @@ if (!ADMIN_PASSWORD && !OIDC_ENABLED) {
 const collector = new Collector({ port: UDP_PORT, bind: UDP_BIND });
 collector.start();
 
-// Retention presets (ms). 0 = keep forever. The active value is stored in the DB
-// settings table and editable from the dashboard; env RETENTION_DAYS seeds it on
-// first run.
-const RETENTION_PRESETS = {
-  0: 'Keep forever',
-  60000: '1 minute',
-  3600000: '1 hour',
-  86400000: '1 day',
-  604800000: '1 week',
-  2592000000: '1 month',
-  31536000000: '1 year',
-};
-function currentRetentionMs() {
-  const v = db.getSetting('retention_ms');
-  if (v == null) return RETENTION_DAYS > 0 ? RETENTION_DAYS * 86400000 : 0;
-  const n = Number(v);
-  return Number.isFinite(n) && n >= 0 ? n : 0;
-}
-// Seed the stored setting once from the env default so the UI shows a concrete value.
-if (db.getSetting('retention_ms') == null) {
-  db.setSetting('retention_ms', String(RETENTION_DAYS > 0 ? RETENTION_DAYS * 86400000 : 0));
-}
-
-// Retention sweep — every minute, so even a 1-minute retention is honored.
+// Retention: logs auto-clear after RETENTION_DAYS (fixed; default 7). The sweep
+// runs every minute and prunes anything older. No UI control — it just expires.
+const RETENTION_DAYS_EFFECTIVE = RETENTION_DAYS > 0 ? RETENTION_DAYS : 7;
 function sweep() {
   try {
-    const n = db.prune({ retentionMs: currentRetentionMs(), maxRows: MAX_ROWS });
-    if (n > 0) console.log(`[retention] pruned ${n} old messages`);
+    const n = db.prune({ retentionDays: RETENTION_DAYS_EFFECTIVE, maxRows: MAX_ROWS });
+    if (n > 0) console.log(`[retention] pruned ${n} messages older than ${RETENTION_DAYS_EFFECTIVE}d`);
   } catch (err) {
     console.error('[retention] error:', err.message);
   }
 }
 setTimeout(sweep, 10000);
 setInterval(sweep, 60000).unref();
+
+// Silence watchdog — configurable from the dashboard's Watchdog tab. Settings live
+// in the DB (watchdog_enabled / watchdog_sec); seed defaults on first run.
+if (db.getSetting('watchdog_sec') == null) db.setSetting('watchdog_sec', String(alerts.SILENCE_SEC || 120));
+if (db.getSetting('watchdog_enabled') == null) db.setSetting('watchdog_enabled', alerts.topicSet() ? '1' : '0');
+function watchdogTick() {
+  if (db.getSetting('watchdog_enabled') === '0') { alerts.resetSilence(); return; }
+  const sec = Number(db.getSetting('watchdog_sec')) || alerts.SILENCE_SEC || 120;
+  alerts.checkSilence(collector.lastMessageTs, sec);
+}
+setInterval(watchdogTick, 30000).unref();
 
 // --------------------------------- web ----------------------------------
 const app = express();
@@ -231,28 +222,58 @@ app.get('/api/stats', requireAuth, (req, res) => {
     maxSeverity: 3,
     limit: 1,
   }).total;
-  res.json({ ...s, errors24, received: collector.received, dbBytes: db.dbSize(), retentionMs: currentRetentionMs() });
+  res.json({ ...s, errors24, received: collector.received, dbBytes: db.dbSize(), retentionDays: RETENTION_DAYS_EFFECTIVE });
 });
 
 app.get('/api/facets', requireAuth, (req, res) => {
   res.json(db.facets());
 });
 
-// ---- settings: log retention (auto-clear age) ----
-app.get('/api/settings', requireAuth, (req, res) => {
-  res.json({ retentionMs: currentRetentionMs(), presets: RETENTION_PRESETS });
+// ---- watchdog (no-syslog alert) settings ----
+const WATCHDOG_SECS = [60, 120, 180, 300, 600];
+app.get('/api/watchdog', requireAuth, (req, res) => {
+  res.json({
+    enabled: db.getSetting('watchdog_enabled') !== '0',
+    sec: Number(db.getSetting('watchdog_sec')) || alerts.SILENCE_SEC || 120,
+    options: WATCHDOG_SECS,
+    topicConfigured: alerts.topicSet(),
+    lastMessageAgeSec: Math.round((Date.now() - collector.lastMessageTs) / 1000),
+  });
 });
 
-app.post('/api/settings/retention', requireAuth, (req, res) => {
-  const ms = Number((req.body || {}).ms);
-  if (!Number.isInteger(ms) || !(String(ms) in RETENTION_PRESETS)) {
-    return res.status(400).json({ error: 'Invalid retention value.' });
+app.post('/api/watchdog', requireAuth, (req, res) => {
+  const b = req.body || {};
+  if (typeof b.enabled === 'boolean') {
+    db.setSetting('watchdog_enabled', b.enabled ? '1' : '0');
+    if (!b.enabled) alerts.resetSilence();
   }
-  db.setSetting('retention_ms', String(ms));
-  // Apply immediately so the change takes effect without waiting for the next sweep.
-  let pruned = 0;
-  try { pruned = db.prune({ retentionMs: ms, maxRows: MAX_ROWS }); } catch (_) { /* ignore */ }
-  res.json({ ok: true, retentionMs: ms, pruned });
+  if (b.sec != null) {
+    const sec = Number(b.sec);
+    if (!WATCHDOG_SECS.includes(sec)) return res.status(400).json({ error: 'Invalid check window.' });
+    db.setSetting('watchdog_sec', String(sec));
+  }
+  res.json({
+    ok: true,
+    enabled: db.getSetting('watchdog_enabled') !== '0',
+    sec: Number(db.getSetting('watchdog_sec')) || 120,
+  });
+});
+
+// ---- test alert (verify ntfy delivery) ----
+app.post('/api/alert/test', requireAuth, async (req, res) => {
+  const r = await alerts.sendTest();
+  if (r.ok) res.json({ ok: true });
+  else res.status(502).json({ error: r.error || 'Test alert failed.' });
+});
+
+// ---- clear logs (manual purge older than N days; 7 is the automatic sweep) ----
+app.post('/api/clearlogs', requireAuth, (req, res) => {
+  const days = Number((req.body || {}).days);
+  if (![1, 3, 5, 7].includes(days)) return res.status(400).json({ error: 'Invalid range (allowed: 1, 3, 5, 7 days).' });
+  let deleted = 0;
+  try { deleted = db.prune({ retentionDays: days }); }
+  catch (err) { return res.status(500).json({ error: err.message }); }
+  res.json({ ok: true, days, deleted });
 });
 
 // ---- export / download ----
@@ -302,7 +323,7 @@ function privateIp(text) {
   return '';
 }
 
-app.get('/api/export', requireAuth, (req, res) => {
+app.get('/api/export', requireAuth, async (req, res) => {
   const format = ['csv', 'json', 'txt'].includes(req.query.format) ? req.query.format : 'csv';
   const order = req.query.order === 'desc' ? 'desc' : 'asc';
   const iso = localIso;
@@ -348,10 +369,13 @@ app.get('/api/export', requireAuth, (req, res) => {
       const tag = [m.app, m.procid && `[${m.procid}]`].filter(Boolean).join('');
       line = `${iso(m.ts)}  ${severityName(m.severity).padEnd(13)} ${(m.host || m.source_ip || '-')}  ${tag}${tag ? ': ' : ''}${m.message || ''}\n`;
     }
+    // Real backpressure: if the socket buffer is full, PAUSE the DB iteration
+    // until it drains. Without this, a large export buffers every row in memory
+    // and OOM-kills the process (the box has little RAM).
     if (!res.write(line)) {
-      // Backpressure: pause the DB iterator until the socket drains.
-      res.once('drain', () => {}); // node buffers; simple loop is fine for our volumes
+      await new Promise((resolve) => res.once('drain', resolve));
     }
+    if (res.writableEnded || res.destroyed) break; // client disconnected — stop
   }
   res.end();
 });
