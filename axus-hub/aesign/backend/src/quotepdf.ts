@@ -33,7 +33,11 @@ const WHITE = rgb(1, 1, 1);
 const W = 612;
 const H = 792;
 const M = 54;
-const MAX_ROW_Y = 700; // items break to a new page past this (top-based Y)
+// Clear zone on the Axus letterhead: below the top-right logo band, above the
+// footer. Content must stay inside [TOP_SAFE, BOT_SAFE] (top-based Y).
+const TOP_SAFE = 150;
+const BOT_SAFE = 704;
+const MAX_ROW_Y = 660; // items break to a new page past this (keeps them above the footer)
 
 // Normalized (0..1, top-left) signature-field rectangles, so the editor can
 // AUTO-PLACE signer fields onto the blanks instead of the sender clicking them.
@@ -62,11 +66,13 @@ export async function generateQuotePdf(
   const pdf = await PDFDocument.create();
   const helv = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  let logo: Awaited<ReturnType<typeof pdf.embedPng>> | null = null;
+  // Axus letterhead (corner banner + logo + faint watermark + footer) laid down
+  // as a full-page background on every page, so quotes match the standard docs.
+  let letter: Awaited<ReturnType<typeof pdf.embedJpg>> | null = null;
   try {
-    logo = await pdf.embedPng(await readFile(join(process.cwd(), "assets", "axus-logo.png")));
+    letter = await pdf.embedJpg(await readFile(join(process.cwd(), "assets", "letterhead.jpg")));
   } catch {
-    /* logo optional */
+    /* letterhead optional */
   }
 
   const T = (topY: number) => H - topY;
@@ -92,11 +98,9 @@ export async function generateQuotePdf(
     o: { size?: number; bold?: boolean; color?: Color } = {},
   ) => page.drawText(String(s ?? ""), { x, y: T(topY), size: o.size ?? 9, font: o.bold ? bold : helv, color: o.color ?? INK });
 
-  const smallLogo = (pg: PDFPage) => {
-    if (!logo) return;
-    const lw = 92;
-    const lh = (lw * 125) / 238;
-    pg.drawImage(logo, { x: M, y: T(42) - lh, width: lw, height: lh });
+  // Full-page letterhead background. Call FIRST on every page, before content.
+  const drawBg = (pg: PDFPage) => {
+    if (letter) pg.drawImage(letter, { x: 0, y: 0, width: W, height: H });
   };
 
   // Column x-positions + a reusable item-table header (redrawn on each new page).
@@ -114,25 +118,15 @@ export async function generateQuotePdf(
 
   // ================= PAGE 1 =================
   const p1 = pdf.addPage([W, H]);
-  if (logo) {
-    const lw = 112;
-    const lh = (lw * 125) / 238;
-    p1.drawImage(logo, { x: M, y: T(42) - lh, width: lw, height: lh });
-  }
-  put(p1, "QUOTE", 430, 60, { size: 24, bold: true });
-  put(p1, tmpl ? "# ____________" : `# ${d.quote_number}`, 430, 78, { size: 10, color: MUTED });
-  put(p1, tmpl ? "Date: ______________" : `Date: ${d.quote_date}`, 430, 92, { size: 10, color: MUTED });
-
-  let ay = 116;
-  put(p1, "Axus Technologies", M, ay, { size: 10, bold: true });
-  ay += 13;
-  for (const l of ["13046 Racetrack RD., Suite 255", "Tampa, FL 33626", "Phone 813-922-2323", "sales@axustechnologies.com"]) {
-    put(p1, l, M, ay, { size: 9, color: MUTED });
-    ay += 12;
-  }
+  drawBg(p1);
+  // Title sits top-LEFT (the letterhead logo owns the top-right corner). The
+  // "from" address is dropped — the letterhead footer already carries it.
+  put(p1, "QUOTE", M, TOP_SAFE + 6, { size: 24, bold: true });
+  put(p1, tmpl ? "# ____________" : `# ${d.quote_number}`, M, TOP_SAFE + 26, { size: 10, color: MUTED });
+  put(p1, tmpl ? "Date: ______________" : `Date: ${d.quote_date}`, M, TOP_SAFE + 40, { size: 10, color: MUTED });
 
   const tox = 330;
-  let toy = 108;
+  let toy = TOP_SAFE + 2;
   put(p1, "QUOTE TO", tox, toy, { size: 8, bold: true, color: ORANGE });
   toy += 14;
   const toLines = tmpl
@@ -151,7 +145,7 @@ export async function generateQuotePdf(
   }
 
   // Details strip
-  const stripTop = 205;
+  const stripTop = TOP_SAFE + 70;
   const stripH = 34;
   const cols = [
     { h: "SALESPERSON", v: d.salesperson },
@@ -189,8 +183,8 @@ export async function generateQuotePdf(
     // Break to a new page (redraw the table header) when the row won't fit.
     if (ty + rowH > MAX_ROW_Y) {
       page = pdf.addPage([W, H]);
-      smallLogo(page);
-      ty = drawItemsHeader(page, 66);
+      drawBg(page);
+      ty = drawItemsHeader(page, TOP_SAFE + 10);
     }
     put(page, tmpl ? "" : String(qty), cx.qty, ty + 11, { size: 8.5 });
     put(page, it.item, cx.item, ty + 11, { size: 8.5 });
@@ -206,10 +200,10 @@ export async function generateQuotePdf(
   const taxExempt = !d.tax || /exempt/i.test(d.tax);
   const taxAmt = taxExempt ? 0 : Number(d.tax) || 0;
   const total = subtotal + taxAmt;
-  if (ty + 85 > 750) {
+  if (ty + 85 > BOT_SAFE) {
     page = pdf.addPage([W, H]);
-    smallLogo(page);
-    ty = 66;
+    drawBg(page);
+    ty = TOP_SAFE + 10;
   }
   let qy = ty + 18;
   const labelX = 400;
@@ -228,12 +222,12 @@ export async function generateQuotePdf(
   qy += 14;
   totRow("TOTAL", tmpl ? "" : money(total), true);
 
-  put(page, "Thank you for your business!", M, 772, { size: 11, bold: true, color: ORANGE });
+  put(page, "Thank you for your business!", M, Math.min(qy + 16, BOT_SAFE), { size: 11, bold: true, color: ORANGE });
 
   // ================= TERMS + SIGNATURE (own page) =================
   const p2 = pdf.addPage([W, H]);
-  smallLogo(p2);
-  put(p2, "Terms and Conditions", M, 128, { size: 15, bold: true });
+  drawBg(p2);
+  put(p2, "Terms and Conditions", M, TOP_SAFE, { size: 15, bold: true });
   const terms = [
     `Pricing is valid until ${d.valid_until || d.due_date || "the date noted"}, unless otherwise noted.`,
     "Tax and shipping are not included unless otherwise stated.",
@@ -241,7 +235,7 @@ export async function generateQuotePdf(
     "Product descriptions and available inventory are updated frequently and may change without notice. The pricing in this quote is based on current market conditions and is subject to change due to various factors, including but not limited to supply chain changes and external economic conditions, including tariffs. Should any of these factors result in a cost increase, we will inform you promptly and provide an updated pricing estimate.",
     "Any work, materials, or services not specifically listed in this quote are not included and may require a separate agreement or change order, which could result in additional costs.",
   ];
-  let py = 156;
+  let py = TOP_SAFE + 28;
   for (const para of terms) {
     p2.drawText("•", { x: M, y: T(py), size: 9, font: helv, color: ORANGE });
     for (const l of wrap(para, helv, 9.5, W - 2 * M - 18)) {
@@ -261,8 +255,6 @@ export async function generateQuotePdf(
   py += 28;
   const nameY = py;
   put(p2, NAME_LINE, M, py, { size: 10 });
-
-  put(p2, "Thank you for your business!", M, 772, { size: 11, bold: true, color: ORANGE });
 
   // Signature-field layout (1 signer, page 2 — 1-based). Widths from exact text.
   const wAt = (s: string) => helv.widthOfTextAtSize(s, 10);

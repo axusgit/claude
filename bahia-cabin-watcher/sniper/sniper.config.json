@@ -1,0 +1,7 @@
+{
+  "_comment": "Fast-alert sniper config. Scans all 6 cabins for any bookable 2-night stay. intervalMs = --arm burst poll (500ms is safe for the API host; alert-then-click doesn't need 100ms and 100ms risks a rate-block at 8AM). huntSec = --hunt/--tick cadence. ntfyTopic falls back to ../.env NTFY_TOPIC; email/SMS use ../.env SMTP_*/EMAIL_*.",
+  "intervalMs": 500,
+  "huntSec": 30,
+  "windowStartET": "07:59:55",
+  "windowEndET": "08:00:55"
+}

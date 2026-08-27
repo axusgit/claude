@@ -4,9 +4,10 @@ import { Archive, Check, Circle, Copy, Download, FileSignature, HardDrive, Penci
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
-const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "Quote"];
-// Types that auto-attach a stored template on creation (Quotes are generated separately).
-const TEMPLATE_TYPES = ["BAA"];
+const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "Certificate of Completion", "Quote"];
+// Types that open a pre-filled template on creation (deferred until Save). BAA is a
+// stored file; Certificate of Completion is generated on the fly. Quotes are separate.
+const TEMPLATE_TYPES = ["BAA", "Certificate of Completion"];
 
 function fmtBytes(n: number): string {
   if (!n) return "0 B";
@@ -87,6 +88,7 @@ export function EnvelopeList() {
   const [creating, setCreating] = useState(false);
   const [docType, setDocType] = useState("SOW");
   const [company, setCompany] = useState("");
+  const [docNumber, setDocNumber] = useState("");
   const [companies, setCompanies] = useState<Company[]>([]);
   const [editDoc, setEditDoc] = useState<Envelope | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -130,11 +132,13 @@ export function EnvelopeList() {
       nav(`/quotes/new?company=${encodeURIComponent(company.trim())}`);
       return;
     }
-    // Template-backed types (BAA) are DEFERRED — open the editor in "new" mode
-    // showing the filled template; nothing is saved until the user clicks Save.
+    // Template-backed types (BAA, Certificate of Completion) are DEFERRED — open
+    // the editor in "new" mode showing the filled template; nothing is saved
+    // until the user clicks Save.
     if (TEMPLATE_TYPES.includes(docType)) {
+      const dn = docNumber.trim() ? `&doc_number=${encodeURIComponent(docNumber.trim())}` : "";
       nav(
-        `/envelopes/new?doc_type=${encodeURIComponent(docType)}&company=${encodeURIComponent(company.trim())}`,
+        `/envelopes/new?doc_type=${encodeURIComponent(docType)}&company=${encodeURIComponent(company.trim())}${dn}`,
       );
       return;
     }
@@ -269,6 +273,19 @@ export function EnvelopeList() {
               {docType === "Quote" || TEMPLATE_TYPES.includes(docType) ? "Continue" : "Create & open"}
             </Button>
           </div>
+          {docType === "Certificate of Completion" && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">
+                Document Number <span className="font-normal text-muted">(optional — the referenced agreement #)</span>
+              </label>
+              <Input
+                placeholder="e.g. PCHG-2025-SAL-002-1.0"
+                value={docNumber}
+                onChange={(e) => setDocNumber(e.target.value)}
+                className="sm:max-w-xs"
+              />
+            </div>
+          )}
         </Card>
       )}
 

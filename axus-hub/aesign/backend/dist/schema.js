@@ -27,6 +27,7 @@ alter table envelope add column if not exists reminder_dow  int;           -- 0-
 alter table envelope add column if not exists reminder_dom  int;           -- 1-31, monthly
 alter table envelope add column if not exists quote_data jsonb;            -- generated-quote source data
 alter table envelope add column if not exists field_layout jsonb;          -- auto-place signer-field layout (Quote)
+alter table envelope add column if not exists doc_number text;             -- reference # for a Certificate of Completion
 alter table recipient add column if not exists decline_reason text;        -- why a signer declined (>= 10 words)
 alter table recipient add column if not exists declined_at timestamptz;
 alter table envelope add column if not exists archived boolean not null default false;  -- moved to the Archive tab
@@ -95,5 +96,16 @@ create table if not exists company (
 create unique index if not exists uq_company_name on company (lower(name));
 alter table company add column if not exists address text;
 alter table company add column if not exists phone text;
+
+-- System-wide activity log (who did what, when) — a simple movement trail.
+create table if not exists activity (
+  id     uuid primary key default gen_random_uuid(),
+  at     timestamptz not null default now(),
+  actor  text,
+  action text not null,
+  detail text
+);
+alter table activity add column if not exists envelope_id uuid;
+create index if not exists idx_activity_at on activity(at desc);
 `;
 //# sourceMappingURL=schema.js.map

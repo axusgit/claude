@@ -5,6 +5,7 @@
 // orange accent.
 
 const BRAND = process.env.BRAND_NAME || 'Axus File Share';
+const { favicon: FAVICON } = require('./logo');
 const ACCENT = process.env.ACCENT_COLOR || '#f97316';
 const ACCENT_HOVER = process.env.ACCENT_HOVER || '#ea580c';
 
@@ -121,7 +122,8 @@ function layout({ title, body, extraCss = '', extraJs = '' }) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>${esc(title)} · ${esc(BRAND)}</title>
+<link rel="icon" href="${FAVICON}">
+<title>File Share</title>
 <style>${BASE_CSS}${extraCss}</style>
 </head>
 <body>

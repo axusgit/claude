@@ -150,7 +150,7 @@ function layout({ title, body, extraJs = '' }) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <link rel="icon" href="${FAVICON}">
-<title>Axus Syslog</title>
+<title>Syslog</title>
 <style>${BASE_CSS}</style>
 </head>
 <body>
@@ -237,8 +237,8 @@ function dashboardPage() {
         <option value="0.166667">Last 10 minutes</option>
         <option value="1">Last hour</option>
         <option value="4">Last 4h</option>
+        <option value="8">Last 8h</option>
         <option value="12">Last 12h</option>
-        <option value="18">Last 18h</option>
         <option value="24" selected>Last 24h</option>
         <option value="168">Last 7 days</option>
         <option value="custom">Custom range…</option>

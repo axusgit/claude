@@ -1,0 +1,12 @@
+{
+  "name": "bahia-sniper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bahia Honda cabin release sniper — persisted-login + cart-hold at release time",
+  "scripts": {
+    "login": "node login-setup.js"
+  },
+  "dependencies": {
+    "playwright": "^1.47.0"
+  }
+}

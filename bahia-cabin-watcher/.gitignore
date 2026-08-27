@@ -4,3 +4,9 @@ state.json
 watcher.log
 *.log
 config.json
+# sniper session/credentials + captures — NEVER commit
+sniper/browser-profile/
+sniper/auth.json
+sniper/network-capture.jsonl
+release-log.jsonl
+release-probe.out

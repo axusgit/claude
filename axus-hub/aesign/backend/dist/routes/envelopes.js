@@ -8,6 +8,8 @@ import { config } from "../config.js";
 import { getIdentity, hasEsignAccess } from "../identity.js";
 import { sendSigningInvite, sendPendingReminder } from "../mail.js";
 import { stampBaaPdf, etTodayLong } from "../baa.js";
+import { generateCocPdf } from "../cocpdf.js";
+import { logActivity, renameActivity } from "./activity.js";
 function requireStaff(req, reply) {
     const id = getIdentity(req);
     if (!id || !hasEsignAccess(id)) {
@@ -63,10 +65,12 @@ export async function envelopeRoutes(app) {
         const title = (body.title ?? "Untitled document").toString().trim().slice(0, 200) || "Untitled document";
         const docType = body.doc_type?.trim() || null;
         const company = body.company?.trim() || null;
+        const docNumber = body.doc_number?.trim() || null;
         const reminder = body.reminder_interval?.trim() || null;
-        const { rows } = await pool.query(`insert into envelope (title, created_by, doc_type, company, reminder_interval)
-       values ($1, $2, $3, $4, $5) returning *`, [title, id.email, docType, company, reminder]);
+        const { rows } = await pool.query(`insert into envelope (title, created_by, doc_type, company, doc_number, reminder_interval)
+       values ($1, $2, $3, $4, $5, $6) returning *`, [title, id.email, docType, company, docNumber, reminder]);
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`, [rows[0].id, id.email, title]);
+        logActivity(id.email, "Created document", title, rows[0].id);
         return reply.code(201).send({ envelope: rows[0] });
     });
     // Update envelope settings (currently: sequential signing order).
@@ -98,10 +102,9 @@ export async function envelopeRoutes(app) {
             await pool.query(`update envelope set sequential = $1 where id = $2`, [body.sequential, envId]);
         }
         if (body.title !== undefined && body.title.trim()) {
-            await pool.query(`update envelope set title = $1 where id = $2`, [
-                body.title.trim().slice(0, 200),
-                envId,
-            ]);
+            const newTitle = body.title.trim().slice(0, 200);
+            await pool.query(`update envelope set title = $1 where id = $2`, [newTitle, envId]);
+            renameActivity(envId, newTitle);
         }
         if (body.doc_type !== undefined) {
             await pool.query(`update envelope set doc_type = $1 where id = $2`, [body.doc_type?.trim() || null, envId]);
@@ -120,7 +123,7 @@ export async function envelopeRoutes(app) {
         if (!id)
             return;
         const envId = req.params.id;
-        const env = await pool.query(`select source_file, pdf_file, sealed_file from envelope where id = $1`, [envId]);
+        const env = await pool.query(`select title, source_file, pdf_file, sealed_file from envelope where id = $1`, [envId]);
         if (!env.rowCount)
             return reply.code(404).send({ error: "Not found" });
         const r = env.rows[0];
@@ -137,6 +140,7 @@ export async function envelopeRoutes(app) {
             }
         }
         await pool.query(`delete from envelope where id = $1`, [envId]); // cascades children
+        logActivity(id.email, "Deleted document", r.title, envId);
         return { ok: true };
     });
     // Total disk used by stored document files (source / generated / sealed PDFs).
@@ -188,6 +192,7 @@ export async function envelopeRoutes(app) {
         if (!ARCHIVE_DAYS.has(days))
             return reply.code(400).send({ error: "Invalid age." });
         const upd = await pool.query(`update envelope set archived = true, archived_at = now() where ${olderThan}`, [days]);
+        logActivity(id.email, "Archived documents", `${upd.rowCount ?? 0} document(s) older than ${days} day(s)`);
         return { ok: true, archived: upd.rowCount ?? 0 };
     });
     // Restore a single document from the Archive back to Documents.
@@ -196,9 +201,10 @@ export async function envelopeRoutes(app) {
         if (!id)
             return;
         const envId = req.params.id;
-        const r = await pool.query(`update envelope set archived = false, archived_at = null where id = $1 returning id`, [envId]);
+        const r = await pool.query(`update envelope set archived = false, archived_at = null where id = $1 returning title`, [envId]);
         if (!r.rowCount)
             return reply.code(404).send({ error: "Not found" });
+        logActivity(id.email, "Restored document", r.rows[0].title, envId);
         return { ok: true };
     });
     // Cancel a document (blocks further signing). Can't cancel a completed one.
@@ -208,10 +214,11 @@ export async function envelopeRoutes(app) {
             return;
         const envId = req.params.id;
         const r = await pool.query(`update envelope set status = 'cancelled'
-       where id = $1 and status not in ('completed', 'cancelled', 'declined', 'expired') returning id`, [envId]);
+       where id = $1 and status not in ('completed', 'cancelled', 'declined', 'expired') returning title`, [envId]);
         if (!r.rowCount)
             return reply.code(409).send({ error: "This document can't be cancelled." });
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'cancelled', 'Cancelled')`, [envId, id.email]);
+        logActivity(id.email, "Cancelled document", r.rows[0].title, envId);
         return { ok: true };
     });
     // Resend the signing link to everyone who hasn't signed or declined yet.
@@ -243,6 +250,7 @@ export async function envelopeRoutes(app) {
                 sent++;
         }
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'reminded', $3)`, [envId, id.email, `Resent signing link to ${sent} recipient(s)`]);
+        logActivity(id.email, "Resent signing link", `${env.title} → ${sent} recipient(s)`, envId);
         return { ok: true, sent };
     });
     // Fetch one envelope with its recipients + fields + events.
@@ -298,6 +306,9 @@ export async function envelopeRoutes(app) {
             envId,
         ]);
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'document_uploaded', $3)`, [envId, id.email, file.filename]);
+        // The uploaded file's name is now the document's real name — keep the
+        // activity log in sync so its creation entry shows the same name.
+        renameActivity(envId, docTitle);
         if (!pdfFile) {
             return reply
                 .code(422)
@@ -314,13 +325,27 @@ export async function envelopeRoutes(app) {
         if (!id)
             return;
         const envId = req.params.id;
-        const env = await pool.query(`select id, doc_type, company, pdf_file from envelope where id = $1`, [envId]);
+        const env = await pool.query(`select id, doc_type, company, doc_number, pdf_file from envelope where id = $1`, [envId]);
         if (!env.rowCount)
             return reply.code(404).send({ error: "Not found" });
         const row = env.rows[0];
         if (row.pdf_file)
             return { ok: true, applied: false, reason: "already has a document" };
         const type = (row.doc_type ?? "").toUpperCase();
+        // Certificate of Completion is GENERATED on the fly (no stored file), baked
+        // with the company + today's date, and carries its own signer-field layout.
+        if (type === "CERTIFICATE OF COMPLETION") {
+            const { bytes, layout } = await generateCocPdf({
+                company: row.company ?? undefined,
+                dateLong: etTodayLong(),
+                docNumber: row.doc_number ?? undefined,
+            });
+            const stored = `${envId}-source.pdf`;
+            await writeFile(join(config.storageDir, stored), bytes);
+            await pool.query(`update envelope set source_file = $1, pdf_file = $2, field_layout = $3 where id = $4`, [stored, stored, JSON.stringify(layout), envId]);
+            await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'document_uploaded', $3)`, [envId, id.email, "Certificate of Completion template applied"]);
+            return { ok: true, applied: true, pdf: stored };
+        }
         const TEMPLATE_FILES = { BAA: "axus-baa.pdf" };
         const base = TEMPLATE_FILES[type];
         if (!base)
@@ -371,6 +396,11 @@ export async function envelopeRoutes(app) {
             return;
         const q = req.query;
         const type = (q.type ?? "").toUpperCase();
+        if (type === "CERTIFICATE OF COMPLETION") {
+            const { bytes } = await generateCocPdf({ company: q.company, dateLong: etTodayLong(), docNumber: q.doc_number });
+            reply.header("Content-Type", "application/pdf");
+            return reply.send(Buffer.from(bytes));
+        }
         const TEMPLATE_FILES = { BAA: "axus-baa.pdf" };
         const base = TEMPLATE_FILES[type];
         if (!base)
@@ -542,6 +572,7 @@ export async function envelopeRoutes(app) {
         }
         await pool.query(`update envelope set status = 'sent', sent_at = now() where id = $1`, [envId]);
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'sent', $3)`, [envId, id.email, `Sent to ${recips.rowCount} recipient(s)`]);
+        logActivity(id.email, "Sent for signature", `${env.title} → ${recips.rowCount} recipient(s)`, envId);
         return { ok: true, results };
     });
     // Manually email a reminder to a single recipient who hasn't completed their

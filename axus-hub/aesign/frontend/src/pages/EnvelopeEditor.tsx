@@ -56,6 +56,30 @@ const BAA_LAYOUT: SignSlot[] = [
   },
 ];
 
+// Certificate of Completion has two signers (Customer, then Axus Technologies)
+// with FIXED signature-block positions on the final page — mirrors backend
+// cocpdf.generateCocPdf(). Add recipients IN THIS ORDER for auto-placement.
+const COC_LAYOUT: SignSlot[] = [
+  {
+    role: "Customer",
+    fields: [
+      { type: "signature", page: 2, x: 0.1775, y: 0.2462, w: 0.2998, h: 0.0215 },
+      { type: "name", page: 2, x: 0.1908, y: 0.279, w: 0.2998, h: 0.0215 },
+      { type: "title", page: 2, x: 0.1346, y: 0.3119, w: 0.2998, h: 0.0215 },
+      { type: "date", page: 2, x: 0.1386, y: 0.3447, w: 0.2998, h: 0.0215 },
+    ],
+  },
+  {
+    role: "Axus Technologies",
+    fields: [
+      { type: "signature", page: 2, x: 0.1775, y: 0.4432, w: 0.2998, h: 0.0215 },
+      { type: "name", page: 2, x: 0.1908, y: 0.476, w: 0.2998, h: 0.0215 },
+      { type: "title", page: 2, x: 0.1346, y: 0.5088, w: 0.2998, h: 0.0215 },
+      { type: "date", page: 2, x: 0.1386, y: 0.5417, w: 0.2998, h: 0.0215 },
+    ],
+  },
+];
+
 const TOOLS: { type: FieldType; label: string; icon: typeof PenLine }[] = [
   { type: "signature", label: "Signature", icon: PenLine },
   { type: "name", label: "Name", icon: User },
@@ -129,6 +153,8 @@ export function EnvelopeEditor() {
   const [sequential, setSequential] = useState(false);
   const [docType, setDocType] = useState(isNew ? (sp.get("doc_type") ?? "BAA") : "SOW");
   const [company, setCompany] = useState(isNew ? (sp.get("company") ?? "") : "");
+  // Certificate of Completion: the referenced agreement # baked into the template.
+  const [docNumber] = useState(isNew ? (sp.get("doc_number") ?? "") : "");
   const [reminder, setReminder] = useState("");
   const [reminderTime, setReminderTime] = useState("09:00");
   const [reminderDow, setReminderDow] = useState(1);
@@ -217,7 +243,11 @@ export function EnvelopeEditor() {
     // BAA = known template; Quote = layout stored on the envelope; uploads
     // (SOW/MSA/…) = signature blocks auto-detected from the PDF.
     const layout =
-      docType === "BAA" ? BAA_LAYOUT : detail?.envelope.field_layout ?? detectedSlots;
+      docType === "BAA"
+        ? BAA_LAYOUT
+        : docType === "Certificate of Completion"
+          ? COC_LAYOUT
+          : detail?.envelope.field_layout ?? detectedSlots;
     return layout?.[index]?.fields;
   }
   function addRecipient(name: string, email: string) {
@@ -295,9 +325,9 @@ export function EnvelopeEditor() {
     let realId = id;
     if (isNew) {
       const title = company ? `${company} ${docType}` : `New ${docType}`;
-      const env = await api.createEnvelope({ title, doc_type: docType, company });
+      const env = await api.createEnvelope({ title, doc_type: docType, company, doc_number: docNumber });
       realId = env.id;
-      await api.applyTemplate(realId); // bakes today's date + company into the BAA
+      await api.applyTemplate(realId); // bakes date + company (+ doc #) into the template
     }
     const saved = await api.saveRecipients(realId, recipients);
     setRecipients(saved);
@@ -563,7 +593,7 @@ export function EnvelopeEditor() {
           {/* Document */}
           <div className="max-h-[calc(100vh-160px)] overflow-y-auto rounded-[var(--radius-card)] border border-line bg-canvas p-4">
             <PdfCanvas
-              url={isNew ? api.templatePreviewUrl(docType, company) : api.documentUrl(id)}
+              url={isNew ? api.templatePreviewUrl(docType, company, docNumber) : api.documentUrl(id)}
               fields={fields}
               recipients={recipients}
               colorFor={colorFor}

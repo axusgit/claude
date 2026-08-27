@@ -27,6 +27,7 @@ alter table envelope add column if not exists reminder_dow  int;           -- 0-
 alter table envelope add column if not exists reminder_dom  int;           -- 1-31, monthly
 alter table envelope add column if not exists quote_data jsonb;            -- generated-quote source data
 alter table envelope add column if not exists field_layout jsonb;          -- auto-place signer-field layout (Quote)
+alter table envelope add column if not exists doc_number text;             -- reference # for a Certificate of Completion
 alter table recipient add column if not exists decline_reason text;        -- why a signer declined (>= 10 words)
 alter table recipient add column if not exists declined_at timestamptz;
 alter table envelope add column if not exists archived boolean not null default false;  -- moved to the Archive tab

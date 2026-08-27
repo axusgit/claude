@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 import { config } from "../config.js";
 import { sealPdf } from "../seal.js";
 import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail.js";
+import { logActivity } from "./activity.js";
 // Seal the CURRENT state and email every participant a copy. On the last
 // signature it adds the certificate page, marks the envelope completed, and
 // stores the sealed file. Returns whether it's now fully complete.
@@ -18,6 +19,7 @@ async function sealAndNotify(envId, signerName) {
             to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
      from recipient where envelope_id = $1 order by sign_order`, [envId]);
     const allSigned = recs.rows.every((r) => r.status === "signed");
+    logActivity(signerName, "Signed document", e.title, e.id);
     const { bytes, sha256 } = await sealPdf(join(config.storageDir, e.pdf_file), fields.rows, recs.rows, { title: e.title, envelopeId: e.id }, allSigned);
     const safeName = e.title.replace(/[^a-z0-9\-_ ]/gi, "_").slice(0, 80) || "document";
     const attachment = { filename: `${safeName}.pdf`, content: Buffer.from(bytes) };
@@ -26,6 +28,7 @@ async function sealAndNotify(envId, signerName) {
         await writeFile(join(config.storageDir, sealedName), bytes);
         await pool.query(`update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`, [sealedName, sha256, envId]);
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'completed', $2)`, [envId, `Sealed. SHA-256 ${sha256}`]);
+        logActivity("system", "Completed document", e.title, e.id);
         for (const r of recs.rows) {
             await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment });
         }
@@ -185,6 +188,7 @@ export async function signRoutes(app) {
          ip = $2, user_agent = $3 where id = $4`, [reason, ip, ua, r.id]);
         await pool.query(`update envelope set status = 'declined' where id = $1`, [envId]);
         await pool.query(`insert into event (envelope_id, actor, type, detail, ip) values ($1, $2, 'declined', $3, $4)`, [envId, r.email, reason, ip]);
+        logActivity(r.email, "Declined document", env.title, envId);
         // Notify the sender + every other participant, with the reason.
         const others = await pool.query(`select name, email from recipient where envelope_id = $1 and id <> $2`, [envId, r.id]);
         const notify = [

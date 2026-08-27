@@ -24,6 +24,7 @@ export interface Envelope {
   sequential?: boolean;
   doc_type?: string | null;
   company?: string | null;
+  doc_number?: string | null;
   reminder_interval?: string | null;
   reminder_time?: string | null;
   reminder_dow?: number | null;
@@ -87,6 +88,7 @@ export const api = {
     title: string;
     doc_type?: string;
     company?: string;
+    doc_number?: string;
     reminder_interval?: string;
   }) =>
     req<{ envelope: Envelope }>("/envelopes", {
@@ -167,8 +169,8 @@ export const api = {
       body: JSON.stringify({}),
     }),
   documentUrl: (id: string) => `/api/envelopes/${id}/document`,
-  templatePreviewUrl: (type: string, company: string) =>
-    `/api/envelopes/template-preview?type=${encodeURIComponent(type)}&company=${encodeURIComponent(company)}`,
+  templatePreviewUrl: (type: string, company: string, docNumber = "") =>
+    `/api/envelopes/template-preview?type=${encodeURIComponent(type)}&company=${encodeURIComponent(company)}&doc_number=${encodeURIComponent(docNumber)}`,
 };
 
 // --- Activity log (system-wide movement trail) ---

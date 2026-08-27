@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type Color } from "pdf-lib";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 
 export interface SealField {
@@ -77,13 +78,20 @@ export async function sealPdf(
   // --- Certificate of completion (only on the final, fully-signed copy) ---
   if (includeCert) {
   const cert = pdf.addPage([612, 792]);
-  let y = 736;
+  // Axus letterhead background (corner banner + logo + watermark + footer), so
+  // the certificate page matches the standard document branding.
+  try {
+    const letter = await pdf.embedJpg(await readFile(join(process.cwd(), "assets", "letterhead.jpg")));
+    cert.drawImage(letter, { x: 0, y: 0, width: 612, height: 792 });
+  } catch {
+    /* letterhead optional */
+  }
+  let y = 642; // start below the letterhead header band
   const line = (t: string, o?: { bold?: boolean; size?: number; color?: Color }) => {
     const size = o?.size ?? 10;
     cert.drawText(t, { x: 54, y, size, font: o?.bold ? bold : helv, color: o?.color ?? rgb(0.25, 0.25, 0.25) });
     y -= size + 6;
   };
-  cert.drawRectangle({ x: 0, y: 788, width: 612, height: 4, color: rgb(0.92, 0.35, 0.05) });
   line("Axus eSign — Certificate of Completion", { bold: true, size: 16, color: rgb(0.07, 0.09, 0.15) });
   y -= 6;
   line(`Document: ${meta.title}`, { bold: true, size: 11 });

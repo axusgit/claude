@@ -4,6 +4,7 @@ import { pool } from "../db.js";
 import { config } from "../config.js";
 import { requireStaff } from "../identity.js";
 import { generateQuotePdf, generateQuoteTemplatePdf } from "../quotepdf.js";
+import { logActivity, renameActivity } from "./activity.js";
 // Today's date in Eastern Time as MMDDYYYY (the quote-number prefix).
 function etDatePrefix() {
     const p = new Intl.DateTimeFormat("en-US", {
@@ -51,6 +52,7 @@ export async function quoteRoutes(app) {
         await pool.query(`update envelope set source_file = $1, pdf_file = $1 where id = $2`, [fname, envId]);
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`, [envId, id.email, title]);
         const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
+        logActivity(id.email, "Created quote", title, envId);
         return reply.code(201).send({ envelope: updated.rows[0] });
     });
     // Regenerate a draft Quote's PDF from edited data.
@@ -75,6 +77,8 @@ export async function quoteRoutes(app) {
         await pool.query(`update envelope set quote_data = $1, company = $2, source_file = $3, pdf_file = $3,
               field_layout = $4, title = coalesce($5, title) where id = $6`, [JSON.stringify(q), q.customer.company.trim(), fname, JSON.stringify(layout), body.title?.trim() || null, envId]);
         const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
+        if (body.title?.trim())
+            renameActivity(envId, body.title.trim().slice(0, 200));
         return { envelope: updated.rows[0] };
     });
 }

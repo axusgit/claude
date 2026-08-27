@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Redeploy Axus Syslog to axus-server01 (ssh alias `sra` / `axus-server01`).
+# Redeploy Axus Syslog to its own box (ssh alias `syslog01`).
 # Syncs code (not data/.env), installs prod deps, restarts the service.
 # Run from the repo root:  bash deploy/deploy.sh
 #
@@ -8,7 +8,7 @@
 # updates the running app afterwards.
 set -euo pipefail
 
-HOST="${DEPLOY_HOST:-sra}"
+HOST="${DEPLOY_HOST:-syslog01}"
 APP_DIR="/opt/axus-syslog"
 
 echo "==> Packing source"
@@ -21,7 +21,7 @@ scp -q "$TMP/app.tgz" "$HOST:/tmp/axsyslog-app.tgz"
 ssh "$HOST" "sudo mkdir -p $APP_DIR && sudo chown ubuntu:ubuntu $APP_DIR && \
   tar -xzf /tmp/axsyslog-app.tgz -C $APP_DIR && rm /tmp/axsyslog-app.tgz && \
   cd $APP_DIR && npm install --omit=dev --no-audit --no-fund && \
-  sudo systemctl restart syslog && sleep 1 && \
-  systemctl is-active syslog"
+  sudo systemctl restart axus-syslog && sleep 1 && \
+  systemctl is-active axus-syslog"
 rm -rf "$TMP"
 echo "==> Done. https://syslog.axustechnologies.com"

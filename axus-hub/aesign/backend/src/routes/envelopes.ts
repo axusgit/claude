@@ -9,6 +9,7 @@ import { config } from "../config.js";
 import { getIdentity, hasEsignAccess, type Identity } from "../identity.js";
 import { sendSigningInvite, sendPendingReminder } from "../mail.js";
 import { stampBaaPdf, etTodayLong } from "../baa.js";
+import { generateCocPdf } from "../cocpdf.js";
 import { logActivity, renameActivity } from "./activity.js";
 
 function requireStaff(req: FastifyRequest, reply: FastifyReply): Identity | null {
@@ -72,16 +73,18 @@ export async function envelopeRoutes(app: FastifyInstance) {
       title?: string;
       doc_type?: string;
       company?: string;
+      doc_number?: string;
       reminder_interval?: string;
     };
     const title = (body.title ?? "Untitled document").toString().trim().slice(0, 200) || "Untitled document";
     const docType = body.doc_type?.trim() || null;
     const company = body.company?.trim() || null;
+    const docNumber = body.doc_number?.trim() || null;
     const reminder = body.reminder_interval?.trim() || null;
     const { rows } = await pool.query(
-      `insert into envelope (title, created_by, doc_type, company, reminder_interval)
-       values ($1, $2, $3, $4, $5) returning *`,
-      [title, id.email, docType, company, reminder],
+      `insert into envelope (title, created_by, doc_type, company, doc_number, reminder_interval)
+       values ($1, $2, $3, $4, $5, $6) returning *`,
+      [title, id.email, docType, company, docNumber, reminder],
     );
     await pool.query(
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`,
@@ -369,7 +372,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
     if (!id) return;
     const envId = (req.params as { id: string }).id;
     const env = await pool.query(
-      `select id, doc_type, company, pdf_file from envelope where id = $1`,
+      `select id, doc_type, company, doc_number, pdf_file from envelope where id = $1`,
       [envId],
     );
     if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
@@ -377,6 +380,28 @@ export async function envelopeRoutes(app: FastifyInstance) {
     if (row.pdf_file) return { ok: true, applied: false, reason: "already has a document" };
 
     const type = (row.doc_type ?? "").toUpperCase();
+
+    // Certificate of Completion is GENERATED on the fly (no stored file), baked
+    // with the company + today's date, and carries its own signer-field layout.
+    if (type === "CERTIFICATE OF COMPLETION") {
+      const { bytes, layout } = await generateCocPdf({
+        company: row.company ?? undefined,
+        dateLong: etTodayLong(),
+        docNumber: row.doc_number ?? undefined,
+      });
+      const stored = `${envId}-source.pdf`;
+      await writeFile(join(config.storageDir, stored), bytes);
+      await pool.query(
+        `update envelope set source_file = $1, pdf_file = $2, field_layout = $3 where id = $4`,
+        [stored, stored, JSON.stringify(layout), envId],
+      );
+      await pool.query(
+        `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'document_uploaded', $3)`,
+        [envId, id.email, "Certificate of Completion template applied"],
+      );
+      return { ok: true, applied: true, pdf: stored };
+    }
+
     const TEMPLATE_FILES: Record<string, string> = { BAA: "axus-baa.pdf" };
     const base = TEMPLATE_FILES[type];
     if (!base) return { ok: true, applied: false, reason: "no template for this type" };
@@ -428,8 +453,13 @@ export async function envelopeRoutes(app: FastifyInstance) {
   app.get("/template-preview", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
-    const q = req.query as { type?: string; company?: string };
+    const q = req.query as { type?: string; company?: string; doc_number?: string };
     const type = (q.type ?? "").toUpperCase();
+    if (type === "CERTIFICATE OF COMPLETION") {
+      const { bytes } = await generateCocPdf({ company: q.company, dateLong: etTodayLong(), docNumber: q.doc_number });
+      reply.header("Content-Type", "application/pdf");
+      return reply.send(Buffer.from(bytes));
+    }
     const TEMPLATE_FILES: Record<string, string> = { BAA: "axus-baa.pdf" };
     const base = TEMPLATE_FILES[type];
     if (!base) return reply.code(404).send({ error: "No template for this type" });
