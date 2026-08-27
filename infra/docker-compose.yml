@@ -212,6 +212,9 @@ services:
       # still go to support@ via MAIL_SENDER (SMTP envelope from).
       MAIL_FROM: Axus eSign <no-reply@axustechnologies.com>
       MAIL_SENDER: ${AUTHENTIK_EMAIL__USERNAME}
+      # Shared bearer secret for the server-to-server /api/external quote intake
+      # (currently the On Call AI Agent). Empty disables the external API.
+      EXTERNAL_API_TOKEN: ${AESIGN_EXTERNAL_API_TOKEN}
     volumes:
       - aesign_data:/data/aesign
     depends_on:
@@ -226,7 +229,9 @@ services:
       traefik.http.services.aesign.loadbalancer.server.port: "8000"
       # Public signer routes (external signers have no Axus account): the signer
       # page, its API, and the shared JS/CSS bundle bypass the auth middleware.
-      traefik.http.routers.aesign-public.rule: Host(`aesign.axustechnologies.com`) && (PathPrefix(`/sign`) || PathPrefix(`/api/sign`) || PathPrefix(`/assets`))
+      # /api/external is server-to-server intake for other Axus products, guarded
+      # by its own bearer secret (EXTERNAL_API_TOKEN) instead of Authentik.
+      traefik.http.routers.aesign-public.rule: Host(`aesign.axustechnologies.com`) && (PathPrefix(`/sign`) || PathPrefix(`/api/sign`) || PathPrefix(`/api/external`) || PathPrefix(`/assets`))
       traefik.http.routers.aesign-public.entrypoints: websecure
       traefik.http.routers.aesign-public.tls.certresolver: letsencrypt
       traefik.http.routers.aesign-public.priority: "100"

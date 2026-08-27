@@ -8,6 +8,7 @@ import { envelopeRoutes } from "./routes/envelopes.js";
 import { contactRoutes } from "./routes/contacts.js";
 import { companyRoutes } from "./routes/companies.js";
 import { quoteRoutes } from "./routes/quotes.js";
+import { externalRoutes } from "./routes/external.js";
 import { signRoutes } from "./routes/sign.js";
 import { activityRoutes } from "./routes/activity.js";
 import { registerStatic } from "./static.js";
@@ -24,6 +25,7 @@ async function main() {
   await app.register(contactRoutes, { prefix: "/api/contacts" });
   await app.register(companyRoutes, { prefix: "/api/companies" });
   await app.register(quoteRoutes, { prefix: "/api/quotes" });
+  await app.register(externalRoutes, { prefix: "/api/external" });
   await app.register(signRoutes, { prefix: "/api/sign" });
   await app.register(activityRoutes, { prefix: "/api/activity" });
   registerStatic(app, config.frontendDir);

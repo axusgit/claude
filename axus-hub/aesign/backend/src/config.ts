@@ -13,6 +13,9 @@ export const config = {
   frontendDir: process.env.FRONTEND_DIR ?? "public",
   // Word/PDF conversion service (containerized LibreOffice). Wired in Wk3.
   gotenbergUrl: process.env.GOTENBERG_URL ?? "http://gotenberg:3000",
+  // Shared bearer secret for the server-to-server /api/external routes (other
+  // Axus products creating quotes headlessly). Empty = the external API is off.
+  externalToken: process.env.EXTERNAL_API_TOKEN ?? "",
   mail: {
     host: process.env.SMTP_HOST ?? "",
     port: Number(process.env.SMTP_PORT ?? 587),
