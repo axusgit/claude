@@ -22,6 +22,8 @@ export interface QuoteData {
   due_date?: string;
   items: QuoteItem[];
   tax?: string; // "EXEMPT" or a number
+  notes?: string; // free-text notes (up to 500 chars), shown above "Thank you"
+  terms_addendum?: string; // extra Terms & Conditions clause appended to the T&C list
 }
 
 const ORANGE = rgb(0.92, 0.35, 0.05);
@@ -42,7 +44,7 @@ const MAX_ROW_Y = 660; // items break to a new page past this (keeps them above 
 // Normalized (0..1, top-left) signature-field rectangles, so the editor can
 // AUTO-PLACE signer fields onto the blanks instead of the sender clicking them.
 export interface SignField {
-  type: "signature" | "date" | "name" | "title";
+  type: "signature" | "date" | "name" | "title" | "text";
   page: number; // 1-based (matches the Field model)
   x: number;
   y: number;
@@ -111,7 +113,7 @@ export async function generateQuotePdf(
     put(pg, "ITEM #", cx.item, top, { size: 7.5, bold: true, color: WHITE });
     put(pg, "DESCRIPTION", cx.desc, top, { size: 7.5, bold: true, color: WHITE });
     put(pg, "UNIT PRICE", cx.unit, top, { size: 7.5, bold: true, color: WHITE });
-    put(pg, "DISC.", cx.disc, top, { size: 7.5, bold: true, color: WHITE });
+    put(pg, "DISC/UNIT", cx.disc, top, { size: 7.5, bold: true, color: WHITE });
     put(pg, "LINE TOTAL", cx.total, top, { size: 7.5, bold: true, color: WHITE });
     return top + 14;
   };
@@ -144,8 +146,8 @@ export async function generateQuotePdf(
     toy += 12;
   }
 
-  // Details strip
-  const stripTop = TOP_SAFE + 70;
+  // Details strip — pushed ~1 inch (72pt) below the QUOTE / QUOTE TO header block.
+  const stripTop = TOP_SAFE + 142;
   const stripH = 34;
   const cols = [
     { h: "SALESPERSON", v: d.salesperson },
@@ -175,9 +177,10 @@ export async function generateQuotePdf(
     const qty = Number(it.qty) || 0;
     const unit = Number(it.unit_price) || 0;
     const disc = Number(it.discount) || 0;
-    const lineTotal = qty * unit - disc;
+    // Discount is per-unit: it comes off the unit price, so it scales with qty.
+    const lineTotal = qty * (unit - disc);
     subtotal += lineTotal;
-    totalDisc += disc;
+    totalDisc += qty * disc;
     const descLines = wrap(it.description, helv, 8.5, cx.unit - cx.desc - 8);
     const rowH = Math.max(15, descLines.length * 10.5 + 5);
     // Break to a new page (redraw the table header) when the row won't fit.
@@ -222,7 +225,30 @@ export async function generateQuotePdf(
   qy += 14;
   totRow("TOTAL", tmpl ? "" : money(total), true);
 
-  put(page, "Thank you for your business!", M, Math.min(qy + 16, BOT_SAFE), { size: 11, bold: true, color: ORANGE });
+  // Notes (optional, up to 500 chars) — sits between the totals and the thank-you.
+  let endY = qy + 16;
+  const notes = (d.notes ?? "").trim().slice(0, 500);
+  if (notes) {
+    if (endY + 42 > BOT_SAFE) {
+      page = pdf.addPage([W, H]);
+      drawBg(page);
+      endY = TOP_SAFE + 10;
+    }
+    put(page, "Notes:", M, endY, { size: 9, bold: true, color: MUTED });
+    endY += 14;
+    for (const l of wrap(notes, helv, 9, W - 2 * M)) {
+      if (endY + 12 > BOT_SAFE) {
+        page = pdf.addPage([W, H]);
+        drawBg(page);
+        endY = TOP_SAFE + 10;
+      }
+      put(page, l, M, endY, { size: 9, color: rgb(0.25, 0.27, 0.3) });
+      endY += 12;
+    }
+    endY += 10;
+  }
+
+  put(page, "Thank you for your business!", M, Math.min(endY, BOT_SAFE), { size: 11, bold: true, color: ORANGE });
 
   // ================= TERMS + SIGNATURE (own page) =================
   const p2 = pdf.addPage([W, H]);
@@ -235,6 +261,9 @@ export async function generateQuotePdf(
     "Product descriptions and available inventory are updated frequently and may change without notice. The pricing in this quote is based on current market conditions and is subject to change due to various factors, including but not limited to supply chain changes and external economic conditions, including tariffs. Should any of these factors result in a cost increase, we will inform you promptly and provide an updated pricing estimate.",
     "Any work, materials, or services not specifically listed in this quote are not included and may require a separate agreement or change order, which could result in additional costs.",
   ];
+  // Optional caller-supplied clause (e.g. the On Call preliminary-quote note),
+  // appended as a final Terms & Conditions item — only present when passed.
+  if (d.terms_addendum && d.terms_addendum.trim()) terms.push(d.terms_addendum.trim());
   let py = TOP_SAFE + 28;
   for (const para of terms) {
     p2.drawText("•", { x: M, y: T(py), size: 9, font: helv, color: ORANGE });
