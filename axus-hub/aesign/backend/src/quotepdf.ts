@@ -23,7 +23,8 @@ export interface QuoteData {
   items: QuoteItem[];
   tax?: string; // "EXEMPT" or a number
   notes?: string; // free-text notes (up to 500 chars), shown above "Thank you"
-  terms_addendum?: string; // extra Terms & Conditions clause appended to the T&C list
+  terms_addendum?: string; // extra Terms & Conditions clause, rendered as a standout block after the T&C list
+  terms_addendum_heading?: string; // optional bold heading shown above terms_addendum
 }
 
 const ORANGE = rgb(0.92, 0.35, 0.05);
@@ -261,14 +262,27 @@ export async function generateQuotePdf(
     "Product descriptions and available inventory are updated frequently and may change without notice. The pricing in this quote is based on current market conditions and is subject to change due to various factors, including but not limited to supply chain changes and external economic conditions, including tariffs. Should any of these factors result in a cost increase, we will inform you promptly and provide an updated pricing estimate.",
     "Any work, materials, or services not specifically listed in this quote are not included and may require a separate agreement or change order, which could result in additional costs.",
   ];
-  // Optional caller-supplied clause (e.g. the On Call preliminary-quote note),
-  // appended as a final Terms & Conditions item — only present when passed.
-  if (d.terms_addendum && d.terms_addendum.trim()) terms.push(d.terms_addendum.trim());
   let py = TOP_SAFE + 28;
   for (const para of terms) {
     p2.drawText("•", { x: M, y: T(py), size: 9, font: helv, color: ORANGE });
     for (const l of wrap(para, helv, 9.5, W - 2 * M - 18)) {
       put(p2, l, M + 16, py, { size: 9.5, color: rgb(0.25, 0.27, 0.3) });
+      py += 13;
+    }
+    py += 9;
+  }
+
+  // Optional caller-supplied clause (e.g. the On Call preliminary-quote note),
+  // rendered as a standout block after the standard terms — with an optional
+  // bold heading — so it visually separates from the routine T&C.
+  if (d.terms_addendum && d.terms_addendum.trim()) {
+    py += 6;
+    if (d.terms_addendum_heading && d.terms_addendum_heading.trim()) {
+      put(p2, d.terms_addendum_heading.trim(), M, py, { size: 10.5, bold: true, color: INK });
+      py += 16;
+    }
+    for (const l of wrap(d.terms_addendum.trim(), helv, 9.5, W - 2 * M)) {
+      put(p2, l, M, py, { size: 9.5, color: rgb(0.25, 0.27, 0.3) });
       py += 13;
     }
     py += 9;
