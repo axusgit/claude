@@ -76,11 +76,17 @@ export async function quoteRoutes(app: FastifyInstance) {
     const body = (req.body ?? {}) as { quote?: QuoteData; title?: string };
     const q = body.quote;
     if (!q?.customer?.company?.trim()) return reply.code(400).send({ error: "A customer company is required." });
-    const cur = await pool.query(`select status from envelope where id = $1`, [envId]);
+    const cur = await pool.query(`select status, quote_data from envelope where id = $1`, [envId]);
     if (!cur.rowCount) return reply.code(404).send({ error: "Not found" });
     if (cur.rows[0].status !== "draft") {
       return reply.code(409).send({ error: "Only draft quotes can be edited." });
     }
+    // Preserve caller-supplied fields the quote EDITOR doesn't manage (e.g. the
+    // On Call preliminary-quote clause added via /api/external) so that editing a
+    // quote in eSign — adding a company, changing an item — never drops them.
+    const prev = (cur.rows[0].quote_data ?? {}) as Partial<QuoteData>;
+    if (prev.terms_addendum && !q.terms_addendum) q.terms_addendum = prev.terms_addendum;
+    if (prev.terms_addendum_heading && !q.terms_addendum_heading) q.terms_addendum_heading = prev.terms_addendum_heading;
     const { bytes, layout } = await generateQuotePdf(q);
     const fname = `${envId}-quote.pdf`;
     await writeFile(join(config.storageDir, fname), Buffer.from(bytes));
