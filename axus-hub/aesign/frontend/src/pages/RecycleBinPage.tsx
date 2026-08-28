@@ -1,23 +1,24 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Archive, ArchiveRestore, Copy, Download, Search, Trash2 } from "lucide-react";
+import { Download, RotateCcw, Search, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
 import { Card, Input, StatusBadge } from "@/components/ui";
 
-const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "Quote"];
+const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "Certificate of Completion", "Quote", "Others"];
 
-export function ArchivePage() {
+// Days a document is kept in the bin before it's automatically purged.
+const RETENTION_DAYS = 90;
+
+export function RecycleBinPage() {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
-  const nav = useNavigate();
 
   async function load() {
     setLoading(true);
     try {
-      setEnvelopes(await api.listEnvelopes(true));
+      setEnvelopes(await api.listDeleted());
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -31,22 +32,22 @@ export function ArchivePage() {
 
   async function restore(docId: string) {
     try {
-      await api.restoreEnvelope(docId);
+      await api.restoreFromBin(docId);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Restore failed");
     }
   }
 
-  async function del(docId: string, docTitle: string) {
+  async function purge(docId: string, docTitle: string) {
     if (
       !window.confirm(
-        `Move "${docTitle}" to the Recycle Bin? You can restore it within 90 days.`,
+        `Permanently delete "${docTitle}"? This cannot be undone — it removes the document, its files, and its audit trail.`,
       )
     )
       return;
     try {
-      await api.deleteEnvelope(docId);
+      await api.purgeEnvelope(docId);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
@@ -73,12 +74,20 @@ export function ArchivePage() {
         })
       : "—";
 
+  // Whole days remaining before auto-purge (min 0).
+  const daysLeft = (deletedAt?: string | null) => {
+    if (!deletedAt) return RETENTION_DAYS;
+    const elapsed = (Date.now() - new Date(deletedAt).getTime()) / 86400000;
+    return Math.max(0, Math.ceil(RETENTION_DAYS - elapsed));
+  };
+
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold">Archive</h1>
+        <h1 className="text-xl font-semibold">Recycle Bin</h1>
         <p className="text-sm text-muted">
-          Archived documents. Download or permanently delete them here.
+          Deleted documents are kept here for {RETENTION_DAYS} days, then permanently removed
+          automatically. Restore one to the Documents tab, or delete it forever.
         </p>
       </div>
 
@@ -113,10 +122,10 @@ export function ArchivePage() {
           <div className="p-8 text-center text-sm text-muted">Loading…</div>
         ) : envelopes.length === 0 ? (
           <div className="p-12 text-center">
-            <Archive className="mx-auto h-8 w-8 text-muted" />
-            <p className="mt-3 text-sm font-medium">Nothing archived yet</p>
+            <Trash2 className="mx-auto h-8 w-8 text-muted" />
+            <p className="mt-3 text-sm font-medium">The Recycle Bin is empty</p>
             <p className="text-sm text-muted">
-              Archive old documents from the Documents tab and they'll appear here.
+              Deleting a document from the Documents or Archive tab moves it here.
             </p>
           </div>
         ) : filtered.length === 0 ? (
@@ -129,7 +138,8 @@ export function ArchivePage() {
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Company</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Archived</th>
+                <th className="px-4 py-3 font-medium">Deleted</th>
+                <th className="px-4 py-3 font-medium">Auto-purge</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -142,7 +152,10 @@ export function ArchivePage() {
                   <td className="px-4 py-3">
                     <StatusBadge status={e.status} />
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted">{when(e.archived_at)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-muted">{when(e.deleted_at)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-muted">
+                    in {daysLeft(e.deleted_at)} day{daysLeft(e.deleted_at) === 1 ? "" : "s"}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">
                       <button
@@ -150,34 +163,23 @@ export function ArchivePage() {
                         className="text-muted hover:text-brand"
                         title="Restore to Documents"
                       >
-                        <ArchiveRestore className="h-4 w-4" />
+                        <RotateCcw className="h-4 w-4" />
                       </button>
-                      {e.doc_type === "Quote" && (
-                        <button
-                          onClick={() => nav(`/quotes/new?from=${e.id}`)}
-                          className="text-muted hover:text-brand"
-                          title="Duplicate this quote (reuse its line items)"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </button>
-                      )}
                       {e.pdf_file && (
                         <a
                           href={api.documentUrl(e.id)}
                           target="_blank"
                           rel="noopener"
                           className="text-muted hover:text-brand"
-                          title={
-                            e.status === "completed" ? "Download signed document" : "Download document"
-                          }
+                          title="Download document"
                         >
                           <Download className="h-4 w-4" />
                         </a>
                       )}
                       <button
-                        onClick={() => void del(e.id, e.title)}
+                        onClick={() => void purge(e.id, e.title)}
                         className="text-muted hover:text-red-600"
-                        title="Delete document"
+                        title="Delete forever"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

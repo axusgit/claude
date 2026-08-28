@@ -52,16 +52,20 @@ export async function envelopeRoutes(app: FastifyInstance) {
   app.get("/", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
-    const archived = (req.query as { archived?: string }).archived === "true";
+    const q = req.query as { archived?: string; deleted?: string };
+    const deleted = q.deleted === "true";
+    // Recycle Bin lists soft-deleted docs; Documents/Archive exclude them.
+    const where = deleted ? "e.deleted = true" : "e.archived = $1 and e.deleted = false";
+    const params = deleted ? [] : [q.archived === "true"];
     const { rows } = await pool.query(
       `select e.id, e.title, e.status, e.created_by, e.created_at, e.sent_at, e.completed_at,
-              e.pdf_file, e.doc_type, e.company, e.archived, e.archived_at,
+              e.pdf_file, e.doc_type, e.company, e.archived, e.archived_at, e.deleted, e.deleted_at,
               coalesce((
                 select json_agg(json_build_object('name', r.name, 'status', r.status) order by r.sign_order)
                 from recipient r where r.envelope_id = e.id
               ), '[]') as recipients
-       from envelope e where e.archived = $1 order by e.created_at desc limit 500`,
-      [archived],
+       from envelope e where ${where} order by e.created_at desc limit 500`,
+      params,
     );
     return { envelopes: rows };
   });
@@ -148,7 +152,38 @@ export async function envelopeRoutes(app: FastifyInstance) {
   });
 
   // Delete an envelope (and its recipients/fields/events + stored files).
+  // Soft-delete: move a document to the Recycle Bin (kept 90 days, then flushed).
   app.delete("/:id", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const r = await pool.query(
+      `update envelope set deleted = true, deleted_at = now() where id = $1 and deleted = false returning title`,
+      [envId],
+    );
+    if (!r.rowCount) return reply.code(404).send({ error: "Not found" });
+    logActivity(id.email, "Moved to Recycle Bin", r.rows[0].title, envId);
+    return { ok: true };
+  });
+
+  // Restore a document from the Recycle Bin back to the Documents tab (also
+  // clears archived so it lands in Documents, not Archive).
+  app.post("/:id/restore", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const r = await pool.query(
+      `update envelope set deleted = false, deleted_at = null, archived = false, archived_at = null where id = $1 returning title`,
+      [envId],
+    );
+    if (!r.rowCount) return reply.code(404).send({ error: "Not found" });
+    logActivity(id.email, "Restored from Recycle Bin", r.rows[0].title, envId);
+    return { ok: true };
+  });
+
+  // Permanently delete a document (from the Recycle Bin) — removes files + all
+  // rows (recipients/fields/events cascade). Irreversible.
+  app.delete("/:id/purge", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
     const envId = (req.params as { id: string }).id;
@@ -168,7 +203,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
       }
     }
     await pool.query(`delete from envelope where id = $1`, [envId]); // cascades children
-    logActivity(id.email, "Deleted document", r.title, envId);
+    logActivity(id.email, "Permanently deleted document", r.title, envId);
     return { ok: true };
   });
 
@@ -199,7 +234,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
 
   // Bulk archive: move documents older than a chosen age to the Archive tab.
   const ARCHIVE_DAYS = new Set([1, 7, 30, 60, 90, 183, 365, 1095, 1825, 3650]);
-  const olderThan = `archived = false and created_at < now() - ($1 || ' days')::interval`;
+  const olderThan = `archived = false and deleted = false and created_at < now() - ($1 || ' days')::interval`;
 
   // How many (non-archived) documents WOULD be archived (shown before confirming).
   app.get("/archive-preview", async (req, reply) => {

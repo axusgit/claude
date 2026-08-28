@@ -7,6 +7,7 @@ import { CompaniesPage } from "@/pages/CompaniesPage";
 import { QuoteBuilder } from "@/pages/QuoteBuilder";
 import { QuickReferencePage } from "@/pages/QuickReferencePage";
 import { ArchivePage } from "@/pages/ArchivePage";
+import { RecycleBinPage } from "@/pages/RecycleBinPage";
 import { ActivityPage } from "@/pages/ActivityPage";
 import { SignPage } from "@/pages/SignPage";
 
@@ -48,6 +49,9 @@ export function App() {
             <NavLink to="/archive" className={navCls}>
               Archive
             </NavLink>
+            <NavLink to="/recycle" className={navCls}>
+              Recycle Bin
+            </NavLink>
             <NavLink to="/activity" className={navCls}>
               Activity
             </NavLink>
@@ -71,6 +75,7 @@ export function App() {
           <Route path="/quotes/new" element={<QuoteBuilder />} />
           <Route path="/reference" element={<QuickReferencePage />} />
           <Route path="/archive" element={<ArchivePage />} />
+          <Route path="/recycle" element={<RecycleBinPage />} />
           <Route path="/activity" element={<ActivityPage />} />
         </Routes>
       </main>

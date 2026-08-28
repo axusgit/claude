@@ -34,6 +34,8 @@ export interface Envelope {
   field_layout?: SignSlot[] | null;
   archived?: boolean;
   archived_at?: string | null;
+  deleted?: boolean;
+  deleted_at?: string | null;
 }
 
 export interface Recipient {
@@ -145,6 +147,13 @@ export const api = {
     }),
   deleteEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}`, { method: "DELETE" }),
+  // Recycle Bin: list soft-deleted docs, restore to Documents, or purge forever.
+  listDeleted: () =>
+    req<{ envelopes: Envelope[] }>(`/envelopes?deleted=true`).then((r) => r.envelopes),
+  restoreFromBin: (id: string) =>
+    req<{ ok: boolean }>(`/envelopes/${id}/restore`, { method: "POST", body: JSON.stringify({}) }),
+  purgeEnvelope: (id: string) =>
+    req<{ ok: boolean }>(`/envelopes/${id}/purge`, { method: "DELETE" }),
   archivePreview: (days: number) =>
     req<{ days: number; count: number }>(`/envelopes/archive-preview?days=${days}`),
   archiveOld: (days: number) =>

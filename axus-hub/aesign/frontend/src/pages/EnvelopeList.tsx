@@ -178,7 +178,7 @@ export function EnvelopeList() {
   async function del(docId: string, docTitle: string) {
     if (
       !window.confirm(
-        `Delete "${docTitle}"? This permanently removes the document and its audit trail.`,
+        `Move "${docTitle}" to the Recycle Bin? You can restore it within 90 days.`,
       )
     )
       return;

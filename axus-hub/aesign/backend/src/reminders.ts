@@ -3,11 +3,14 @@
 // Emails signers who haven't completed a sent/partially-completed document, on
 // the schedule set per document (daily @time, weekly @dow+time, monthly @dom+time)
 // interpreted in Eastern Time. Fires once per scheduled day, after the time.
+import { unlink } from "node:fs/promises";
+import { join } from "node:path";
 import { pool } from "./db.js";
 import { config } from "./config.js";
 import { sendPendingReminder } from "./mail.js";
 
 const TZ = "America/New_York";
+const RECYCLE_DAYS = 90; // Recycle Bin auto-flush: purge docs deleted this long ago
 
 function etParts(d: Date) {
   const fmt = new Intl.DateTimeFormat("en-US", {
@@ -41,10 +44,33 @@ function isLastEtDayOfMonth(now: Date): boolean {
 const EXPIRE_DAYS = 183; // auto-void documents left unsigned this long
 
 export async function runReminders(): Promise<number> {
+  // Recycle Bin auto-flush: permanently remove documents soft-deleted > 90 days
+  // ago (files + all rows; recipients/fields/events cascade).
+  const toPurge = await pool.query(
+    `select id, title, source_file, pdf_file, sealed_file from envelope
+     where deleted = true and deleted_at is not null and deleted_at < now() - ($1 || ' days')::interval`,
+    [RECYCLE_DAYS],
+  );
+  for (const row of toPurge.rows) {
+    for (const f of [row.source_file, row.pdf_file, row.sealed_file]) {
+      if (!f) continue;
+      try {
+        await unlink(join(config.storageDir, f));
+      } catch {
+        /* best effort */
+      }
+    }
+    await pool.query(`delete from envelope where id = $1`, [row.id]); // cascades children
+    await pool.query(
+      `insert into activity (actor, action, detail, envelope_id) values ('system', 'Auto-purged from Recycle Bin', $1, $2)`,
+      [row.title, row.id],
+    );
+  }
+
   // Auto-void (expire) documents that have been out for signature too long.
   const expired = await pool.query(
     `update envelope set status = 'expired'
-     where status in ('sent', 'partially_completed') and archived = false
+     where status in ('sent', 'partially_completed') and archived = false and deleted = false
        and sent_at is not null and sent_at < now() - ($1 || ' days')::interval
      returning id, title`,
     [EXPIRE_DAYS],
@@ -65,7 +91,7 @@ export async function runReminders(): Promise<number> {
     `select id, title, reminder_interval, reminder_time, reminder_dow, reminder_dom,
             last_reminded_at, sent_at, created_at
      from envelope
-     where status in ('sent', 'partially_completed') and reminder_interval is not null and archived = false`,
+     where status in ('sent', 'partially_completed') and reminder_interval is not null and archived = false and deleted = false`,
   );
   const now = new Date();
   const et = etParts(now);

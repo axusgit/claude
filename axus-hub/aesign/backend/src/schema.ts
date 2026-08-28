@@ -32,6 +32,8 @@ alter table recipient add column if not exists decline_reason text;        -- wh
 alter table recipient add column if not exists declined_at timestamptz;
 alter table envelope add column if not exists archived boolean not null default false;  -- moved to the Archive tab
 alter table envelope add column if not exists archived_at timestamptz;
+alter table envelope add column if not exists deleted boolean not null default false;   -- soft-deleted → Recycle Bin (auto-flushed after 90 days)
+alter table envelope add column if not exists deleted_at timestamptz;
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),
