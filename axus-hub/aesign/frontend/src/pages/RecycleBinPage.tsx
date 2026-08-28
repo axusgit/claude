@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Archive, Download, RotateCcw, Search, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
 import { Card, Input, StatusBadge } from "@/components/ui";
 
@@ -36,6 +36,15 @@ export function RecycleBinPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Restore failed");
+    }
+  }
+
+  async function archive(docId: string) {
+    try {
+      await api.archiveEnvelope(docId);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Archive failed");
     }
   }
 
@@ -164,6 +173,13 @@ export function RecycleBinPage() {
                         title="Restore to Documents"
                       >
                         <RotateCcw className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => void archive(e.id)}
+                        className="text-muted hover:text-brand"
+                        title="Move to Archive"
+                      >
+                        <Archive className="h-4 w-4" />
                       </button>
                       {e.pdf_file && (
                         <a

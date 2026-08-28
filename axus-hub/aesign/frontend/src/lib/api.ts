@@ -152,6 +152,8 @@ export const api = {
     req<{ envelopes: Envelope[] }>(`/envelopes?deleted=true`).then((r) => r.envelopes),
   restoreFromBin: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}/restore`, { method: "POST", body: JSON.stringify({}) }),
+  archiveEnvelope: (id: string) =>
+    req<{ ok: boolean }>(`/envelopes/${id}/archive`, { method: "POST", body: JSON.stringify({}) }),
   purgeEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}/purge`, { method: "DELETE" }),
   archivePreview: (days: number) =>

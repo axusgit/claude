@@ -181,6 +181,21 @@ export async function envelopeRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // Archive a single document (e.g. straight from the Recycle Bin) — moves it to
+  // the Archive tab and out of the bin (clears deleted).
+  app.post("/:id/archive", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const r = await pool.query(
+      `update envelope set archived = true, archived_at = now(), deleted = false, deleted_at = null where id = $1 returning title`,
+      [envId],
+    );
+    if (!r.rowCount) return reply.code(404).send({ error: "Not found" });
+    logActivity(id.email, "Archived document", r.rows[0].title, envId);
+    return { ok: true };
+  });
+
   // Permanently delete a document (from the Recycle Bin) — removes files + all
   // rows (recipients/fields/events cascade). Irreversible.
   app.delete("/:id/purge", async (req, reply) => {
