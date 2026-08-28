@@ -49,12 +49,19 @@ function loadCfg() {
   try { const j = JSON.parse(fs.readFileSync(path.join(__dirname, 'sniper.config.json'), 'utf8')); return { ...d, ...j, ntfyTopic: j.ntfyTopic || d.ntfyTopic }; } catch { return d; }
 }
 
-// ---- bookability (ground truth) ---------------------------------------------
-function furthestArrivalISO() { const t = startOfToday(); const f = new Date(t.getFullYear(), t.getMonth() + 11, t.getDate()); return iso(f); }
+// ---- bookability via getbyunit + release-window gate ------------------------
+// Rule (validated 2026-08-27 against the live board): a 2-night stay is bookable
+// iff getbyunit shows BOTH nights free (IsFree && !IsReserved && !IsBlocked &&
+// !IsLocked) AND the LAST night is within furthest-arrival = today+11 months.
+// - getbyunit (not search/grid): grid serves phantom "free" from stale LB nodes.
+// - last-night<=furthest (not arrival<=furthest): excludes the "add-on" edge,
+//   where the arrival looks free but its 2nd night hasn't released yet.
+function furthestArrivalISO() { const t = startOfToday(); return iso(new Date(t.getFullYear(), t.getMonth() + 11, t.getDate())); }
 
-async function freeDatesFor(unitId) {
-  const url = `${API}fd/availability/getbyunit/${unitId}/startdate/${iso(startOfToday())}/nights/${SCAN_NIGHTS}/false`;
-  const res = await fetchT(url, { headers: H }, 8000);
+async function freeDatesFor(unitId, startISO, nights) {
+  startISO = startISO || iso(startOfToday());
+  nights = nights || SCAN_NIGHTS;
+  const res = await fetchT(`${API}fd/availability/getbyunit/${unitId}/startdate/${startISO}/nights/${nights}/false`, { headers: H }, 9000);
   if (!res.ok) throw new Error(`getbyunit ${unitId} HTTP ${res.status}`);
   const arr = await res.json();
   const free = new Set();
@@ -62,45 +69,54 @@ async function freeDatesFor(unitId) {
   return free;
 }
 
-// Scan all cabins → list of genuinely-bookable 2-night stays.
-async function scanBookable() {
-  const furthest = furthestArrivalISO();
-  const results = await Promise.all(Object.entries(CABINS).map(async ([name, id]) => {
-    try { return { name, free: await freeDatesFor(id) }; } catch { return { name, free: new Set() }; }
-  }));
+function staysFrom(results, furthest, arrivalsFilter) {
   const stays = [];
   for (const { name, free } of results) {
-    for (const d of [...free].sort()) {
-      if (d > furthest) continue;                 // arrival must be within the 11-month window
+    const arrivals = arrivalsFilter ? arrivalsFilter : [...free].sort();
+    for (const d of arrivals) {
       const n2 = iso(addDays(parseIso(d), 1));
-      if (free.has(n2)) stays.push({ cabin: name, arrival: d, depart: iso(addDays(parseIso(d), NIGHTS)), key: `${name}|${d}` });
+      if (free.has(d) && free.has(n2) && n2 <= furthest) stays.push({ cabin: name, arrival: d, depart: iso(addDays(parseIso(d), NIGHTS)), key: `${name}|${d}` });
     }
   }
   stays.sort((a, b) => (a.arrival < b.arrival ? -1 : 1));
-  return { stays, furthest };
+  return stays;
+}
+async function allFree(startISO, nights) {
+  return Promise.all(Object.entries(CABINS).map(async ([name, id]) => { try { return { name, free: await freeDatesFor(id, startISO, nights) }; } catch { return { name, free: new Set() }; } }));
 }
 
-// Focused fast poll of just the release day(s): the newest arrivable date(s).
-async function scanReleaseEdge() {
-  const furthest = furthestArrivalISO();
-  const edge = [furthest, iso(addDays(parseIso(furthest), -1))]; // the new day + the one before (both freshly contested)
-  const results = await Promise.all(Object.entries(CABINS).map(async ([name, id]) => {
-    try { return { name, free: await freeDatesFor(id) }; } catch { return { name, free: new Set() }; }
-  }));
+// Full-window scan (used by the 30s --tick): every genuinely-bookable 2-night
+// stay across today .. today+11 months (cancellations anywhere in the window).
+async function scanBookable() {
+  return { stays: staysFrom(await allFree(), furthestArrivalISO()) };
+}
+
+// The SINGLE day exactly 11 months ahead (ET calendar) — the only day the 8PM
+// release opens for a NEW arrival. Rolls at midnight ET, so it's stable through
+// the 8PM window.
+function etNow() {
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).formatToParts(new Date());
+  const g = (t) => +p.find((x) => x.type === t).value; return { y: g('year'), m: g('month'), d: g('day'), h: g('hour') };
+}
+function elevenMonthDayISO() { const { y, m, d } = etNow(); return iso(new Date(y, m - 1 + 11, d)); }
+
+// Burst target (used by the 100ms --arm): is any cabin available to START a
+// 2-night reservation on that single 11-month-ahead day? (day + next night both
+// free per getbyunit — a light 2-night window per cabin.)
+async function scanSingleDay(dayISO) {
+  const results = await allFree(dayISO, 2);
+  const n2 = iso(addDays(parseIso(dayISO), 1));
   const stays = [];
-  for (const { name, free } of results) for (const d of edge) {
-    const n2 = iso(addDays(parseIso(d), 1));
-    if (free.has(d) && free.has(n2)) stays.push({ cabin: name, arrival: d, depart: iso(addDays(parseIso(d), NIGHTS)), key: `${name}|${d}` });
-  }
-  return { stays, furthest };
+  for (const { name, free } of results) if (free.has(dayISO) && free.has(n2)) stays.push({ cabin: name, arrival: dayISO, depart: iso(addDays(parseIso(dayISO), NIGHTS)), key: `${name}|${dayISO}` });
+  return { stays };
 }
 
 // ---- modes ------------------------------------------------------------------
 async function once() {
-  const { stays, furthest } = await scanBookable();
-  log(`furthest bookable arrival = ${furthest}. Bookable 2-night stays now: ${stays.length}`);
-  for (const s of stays) log(`  Cabin ${s.cabin}: ${s.arrival} → ${s.depart}`);
-  if (!stays.length) log('(nothing bookable — expected; the window is booked solid until the next 8AM release / a cancellation.)');
+  const { stays } = await scanBookable();
+  log(`Bookable 2-night stays now: ${stays.length}`);
+  for (const s of stays) log(`  ${s.cabin}: ${s.arrival} → ${s.depart}`);
+  if (!stays.length) log('(nothing bookable right now.)');
 }
 
 // One scan + alert-on-new + persist; returns fresh count. Shared by --hunt/--tick.
@@ -119,6 +135,14 @@ async function tick() { // one-shot, for cron
   if (!n) log('tick: nothing new bookable.');
 }
 
+async function seed() { // mark all currently-bookable stays as seen, WITHOUT alerting
+  const seen = loadSeen();
+  const { stays } = await scanBookable();
+  stays.forEach((s) => (seen[s.key] = Date.now()));
+  pruneSeen(seen); saveSeen(seen);
+  log(`seeded ${stays.length} current opening(s) as already-seen (no alert). Future NEW openings will alert.`);
+}
+
 async function hunt() { // long-lived loop, for interactive use
   log(`HUNT: scanning all 6 cabins every ${CFG.huntSec}s for any bookable 2-night opening. Ctrl-C to stop.`);
   const seen = loadSeen();
@@ -126,15 +150,17 @@ async function hunt() { // long-lived loop, for interactive use
 }
 
 async function arm() {
-  log(`ARMED for the 8AM release. Waiting for ${CFG.windowStartET} ET (now ${etHMS()} ET)…`);
+  const day0 = elevenMonthDayISO();
+  log(`ARMED for the 8PM release. Target single 11-month-ahead day = ${day0}. Waiting for ${CFG.windowStartET} ET (now ${etHMS()} ET)…`);
   while (etHMS() < CFG.windowStartET) await sleep(200);
-  log(`Release window OPEN at ${etHMS()} ET — burst polling the edge every ${CFG.intervalMs}ms.`);
+  log(`Release window OPEN at ${etHMS()} ET — polling the single day every ${CFG.intervalMs}ms.`);
   const seen = loadSeen(); // shared with --tick so neither double-alerts
   let polls = 0, hits = 0;
   while (etHMS() < CFG.windowEndET) {
     polls++;
+    const day = elevenMonthDayISO(); // stable through the window; recomputed defensively
     let stays = [];
-    try { ({ stays } = await scanReleaseEdge()); } catch { /* keep going */ }
+    try { ({ stays } = await scanSingleDay(day)); } catch { /* keep going */ }
     const fresh = stays.filter((s) => !seen[s.key]);
     if (fresh.length) { await alert(fresh, 'RELEASE'); fresh.forEach((s) => (seen[s.key] = Date.now())); saveSeen(seen); hits += fresh.length; }
     await sleep(CFG.intervalMs);
@@ -209,6 +235,7 @@ function pruneSeen(seen) { const today = iso(startOfToday()); for (const k of Ob
       await Promise.all(jobs);
     }
     else if (a.includes('--hunt')) await hunt();
+    else if (a.includes('--seed')) await seed();
     else if (a.includes('--tick')) await tick();
     else if (a.includes('--arm')) await arm();
     else if (a.includes('--once') || a.includes('--scan')) await once();

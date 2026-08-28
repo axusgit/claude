@@ -40,12 +40,16 @@ export function QuoteBuilder() {
   const [phone, setPhone] = useState("");
   const [salesperson, setSalesperson] = useState("JMK");
   const [job, setJob] = useState("");
-  const [shipping, setShipping] = useState("Ground");
+  const [shipping, setShipping] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("Net30");
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState(plusDaysStr(30));
   const [tax, setTax] = useState("EXEMPT");
+  const [notes, setNotes] = useState("");
   const [items, setItems] = useState<QuoteItem[]>([emptyItem()]);
+  // Edit an existing DRAFT quote in place (regenerate, no new envelope).
+  const edit = params.get("edit");
+  const [quoteNumber, setQuoteNumber] = useState("");
 
   useEffect(() => {
     companiesApi.list().then(setCompanies).catch(() => {});
@@ -104,6 +108,36 @@ export function QuoteBuilder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from]);
 
+  // Edit mode: load the FULL quote back into the builder (keeps quote number,
+  // client, and all per-deal fields) so a save regenerates the SAME quote.
+  useEffect(() => {
+    if (!edit) return;
+    api
+      .getEnvelope(edit)
+      .then((d) => {
+        const q = d.envelope.quote_data;
+        if (!q) return;
+        setQuoteNumber(q.quote_number ?? "");
+        if (q.quote_date) setQuoteDate(q.quote_date);
+        if (q.valid_until) setValidUntil(q.valid_until);
+        setCompany(q.customer?.company ?? "");
+        setContact(q.customer?.contact ?? "");
+        setAddress(q.customer?.address ?? "");
+        setPhone(q.customer?.phone ?? "");
+        if (q.salesperson) setSalesperson(q.salesperson);
+        if (q.job) setJob(q.job);
+        if (q.shipping_method) setShipping(q.shipping_method);
+        if (q.delivery_date) setDeliveryDate(q.delivery_date);
+        if (q.payment_terms) setPaymentTerms(q.payment_terms);
+        if (q.due_date) setDueDate(q.due_date);
+        if (q.tax) setTax(q.tax);
+        setNotes(q.notes ?? "");
+        setItems(q.items && q.items.length ? q.items.map((it) => ({ ...it })) : [emptyItem()]);
+      })
+      .catch(() => setError("Could not load this quote for editing."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit]);
+
   function selectCompany(name: string) {
     setCompany(name);
     const co = companies.find((c) => c.name === name);
@@ -118,10 +152,11 @@ export function QuoteBuilder() {
   function setItem(i: number, patch: Partial<QuoteItem>) {
     setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   }
+  // Discount is per-unit (comes off the unit price), so it scales with quantity.
   const lineTotal = (it: QuoteItem) =>
-    (Number(it.qty) || 0) * (Number(it.unit_price) || 0) - (Number(it.discount) || 0);
+    (Number(it.qty) || 0) * ((Number(it.unit_price) || 0) - (Number(it.discount) || 0));
   const subtotal = items.reduce((s, it) => s + lineTotal(it), 0);
-  const totalDiscount = items.reduce((s, it) => s + (Number(it.discount) || 0), 0);
+  const totalDiscount = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.discount) || 0), 0);
   const taxExempt = !tax || /exempt/i.test(tax);
   const total = subtotal + (taxExempt ? 0 : Number(tax) || 0);
 
@@ -133,8 +168,8 @@ export function QuoteBuilder() {
     setGenerating(true);
     setError(null);
     try {
-      const env = await quotesApi.create(`${company.trim()} Quote`, {
-        quote_number: "",
+      const quote = {
+        quote_number: edit ? quoteNumber : "",
         quote_date: quoteDate,
         valid_until: validUntil || undefined,
         customer: {
@@ -151,10 +186,14 @@ export function QuoteBuilder() {
         due_date: dueDate,
         items: items.filter((it) => it.item.trim() || it.description.trim()),
         tax,
-      });
+        notes: notes.trim() || undefined,
+      };
+      const env = edit
+        ? await quotesApi.update(edit, `${company.trim()} Quote`, quote)
+        : await quotesApi.create(`${company.trim()} Quote`, quote);
       nav(`/envelopes/${env.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to generate the quote");
+      setError(e instanceof Error ? e.message : `Failed to ${edit ? "save" : "generate"} the quote`);
     } finally {
       setGenerating(false);
     }
@@ -191,19 +230,21 @@ export function QuoteBuilder() {
         <button onClick={() => nav("/")} className="text-muted hover:text-ink">
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-xl font-semibold">New Quote</h1>
-        <div className="ml-auto flex items-center gap-2">
-          <a
-            href={quotesApi.templateUrl()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-medium text-muted hover:text-ink"
-            title="Download a blank Axus quote template to fill in"
-          >
-            <Download className="h-4 w-4" /> Quote template
-          </a>
-          <Button variant="outline" onClick={() => void createForUpload()} disabled={creatingUpload}>
-            <FileUp className="h-4 w-4" /> {creatingUpload ? "Opening…" : "Upload a ready quote"}
-          </Button>
-        </div>
+        <h1 className="text-xl font-semibold">{edit ? "Edit Quote" : "New Quote"}</h1>
+        {!edit && (
+          <div className="ml-auto flex items-center gap-2">
+            <a
+              href={quotesApi.templateUrl()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-medium text-muted hover:text-ink"
+              title="Download a blank Axus quote template to fill in"
+            >
+              <Download className="h-4 w-4" /> Quote template
+            </a>
+            <Button variant="outline" onClick={() => void createForUpload()} disabled={creatingUpload}>
+              <FileUp className="h-4 w-4" /> {creatingUpload ? "Opening…" : "Upload a ready quote"}
+            </Button>
+          </div>
+        )}
       </div>
       <p className="text-xs text-muted">
         Build the quote below, or — if a salesperson already prepared one — pick the company and click
@@ -313,7 +354,7 @@ export function QuoteBuilder() {
                 <th className="px-2 py-2 font-medium">Item #</th>
                 <th className="px-2 py-2 font-medium">Description</th>
                 <th className="px-2 py-2 font-medium">Unit Price</th>
-                <th className="px-2 py-2 font-medium">Discount</th>
+                <th className="px-2 py-2 font-medium">Disc./unit</th>
                 <th className="px-2 py-2 text-right font-medium">Line Total</th>
                 <th></th>
               </tr>
@@ -394,12 +435,27 @@ export function QuoteBuilder() {
         </div>
       </Card>
 
+      <Card className="p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <label className="text-xs font-semibold uppercase tracking-wide text-muted">Notes</label>
+          <span className="text-xs text-muted">{notes.length}/500</span>
+        </div>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value.slice(0, 500))}
+          maxLength={500}
+          rows={3}
+          className={field}
+          placeholder="Optional notes shown on the quote, above “Thank you for your business.” (max 500 characters)"
+        />
+      </Card>
+
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => nav("/")}>
           Cancel
         </Button>
         <Button onClick={() => void generate()} disabled={generating || !company.trim()}>
-          {generating ? "Generating…" : "Generate quote"}
+          {generating ? "Saving…" : edit ? "Save changes" : "Generate quote"}
         </Button>
       </div>
     </div>

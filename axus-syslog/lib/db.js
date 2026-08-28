@@ -16,6 +16,13 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
+// The table is multi-GB (millions of rows). Without these, every dashboard
+// aggregate re-reads pages from disk via pread syscalls and the small default
+// cache thrashes — making stats/host queries take many seconds. mmap lets SQLite
+// read the file straight from the OS page cache; the larger cache keeps hot
+// index/data pages resident. Both are per-connection and must be set on open.
+db.pragma('mmap_size = 1073741824'); // 1 GB memory-mapped I/O
+db.pragma('cache_size = -131072');   // 128 MB page cache (negative = KiB)
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS messages (
@@ -37,12 +44,53 @@ CREATE INDEX IF NOT EXISTS idx_msg_host     ON messages(host);
 CREATE INDEX IF NOT EXISTS idx_msg_severity ON messages(severity);
 CREATE INDEX IF NOT EXISTS idx_msg_source   ON messages(source_ip);
 CREATE INDEX IF NOT EXISTS idx_msg_facility ON messages(facility);
+-- Covering index for the "top hosts in the last 24h" widget: lets the GROUP BY
+-- run as an index-only range scan (ts>=cutoff) instead of touching millions of
+-- rows to read host/source_ip. Cuts that query from ~8s to ~1s.
+CREATE INDEX IF NOT EXISTS idx_msg_ts_host_src ON messages(ts, host, source_ip);
 
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- Distinct sources/hosts, maintained incrementally so the filter dropdowns don't
+-- need a full-table DISTINCT scan (which was ~16s at 5M+ rows). Upserted on every
+-- flush; stale entries pruned alongside message retention.
+CREATE TABLE IF NOT EXISTS sources (
+  name    TEXT PRIMARY KEY,
+  last_ts INTEGER
+);
+
+-- Monitored devices: per-device dead-man detection. Each device is matched against
+-- incoming messages by a rule (source_ip / host / contains); if no matching message
+-- arrives within interval_sec, it's considered offline and an alert fires (with a
+-- recovery alert when it returns). last_seen_ts + state are persisted so a service
+-- restart doesn't reset the clock or re-fire an already-notified down state.
+CREATE TABLE IF NOT EXISTS monitored_devices (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  name          TEXT NOT NULL,
+  match_type    TEXT NOT NULL DEFAULT 'contains',  -- 'source_ip' | 'host' | 'contains'
+  match_value   TEXT NOT NULL,
+  interval_sec  INTEGER NOT NULL DEFAULT 300,
+  enabled       INTEGER NOT NULL DEFAULT 1,
+  last_seen_ts  INTEGER,
+  state         TEXT NOT NULL DEFAULT 'unknown',   -- 'up' | 'down' | 'unknown'
+  down_notified INTEGER NOT NULL DEFAULT 0,
+  created_ts    INTEGER
+);
 `);
+
+// Separate READ-ONLY connection used only for long-running streamed exports.
+// better-sqlite3 is one-statement-per-connection: an open export cursor makes the
+// whole connection "busy", so streaming a large export off the MAIN connection
+// blocks every insert-flush and retention prune for the entire download (minutes,
+// for a mult-hundred-MB CSV). In WAL mode a second connection reads a consistent
+// snapshot concurrently while the main connection keeps writing — so exports can
+// never stall ingest. Writes still go only through `db`.
+const dbRead = new Database(DB_PATH, { readonly: true });
+dbRead.pragma('mmap_size = 1073741824');
+dbRead.pragma('cache_size = -131072');
 
 // --- key/value settings (retention, etc.) ---
 function getSetting(key) {
@@ -62,9 +110,39 @@ const insertStmt = db.prepare(`
     (@ts, @eventTs, @sourceIp, @host, @facility, @severity, @app, @procid, @msgid, @message, @raw)
 `);
 
+// Keep the `sources` lookup table current as rows land. COALESCE(host, source_ip)
+// mirrors what the dropdowns show; we bump last_ts so retention can drop sources
+// that no longer have any messages.
+const upsertSourceStmt = db.prepare(`
+  INSERT INTO sources(name, last_ts) VALUES(@name, @ts)
+  ON CONFLICT(name) DO UPDATE SET last_ts = excluded.last_ts
+  WHERE excluded.last_ts > sources.last_ts
+`);
+
 const insertMany = db.transaction((rows) => {
-  for (const r of rows) insertStmt.run(r);
+  for (const r of rows) {
+    insertStmt.run(r);
+    const name = r.host || r.sourceIp;
+    if (name) upsertSourceStmt.run({ name, ts: r.ts });
+  }
 });
+
+// One-time backfill: if the sources table is empty but messages exist (first run
+// after this feature ships), populate it from the existing data.
+function backfillSources() {
+  const have = db.prepare('SELECT 1 FROM sources LIMIT 1').get();
+  if (have) return;
+  const anyMsg = db.prepare('SELECT 1 FROM messages LIMIT 1').get();
+  if (!anyMsg) return;
+  db.prepare(`
+    INSERT OR IGNORE INTO sources(name, last_ts)
+    SELECT COALESCE(host, source_ip) AS name, MAX(ts)
+    FROM messages
+    WHERE COALESCE(host, source_ip) IS NOT NULL
+    GROUP BY name
+  `).run();
+}
+backfillSources();
 
 let buffer = [];
 
@@ -127,7 +205,9 @@ function query(opts = {}) {
 function iterate(opts = {}, order = 'asc') {
   const { clause, params } = buildFilter(opts);
   const dir = order === 'desc' ? 'DESC' : 'ASC';
-  return db
+  // Runs on the dedicated read-only connection so a long export never holds the
+  // main connection's cursor (which would block ingest flushes + retention).
+  return dbRead
     .prepare(`SELECT * FROM messages ${clause} ORDER BY id ${dir}`)
     .iterate(params);
 }
@@ -176,11 +256,11 @@ function stats() {
   return { total, last24, lastHour, bySeverity, topHosts, oldest };
 }
 
-// Distinct sources/hosts for the filter dropdowns.
+// Distinct sources/hosts for the filter dropdowns — served from the maintained
+// `sources` table (tiny) instead of a full-table DISTINCT scan over every message.
 function facets() {
   const hosts = db
-    .prepare(`SELECT DISTINCT COALESCE(host, source_ip) AS name FROM messages
-              WHERE name IS NOT NULL ORDER BY name LIMIT 500`)
+    .prepare('SELECT name FROM sources WHERE name IS NOT NULL ORDER BY name LIMIT 500')
     .all()
     .map((r) => r.name);
   return { hosts };
@@ -205,8 +285,68 @@ function prune({ retentionDays = 0, retentionMs = 0, maxRows = 0 } = {}) {
         .run(excess).changes;
     }
   }
-  if (deleted > 0) db.pragma('wal_checkpoint(TRUNCATE)');
+  if (deleted > 0) {
+    // Drop sources whose newest message has now aged out, so the dropdown doesn't
+    // accumulate hosts that no longer have any logs. (Cheap: `sources` is small.)
+    const oldest = db.prepare('SELECT MIN(ts) AS t FROM messages').get().t;
+    if (oldest != null) db.prepare('DELETE FROM sources WHERE last_ts < ?').run(oldest);
+    db.pragma('wal_checkpoint(TRUNCATE)');
+  }
   return deleted;
+}
+
+// --- monitored devices (per-device dead-man) ---
+function listDevices() {
+  return db.prepare('SELECT * FROM monitored_devices ORDER BY id ASC').all();
+}
+function getDevice(id) {
+  return db.prepare('SELECT * FROM monitored_devices WHERE id = ?').get(Number(id));
+}
+function createDevice({ name, matchType, matchValue, intervalSec, enabled }) {
+  const info = db.prepare(`
+    INSERT INTO monitored_devices(name, match_type, match_value, interval_sec, enabled, state, created_ts)
+    VALUES(@name, @matchType, @matchValue, @intervalSec, @enabled, 'unknown', @now)
+  `).run({
+    name, matchType, matchValue,
+    intervalSec: Number(intervalSec) || 300,
+    enabled: enabled ? 1 : 0,
+    now: Date.now(),
+  });
+  return getDevice(info.lastInsertRowid);
+}
+function updateDevice(id, fields) {
+  const cur = getDevice(id);
+  if (!cur) return null;
+  const merged = {
+    name: fields.name != null ? fields.name : cur.name,
+    match_type: fields.matchType != null ? fields.matchType : cur.match_type,
+    match_value: fields.matchValue != null ? fields.matchValue : cur.match_value,
+    interval_sec: fields.intervalSec != null ? Number(fields.intervalSec) : cur.interval_sec,
+    enabled: fields.enabled != null ? (fields.enabled ? 1 : 0) : cur.enabled,
+  };
+  db.prepare(`
+    UPDATE monitored_devices
+    SET name=@name, match_type=@match_type, match_value=@match_value,
+        interval_sec=@interval_sec, enabled=@enabled
+    WHERE id=@id
+  `).run({ ...merged, id: Number(id) });
+  return getDevice(id);
+}
+function deleteDevice(id) {
+  return db.prepare('DELETE FROM monitored_devices WHERE id = ?').run(Number(id)).changes;
+}
+// Persist runtime state (last_seen_ts / state / down_notified) for one device.
+function saveDeviceState(id, { lastSeenTs, state, downNotified }) {
+  db.prepare(`
+    UPDATE monitored_devices
+    SET last_seen_ts=@lastSeenTs, state=@state, down_notified=@downNotified
+    WHERE id=@id
+  `).run({
+    id: Number(id),
+    lastSeenTs: lastSeenTs != null ? Number(lastSeenTs) : null,
+    state: state || 'unknown',
+    downNotified: downNotified ? 1 : 0,
+  });
 }
 
 // Total on-disk size of the log store (main DB + WAL + shared-memory files).
@@ -232,5 +372,11 @@ module.exports = {
   setSetting,
   archivableDays,
   deleteRange,
+  listDevices,
+  getDevice,
+  createDevice,
+  updateDevice,
+  deleteDevice,
+  saveDeviceState,
   DB_PATH,
 };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Archive, Check, Circle, Copy, Download, FileSignature, HardDrive, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Archive, Check, Circle, Copy, Download, FilePen, FileSignature, HardDrive, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
@@ -89,6 +89,7 @@ export function EnvelopeList() {
   const [docType, setDocType] = useState("SOW");
   const [company, setCompany] = useState("");
   const [docNumber, setDocNumber] = useState("");
+  const isCoc = docType === "Certificate of Completion";
   const [companies, setCompanies] = useState<Company[]>([]);
   const [editDoc, setEditDoc] = useState<Envelope | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -128,6 +129,7 @@ export function EnvelopeList() {
 
   async function create() {
     if (!company.trim()) return;
+    if (isCoc && !docNumber.trim()) return; // Document Number is required for a COC
     if (docType === "Quote") {
       nav(`/quotes/new?company=${encodeURIComponent(company.trim())}`);
       return;
@@ -268,15 +270,16 @@ export function EnvelopeList() {
             <Button
               className="w-fit"
               onClick={() => void create()}
-              disabled={!company.trim()}
+              disabled={!company.trim() || (isCoc && !docNumber.trim())}
             >
               {docType === "Quote" || TEMPLATE_TYPES.includes(docType) ? "Continue" : "Create & open"}
             </Button>
           </div>
-          {docType === "Certificate of Completion" && (
+          {isCoc && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">
-                Document Number <span className="font-normal text-muted">(optional — the referenced agreement #)</span>
+                Document Number <span className="text-brand">*</span>
+                <span className="ml-1 font-normal text-muted">(the referenced agreement #; required)</span>
               </label>
               <Input
                 placeholder="e.g. PCHG-2025-SAL-002-1.0"
@@ -418,6 +421,18 @@ export function EnvelopeList() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">
+                      {e.doc_type === "Quote" && e.status === "draft" && (
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            nav(`/quotes/new?edit=${e.id}`);
+                          }}
+                          className="text-muted hover:text-brand"
+                          title="Edit this quote (regenerate without creating a new one)"
+                        >
+                          <FilePen className="h-4 w-4" />
+                        </button>
+                      )}
                       {e.doc_type === "Quote" && (
                         <button
                           onClick={(ev) => {

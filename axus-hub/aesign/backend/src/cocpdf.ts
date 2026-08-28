@@ -1,8 +1,7 @@
-// Axus Certificate of Completion (a.k.a. "Project Completion Certification Form")
-// — project close-out template, generated on the Axus letterhead. Based on the
-// real Premier Community HealthCare form. TWO signers: the Customer (recipient 1)
-// and Axus Technologies (recipient 2); each signature block is auto-anchored by
-// the e-sign editor. The signature blocks sit on their own final page at FIXED
+// Axus Certificate of Completion (project close-out) — ONE-PAGE template,
+// generated on the Axus letterhead. Condensed from the real Premier Community
+// HealthCare form. TWO signers: the Customer (recipient 1) and Axus Technologies
+// (recipient 2); their signature blocks sit SIDE BY SIDE at the bottom at FIXED
 // positions, so the frontend hardcodes a matching COC_LAYOUT (see EnvelopeEditor).
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb, type Color } from "pdf-lib";
 import { readFile } from "node:fs/promises";
@@ -16,7 +15,6 @@ const W = 612;
 const H = 792;
 const M = 56;
 const TOP_SAFE = 150; // below the letterhead logo band
-const BOT_SAFE = 700; // above the letterhead footer
 
 export interface CocData {
   company?: string; // Customer company (stamped in)
@@ -39,10 +37,10 @@ export async function generateCocPdf(
     /* letterhead optional */
   }
 
+  const page = pdf.addPage([W, H]);
+  if (letter) page.drawImage(letter, { x: 0, y: 0, width: W, height: H });
+
   const T = (topY: number) => H - topY;
-  const drawBg = (pg: PDFPage) => {
-    if (letter) pg.drawImage(letter, { x: 0, y: 0, width: W, height: H });
-  };
   const wrap = (raw: string, font: PDFFont, size: number, maxW: number): string[] => {
     const words = String(raw ?? "").split(/\s+/);
     const lines: string[] = [];
@@ -59,120 +57,91 @@ export async function generateCocPdf(
   };
 
   const company = d.company?.trim() || "the Customer";
-  const docNo = d.docNumber?.trim() || "____________________________";
 
-  // ---- Flowing body with letterhead-aware pagination ----
-  let page = pdf.addPage([W, H]);
-  drawBg(page);
-  let y = TOP_SAFE; // baseline distance from top
+  // ---- Heading + date ----
+  page.drawText("Certificate of Completion", { x: M, y: T(TOP_SAFE + 8), size: 18, font: bold, color: rgb(0.09, 0.11, 0.15) });
+  page.drawText(d.dateLong || "", { x: M, y: T(TOP_SAFE + 26), size: 9.5, font: helv, color: MUTED });
 
-  const ensure = (space: number) => {
-    if (y + space > BOT_SAFE) {
-      page = pdf.addPage([W, H]);
-      drawBg(page);
-      y = TOP_SAFE;
-    }
-  };
-  const para = (
-    text: string,
-    o: { size?: number; font?: PDFFont; color?: Color; lead?: number; after?: number; indent?: number } = {},
-  ) => {
-    const size = o.size ?? 9.8;
-    const font = o.font ?? helv;
-    const lead = o.lead ?? size + 3.4;
+  // ---- Condensed body ----
+  let y = TOP_SAFE + 48;
+  const SZ = 9.4;
+  const LEAD = SZ + 3;
+  const para = (text: string, o: { indent?: number; after?: number; lead?: number } = {}) => {
     const indent = o.indent ?? 0;
-    for (const ln of wrap(text, font, size, W - 2 * M - indent)) {
-      ensure(lead);
-      page.drawText(ln, { x: M + indent, y: T(y), size, font, color: o.color ?? INK });
-      y += lead;
+    for (const ln of wrap(text, helv, SZ, W - 2 * M - indent)) {
+      page.drawText(ln, { x: M + indent, y: T(y), size: SZ, font: helv, color: INK });
+      y += o.lead ?? LEAD;
     }
-    y += o.after ?? 6;
+    y += o.after ?? 5;
   };
 
-  // Heading + date
-  page.drawText("Certificate of Completion", { x: M, y: T(y + 8), size: 20, font: bold, color: rgb(0.09, 0.11, 0.15) });
-  y += 30;
-  page.drawText(d.dateLong || "", { x: M, y: T(y), size: 10, font: helv, color: MUTED });
-  y += 22;
-
+  // Document Number is entered by Axus staff and BAKED into the document (never a
+  // signer field — the Customer must never fill or edit it). Required before send.
+  const docNo = d.docNumber?.trim() || "________________";
   para(
-    `This Project Completion Certification Form (the "Form") serves as formal acknowledgment and certification regarding the completion of the aforementioned project (the "Project") undertaken by Axus Technologies (the "Provider") pursuant to the terms and conditions set forth in the original Proposal Agreement bearing Document Number: ${docNo} (the "Agreement"), as may have been amended or supplemented by any duly executed change orders (collectively, the "Change Orders").`,
-    { after: 8 },
+    `This Certificate of Completion (the "Certificate") certifies that Axus Technologies (the "Provider") has completed the project (the "Project") performed for ${company} (the "Customer") under the Proposal Agreement bearing Document Number: ${docNo} (the "Agreement"), together with any duly executed change orders (the "Change Orders").`,
+    { after: 6 },
   );
-  para(
-    `By signing this Form, you, representing ${company} (the "Customer"), certify, represent, and warrant the following:`,
-    { after: 8 },
-  );
+  para(`By signing below, the Customer certifies, represents, and warrants that:`, { after: 6 });
 
   const points = [
-    "That the Provider has fully and satisfactorily performed, delivered, and completed all obligations, deliverables, milestones, and services outlined in the Agreement and any applicable Change Orders, in accordance with the specifications, timelines, and quality standards therein specified;",
-    "That the Customer has inspected, tested, and accepted all such deliverables and services, and that no material defects, deficiencies, or outstanding issues remain unresolved as of the date of execution hereof;",
-    "That the Project is deemed complete in its entirety, and the Customer hereby releases the Provider from any further performance obligations under the Agreement and Change Orders, subject to any surviving warranties, indemnities, or post-completion obligations expressly provided therein;",
-    "That any requests for additional work, modifications, enhancements, or services beyond the scope of the Agreement and Change Orders, whether arising subsequent to the execution of this Form or otherwise, shall not be considered part of the Project and must be negotiated and formalized through a separate, new proposal agreement executed by both parties.",
+    "The Provider has fully and satisfactorily performed and completed all obligations, deliverables, milestones, and services under the Agreement and any Change Orders, in accordance with the specifications, timelines, and quality standards specified therein;",
+    "The Customer has inspected, tested, and accepted all such deliverables and services, and no material defects, deficiencies, or outstanding issues remain unresolved as of the date of execution;",
+    "The Project is complete in its entirety, and the Customer releases the Provider from any further performance obligations under the Agreement and Change Orders, subject to any surviving warranties, indemnities, or post-completion obligations expressly provided therein; and",
+    "Any additional work, modifications, or services beyond the scope of the Agreement and Change Orders must be negotiated and formalized through a separate, new proposal agreement executed by both parties.",
   ];
   points.forEach((p, i) => {
-    ensure(9.8 + 3.4);
-    page.drawText(`(${"abcd"[i]})`, { x: M, y: T(y), size: 9.8, font: bold, color: ORANGE });
-    para(p, { indent: 24, after: 7 });
+    page.drawText(`(${"abcd"[i]})`, { x: M, y: T(y), size: SZ, font: bold, color: ORANGE });
+    para(p, { indent: 22, after: 5 });
   });
 
   para(
-    "This Form shall be governed by the laws of the jurisdiction specified in the Agreement, without regard to conflict of laws principles. Execution of this Form constitutes a binding and enforceable agreement, and the Customer acknowledges that it has had the opportunity to review this Form and seek independent legal advice if desired.",
+    "This Certificate is governed by the laws specified in the Agreement and constitutes a binding and enforceable agreement. The Customer acknowledges that it has had the opportunity to review this Certificate and to seek independent legal advice.",
     { after: 4 },
   );
 
-  // ================= SIGNATURES (own final page; two signers) =================
-  const sig = pdf.addPage([W, H]);
-  drawBg(sig);
-  const sigPage = pdf.getPageCount(); // 1-based number of the signature page
-  const putS = (s: string, x: number, topY: number, o: { size?: number; bold?: boolean; color?: Color } = {}) =>
-    sig.drawText(String(s ?? ""), { x, y: T(topY), size: o.size ?? 11, font: o.bold ? bold : helv, color: o.color ?? INK });
+  // ================= SIGNATURES (side by side, fixed positions) =================
+  const sigTop = 566; // fixed top of the signature area
+  page.drawText("Executed by the parties as of the date written below.", { x: M, y: T(sigTop - 16), size: 9.5, font: helv, color: MUTED });
 
-  const SIG_LINE = "Signature: ______________________________";
-  const NAME_LINE = "Print Name: ______________________________";
-  const TITLE_LINE = "Title: ______________________________";
-  const DATE_LINE = "Date: ______________________________";
-  const wAt = (s: string) => helv.widthOfTextAtSize(s, 11);
-  const rect = (type: SignField["type"], label: string, full: string, baseY: number): SignField => {
-    const x0 = M + wAt(label);
-    const x1 = M + wAt(full);
-    return {
-      type,
-      page: sigPage,
-      x: +(x0 / W).toFixed(4),
-      y: +((baseY - 15) / H).toFixed(4),
-      w: +((x1 - x0) / W).toFixed(4),
-      h: +(17 / H).toFixed(4),
-    };
+  const colW = 236;
+  const leftX = M; // 56
+  const rightX = M + colW + 28; // 320
+  const wAt = (s: string) => helv.widthOfTextAtSize(s, 10);
+
+  // One signature block (heading + 4 labelled underlines). Returns the signer slot.
+  const block = (role: string, heading: string, x0: number): SignSlot => {
+    const xEnd = x0 + colW;
+    page.drawText(heading, { x: x0, y: T(sigTop), size: 10.5, font: bold, color: rgb(0.09, 0.11, 0.15) });
+    const rows: { label: string; type: SignField["type"] }[] = [
+      { label: "Signature:", type: "signature" },
+      { label: "Print Name:", type: "name" },
+      { label: "Title:", type: "title" },
+      { label: "Date:", type: "date" },
+    ];
+    const fields: SignField[] = [];
+    let ry = sigTop + 26;
+    for (const r of rows) {
+      page.drawText(r.label, { x: x0, y: T(ry), size: 10, font: helv, color: INK });
+      const fx = x0 + wAt(r.label) + 6;
+      page.drawLine({ start: { x: fx, y: T(ry) - 2 }, end: { x: xEnd, y: T(ry) - 2 }, thickness: 0.6, color: rgb(0.55, 0.57, 0.6) });
+      fields.push({
+        type: r.type,
+        page: 1,
+        x: +(fx / W).toFixed(4),
+        y: +((ry - 12) / H).toFixed(4),
+        w: +((xEnd - fx) / W).toFixed(4),
+        h: +(15 / H).toFixed(4),
+      });
+      ry += 22;
+    }
+    return { role, fields };
   };
 
-  // A signature block: heading + 4 underscore lines. Returns the signer-field slot.
-  const block = (role: string, heading: string, topY: number): SignSlot => {
-    putS(heading, M, topY, { size: 11, bold: true, color: rgb(0.09, 0.11, 0.15) });
-    const sy = topY + 26;
-    const ny = sy + 26;
-    const ty = ny + 26;
-    const dy = ty + 26;
-    putS(SIG_LINE, M, sy);
-    putS(NAME_LINE, M, ny);
-    putS(TITLE_LINE, M, ty);
-    putS(DATE_LINE, M, dy);
-    return {
-      role,
-      fields: [
-        rect("signature", "Signature: ", SIG_LINE, sy),
-        rect("name", "Print Name: ", NAME_LINE, ny),
-        rect("title", "Title: ", TITLE_LINE, ty),
-        rect("date", "Date: ", DATE_LINE, dy),
-      ],
-    };
-  };
+  const customerSlot = block("Customer", company === "the Customer" ? "Customer" : company, leftX);
+  const axusSlot = block("Axus Technologies", "Axus Technologies", rightX);
 
-  putS("The parties have executed this Form as of the date written below.", M, TOP_SAFE, { size: 10, bold: false, color: MUTED });
-  const customerSlot = block("Customer", company === "the Customer" ? "Customer" : company, TOP_SAFE + 34);
-  const axusSlot = block("Axus Technologies", "Axus Technologies", TOP_SAFE + 190);
-
-  putS("Thank you for considering Axus for your IT needs.", M, TOP_SAFE + 350, { size: 11, bold: true, color: ORANGE });
+  page.drawText("Thank you for considering Axus for your IT needs.", { x: M, y: T(sigTop + 128), size: 10.5, font: bold, color: ORANGE });
 
   const layout: SignSlot[] = [customerSlot, axusSlot];
   return { bytes: await pdf.save(), layout };

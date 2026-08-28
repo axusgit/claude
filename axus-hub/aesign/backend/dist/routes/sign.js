@@ -5,12 +5,13 @@ import { pool } from "../db.js";
 import { config } from "../config.js";
 import { sealPdf } from "../seal.js";
 import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail.js";
+import { envelopeDocName } from "../docname.js";
 import { logActivity } from "./activity.js";
 // Seal the CURRENT state and email every participant a copy. On the last
 // signature it adds the certificate page, marks the envelope completed, and
 // stores the sealed file. Returns whether it's now fully complete.
 async function sealAndNotify(envId, signerName) {
-    const env = await pool.query(`select id, title, pdf_file, sequential, created_by from envelope where id = $1`, [envId]);
+    const env = await pool.query(`select id, title, pdf_file, sequential, created_by, doc_type, company, quote_data from envelope where id = $1`, [envId]);
     const e = env.rows[0];
     if (!e?.pdf_file)
         return false;
@@ -21,8 +22,7 @@ async function sealAndNotify(envId, signerName) {
     const allSigned = recs.rows.every((r) => r.status === "signed");
     logActivity(signerName, "Signed document", e.title, e.id);
     const { bytes, sha256 } = await sealPdf(join(config.storageDir, e.pdf_file), fields.rows, recs.rows, { title: e.title, envelopeId: e.id }, allSigned);
-    const safeName = e.title.replace(/[^a-z0-9\-_ ]/gi, "_").slice(0, 80) || "document";
-    const attachment = { filename: `${safeName}.pdf`, content: Buffer.from(bytes) };
+    const attachment = { filename: `${envelopeDocName(e)}.pdf`, content: Buffer.from(bytes) };
     if (allSigned) {
         const sealedName = `${envId}-sealed.pdf`;
         await writeFile(join(config.storageDir, sealedName), bytes);

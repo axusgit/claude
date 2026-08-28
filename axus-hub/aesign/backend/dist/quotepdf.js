@@ -64,7 +64,7 @@ export async function generateQuotePdf(d, opts = {}) {
         put(pg, "ITEM #", cx.item, top, { size: 7.5, bold: true, color: WHITE });
         put(pg, "DESCRIPTION", cx.desc, top, { size: 7.5, bold: true, color: WHITE });
         put(pg, "UNIT PRICE", cx.unit, top, { size: 7.5, bold: true, color: WHITE });
-        put(pg, "DISC.", cx.disc, top, { size: 7.5, bold: true, color: WHITE });
+        put(pg, "DISC/UNIT", cx.disc, top, { size: 7.5, bold: true, color: WHITE });
         put(pg, "LINE TOTAL", cx.total, top, { size: 7.5, bold: true, color: WHITE });
         return top + 14;
     };
@@ -94,8 +94,8 @@ export async function generateQuotePdf(d, opts = {}) {
         put(p1, l, tox, toy, { size: 9.5, color: tmpl ? MUTED : INK });
         toy += 12;
     }
-    // Details strip
-    const stripTop = TOP_SAFE + 70;
+    // Details strip — pushed ~1 inch (72pt) below the QUOTE / QUOTE TO header block.
+    const stripTop = TOP_SAFE + 142;
     const stripH = 34;
     const cols = [
         { h: "SALESPERSON", v: d.salesperson },
@@ -124,9 +124,10 @@ export async function generateQuotePdf(d, opts = {}) {
         const qty = Number(it.qty) || 0;
         const unit = Number(it.unit_price) || 0;
         const disc = Number(it.discount) || 0;
-        const lineTotal = qty * unit - disc;
+        // Discount is per-unit: it comes off the unit price, so it scales with qty.
+        const lineTotal = qty * (unit - disc);
         subtotal += lineTotal;
-        totalDisc += disc;
+        totalDisc += qty * disc;
         const descLines = wrap(it.description, helv, 8.5, cx.unit - cx.desc - 8);
         const rowH = Math.max(15, descLines.length * 10.5 + 5);
         // Break to a new page (redraw the table header) when the row won't fit.
@@ -169,7 +170,29 @@ export async function generateQuotePdf(d, opts = {}) {
     page.drawLine({ start: { x: labelX, y: T(qy) }, end: { x: W - M, y: T(qy) }, color: LINE, thickness: 0.7 });
     qy += 14;
     totRow("TOTAL", tmpl ? "" : money(total), true);
-    put(page, "Thank you for your business!", M, Math.min(qy + 16, BOT_SAFE), { size: 11, bold: true, color: ORANGE });
+    // Notes (optional, up to 500 chars) — sits between the totals and the thank-you.
+    let endY = qy + 16;
+    const notes = (d.notes ?? "").trim().slice(0, 500);
+    if (notes) {
+        if (endY + 42 > BOT_SAFE) {
+            page = pdf.addPage([W, H]);
+            drawBg(page);
+            endY = TOP_SAFE + 10;
+        }
+        put(page, "Notes:", M, endY, { size: 9, bold: true, color: MUTED });
+        endY += 14;
+        for (const l of wrap(notes, helv, 9, W - 2 * M)) {
+            if (endY + 12 > BOT_SAFE) {
+                page = pdf.addPage([W, H]);
+                drawBg(page);
+                endY = TOP_SAFE + 10;
+            }
+            put(page, l, M, endY, { size: 9, color: rgb(0.25, 0.27, 0.3) });
+            endY += 12;
+        }
+        endY += 10;
+    }
+    put(page, "Thank you for your business!", M, Math.min(endY, BOT_SAFE), { size: 11, bold: true, color: ORANGE });
     // ================= TERMS + SIGNATURE (own page) =================
     const p2 = pdf.addPage([W, H]);
     drawBg(p2);

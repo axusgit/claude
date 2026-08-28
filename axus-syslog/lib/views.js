@@ -194,6 +194,7 @@ function dashboardPage() {
 
   <div class="tabs">
     <button class="tab active" data-tab="messages">Messages</button>
+    <button class="tab" data-tab="devices">Devices</button>
     <button class="tab" data-tab="firewall">Firewall</button>
     <button class="tab" data-tab="watchdog">Watchdog</button>
   </div>
@@ -286,6 +287,51 @@ function dashboardPage() {
   </div>
   </div><!-- /panel-messages -->
 
+  <div class="panel" id="panel-devices">
+  <div class="card">
+    <h2 style="margin:0 0 4px">Monitored devices</h2>
+    <p class="muted" style="margin:0 0 8px">Get alerted (ntfy push + email) when a specific device <strong>stops sending syslog</strong>. Each device is matched against incoming logs by a rule; if nothing matches within its check window, it's flagged offline, and a recovery alert fires when it returns.</p>
+    <p class="muted" id="devChannels" style="margin:0 0 16px"></p>
+    <div id="devFlash"></div>
+    <div class="row" style="align-items:end;flex-wrap:wrap;gap:10px;max-width:900px">
+      <div style="flex:2;min-width:150px"><label>Device name</label>
+        <input type="text" id="devName" placeholder="e.g. Front desk phone (x5100)" maxlength="80"></div>
+      <div style="flex:1;min-width:130px"><label>Match by</label>
+        <select id="devType">
+          <option value="contains">Message contains</option>
+          <option value="source_ip">Source IP</option>
+          <option value="host">Host</option>
+        </select></div>
+      <div style="flex:2;min-width:150px"><label>Value</label>
+        <input type="text" id="devValue" placeholder="e.g. 5100@ or 192.168.19.179" maxlength="120"></div>
+      <div style="flex:1;min-width:120px"><label>Offline after</label>
+        <select id="devInterval">
+          <option value="120">2 minutes</option>
+          <option value="300" selected>5 minutes</option>
+          <option value="600">10 minutes</option>
+          <option value="900">15 minutes</option>
+          <option value="1800">30 minutes</option>
+          <option value="3600">1 hour</option>
+        </select></div>
+      <div style="flex:0"><button class="btn" id="devAdd">Add device</button></div>
+    </div>
+    <div class="logwrap" style="margin-top:14px">
+      <table class="log" style="font-family:Inter,sans-serif;font-size:13px">
+        <thead><tr>
+          <th style="width:90px">Status</th>
+          <th>Device</th>
+          <th style="width:230px">Match rule</th>
+          <th style="width:110px">Offline after</th>
+          <th style="width:150px">Last seen</th>
+          <th style="width:150px"></th>
+        </tr></thead>
+        <tbody id="devRows"></tbody>
+      </table>
+      <div class="empty" id="devEmpty" style="display:none">No monitored devices yet. Add one above.</div>
+    </div>
+  </div>
+  </div><!-- /panel-devices -->
+
   <div class="panel" id="panel-firewall">
   <div class="card">
     <h2>Firewall — allowed syslog sources (UDP ${esc(String(process.env.SYSLOG_UDP_PORT || 514))})</h2>
@@ -340,9 +386,11 @@ function dashboardPage() {
     </div>
     <div class="btnbar">
       <button class="btn" id="wdSave">Save</button>
-      <button class="btn ghost" id="wdTest" title="Send a test notification to your ntfy topic">Send test alert</button>
+      <button class="btn ghost" id="wdTest" title="Send a test notification to your ntfy topic">Send test push</button>
+      <button class="btn ghost" id="wdTestEmail" title="Send a test email to the configured recipients">Send test email</button>
     </div>
     <p class="muted" id="wdStatus" style="margin:16px 0 0"></p>
+    <p class="muted" id="wdChannels" style="margin:8px 0 0"></p>
   </div>
 
   <div class="card">
@@ -562,6 +610,13 @@ async function loadWatchdog(){
   if(!d.topicConfigured)st+=' ⚠ No ntfy topic configured — alerts cannot be sent.';
   $('wdStatus').textContent=st;
 }
+$('wdTestEmail').onclick=async()=>{
+  $('wdTestEmail').disabled=true; wdFlash('Sending test email…',true);
+  let d={}; try{const res=await fetch('/api/alert/test-email',{method:'POST'});d=await res.json().catch(()=>({}));d._ok=res.ok;}catch(e){d={error:e.message};}
+  $('wdTestEmail').disabled=false;
+  if(d._ok)wdFlash('Test email sent ✓ — check your inbox.',true);
+  else wdFlash('Email test failed: '+(d.error||'unknown'),false);
+};
 $('wdSave').onclick=async()=>{
   const enabled=$('wdEnabled').checked, sec=Number($('wdSec').value);
   const res=await fetch('/api/watchdog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled,sec})});
@@ -591,6 +646,62 @@ $('clRun').onclick=async()=>{
   else clFlash(d.error||'Clear failed',false);
 };
 
+// ---- monitored devices ----
+function devFlash(msg,ok){$('devFlash').innerHTML='<div class="flash '+(ok?'':'err')+'" style="'+(ok?'background:#f0fdf4;border:1px solid #bbf7d0;color:#166534':'')+'">'+esc(msg)+'</div>';if(ok)setTimeout(()=>{$('devFlash').innerHTML='';},4000);}
+function devAgo(sec){if(sec==null)return 'never';if(sec<90)return sec+'s ago';if(sec<5400)return Math.round(sec/60)+'m ago';return Math.round(sec/3600)+'h ago';}
+function devBadge(state){
+  const m={up:['Online','s6'],down:['OFFLINE','s2'],disabled:['Disabled','s7'],unknown:['—','s7']};
+  const b=m[state]||m.unknown; return '<span class="sev '+b[1]+'">'+b[0]+'</span>';
+}
+function devTypeLabel(t){return t==='source_ip'?'Source IP':t==='host'?'Host':'contains';}
+function renderDevices(data){
+  const ch=data.channels||{}; const to=(data.emailTo||[]).join(', ');
+  $('devChannels').innerHTML='Alert channels: <strong>'+(ch.ntfy?'ntfy ✓':'ntfy ✗')+'</strong> · <strong>'+
+    (ch.email?('email ✓'+(to?' ('+esc(to)+')':'')):'email ✗ (not configured)')+'</strong>';
+  const list=data.devices||[];
+  $('devEmpty').style.display=list.length?'none':'block';
+  const rows=$('devRows');
+  rows.innerHTML=list.map(d=>{
+    const mins=d.intervalSec>=3600?(d.intervalSec/3600)+'h':(d.intervalSec>=60?(d.intervalSec/60)+'m':d.intervalSec+'s');
+    const seen=d.lastSeenTs?esc(fmtTime(d.lastSeenTs))+' ('+devAgo(d.quietSec)+')':'never';
+    return '<tr>'+
+      '<td>'+devBadge(d.state)+'</td>'+
+      '<td style="font-weight:600">'+esc(d.name)+'</td>'+
+      '<td class="muted">'+esc(devTypeLabel(d.matchType))+': <code>'+esc(d.matchValue)+'</code></td>'+
+      '<td class="muted">'+mins+'</td>'+
+      '<td class="muted">'+seen+'</td>'+
+      '<td>'+
+        '<button class="btn ghost sm" data-tog="'+d.id+'">'+(d.enabled?'Disable':'Enable')+'</button> '+
+        '<button class="btn danger sm" data-del="'+d.id+'">Delete</button>'+
+      '</td></tr>';
+  }).join('');
+  rows.querySelectorAll('button[data-del]').forEach(b=>b.onclick=()=>devDelete(b.dataset.del));
+  rows.querySelectorAll('button[data-tog]').forEach(b=>b.onclick=()=>devToggle(b.dataset.tog,b.textContent==='Enable'));
+}
+async function loadDevices(){
+  const res=await fetch('/api/devices'); if(res.status===401){location.href='/login';return;} if(!res.ok)return;
+  renderDevices(await res.json());
+}
+async function devAdd(){
+  const name=$('devName').value.trim(), matchType=$('devType').value, matchValue=$('devValue').value.trim(), intervalSec=Number($('devInterval').value);
+  if(!name||!matchValue){devFlash('Name and value are required.',false);return;}
+  const res=await fetch('/api/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,matchType,matchValue,intervalSec})});
+  const d=await res.json().catch(()=>({}));
+  if(res.ok){$('devName').value='';$('devValue').value='';devFlash('Added "'+d.device.name+'".',true);loadDevices();}
+  else devFlash(d.error||'Add failed',false);
+}
+async function devToggle(id,enabled){
+  const res=await fetch('/api/devices/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+  if(res.ok)loadDevices(); else devFlash('Update failed',false);
+}
+async function devDelete(id){
+  if(!confirm('Delete this monitored device?'))return;
+  const res=await fetch('/api/devices/'+id,{method:'DELETE'});
+  if(res.ok){devFlash('Deleted.',true);loadDevices();} else devFlash('Delete failed',false);
+}
+$('devAdd').onclick=devAdd;
+['devName','devValue'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter')devAdd();}));
+
 // ---- tabs ----
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -599,11 +710,13 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.getElementById('panel-'+t.dataset.tab).classList.add('active');
   if(t.dataset.tab==='firewall')loadFirewall();
   if(t.dataset.tab==='watchdog')loadWatchdog();
+  if(t.dataset.tab==='devices')loadDevices();
 });
 
 load();loadStats();loadHosts();loadFirewall();
 setInterval(()=>{loadStats();loadHosts();},15000);
 setInterval(()=>{if(!live)load();},15000);
+setInterval(()=>{if(document.getElementById('panel-devices').classList.contains('active'))loadDevices();},15000);
 `;
 
 module.exports = { loginPage, dashboardPage, esc };

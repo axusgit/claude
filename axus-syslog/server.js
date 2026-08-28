@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const db = require('./lib/db');
 const fw = require('./lib/firewall');
 const alerts = require('./lib/alerts');
+const devices = require('./lib/devices');
 const { Collector } = require('./lib/collector');
 const { severityName, facilityName } = require('./lib/parser');
 const { loginPage, dashboardPage } = require('./lib/views');
@@ -55,6 +56,26 @@ function sweep() {
 setTimeout(sweep, 10000);
 setInterval(sweep, 60000).unref();
 
+// ------------------------------- stats cache -------------------------------
+// The dashboard's summary stats come from aggregate queries that scan large
+// slices of a multi-million-row table. better-sqlite3 is synchronous, so running
+// them on every /api/stats hit both made the page wait seconds AND blocked the
+// event loop (stalling ingest and other requests). Compute them once on a short
+// interval and serve the cached snapshot; a few seconds of staleness is fine for
+// a monitoring summary, and page loads become instant.
+let statsCache = null;
+function refreshStats() {
+  try {
+    const s = db.stats();
+    const errors24 = db.query({ since: Date.now() - 86400000, maxSeverity: 3, limit: 1 }).total;
+    statsCache = { ...s, errors24 };
+  } catch (err) {
+    console.error('[stats] refresh error:', err.message);
+  }
+}
+setTimeout(refreshStats, 3000);   // prime shortly after boot (let ingest settle first)
+setInterval(refreshStats, 30000).unref();
+
 // Silence watchdog — configurable from the dashboard's Watchdog tab. Settings live
 // in the DB (watchdog_enabled / watchdog_sec); seed defaults on first run.
 if (db.getSetting('watchdog_sec') == null) db.setSetting('watchdog_sec', String(alerts.SILENCE_SEC || 120));
@@ -65,6 +86,13 @@ function watchdogTick() {
   alerts.checkSilence(collector.lastMessageTs, sec);
 }
 setInterval(watchdogTick, 30000).unref();
+
+// Per-device dead-man watchdog. Load configured devices, then evaluate on an
+// interval (each tick persists last-seen and fires down/recovery alerts).
+devices.refresh();
+setInterval(() => {
+  try { devices.tick(); } catch (err) { console.error('[devices] tick error:', err.message); }
+}, 30000).unref();
 
 // --------------------------------- web ----------------------------------
 const app = express();
@@ -216,13 +244,10 @@ app.get('/api/messages', requireAuth, (req, res) => {
 });
 
 app.get('/api/stats', requireAuth, (req, res) => {
-  const s = db.stats();
-  const errors24 = db.query({
-    since: Date.now() - 86400000,
-    maxSeverity: 3,
-    limit: 1,
-  }).total;
-  res.json({ ...s, errors24, received: collector.received, dbBytes: db.dbSize(), retentionDays: RETENTION_DAYS_EFFECTIVE });
+  if (!statsCache) refreshStats(); // first request before the timer has primed it
+  // received/dbBytes/retention are cheap and read live; the scanning aggregates
+  // come from the periodically-refreshed cache.
+  res.json({ ...statsCache, received: collector.received, dbBytes: db.dbSize(), retentionDays: RETENTION_DAYS_EFFECTIVE });
 });
 
 app.get('/api/facets', requireAuth, (req, res) => {
@@ -264,6 +289,75 @@ app.post('/api/alert/test', requireAuth, async (req, res) => {
   const r = await alerts.sendTest();
   if (r.ok) res.json({ ok: true });
   else res.status(502).json({ error: r.error || 'Test alert failed.' });
+});
+
+// ---- test email (verify SMTP delivery) ----
+app.post('/api/alert/test-email', requireAuth, async (req, res) => {
+  const r = await alerts.sendTestEmail();
+  if (r.ok) res.json({ ok: true });
+  else res.status(502).json({ error: r.error || 'Test email failed.' });
+});
+
+// ---- monitored devices (per-device dead-man) ----
+const MATCH_TYPES = ['source_ip', 'host', 'contains'];
+
+app.get('/api/devices', requireAuth, (req, res) => {
+  res.json({
+    devices: devices.statusList(),
+    channels: { ntfy: alerts.topicSet(), email: alerts.emailConfigured() },
+    emailTo: alerts.EMAIL_TO,
+  });
+});
+
+function validateDevice(b) {
+  const name = String((b.name || '')).trim();
+  const matchType = String(b.matchType || 'contains');
+  const matchValue = String((b.matchValue || '')).trim();
+  const intervalSec = Number(b.intervalSec);
+  if (!name) return { error: 'Name is required.' };
+  if (!MATCH_TYPES.includes(matchType)) return { error: 'Invalid match type.' };
+  if (!matchValue) return { error: 'Match value is required.' };
+  if (!Number.isFinite(intervalSec) || intervalSec < 30 || intervalSec > 86400) {
+    return { error: 'Interval must be between 30 and 86400 seconds.' };
+  }
+  return { ok: true, name, matchType, matchValue, intervalSec };
+}
+
+app.post('/api/devices', requireAuth, (req, res) => {
+  const v = validateDevice(req.body || {});
+  if (v.error) return res.status(400).json({ error: v.error });
+  const enabled = (req.body || {}).enabled !== false;
+  const d = db.createDevice({ name: v.name, matchType: v.matchType, matchValue: v.matchValue, intervalSec: v.intervalSec, enabled });
+  devices.refresh();
+  res.json({ ok: true, device: d });
+});
+
+app.put('/api/devices/:id', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!db.getDevice(id)) return res.status(404).json({ error: 'Device not found.' });
+  const b = req.body || {};
+  // Allow partial toggles (enabled only) as well as full edits.
+  if (b.name != null || b.matchValue != null || b.matchType != null || b.intervalSec != null) {
+    const v = validateDevice({
+      name: b.name != null ? b.name : db.getDevice(id).name,
+      matchType: b.matchType != null ? b.matchType : db.getDevice(id).match_type,
+      matchValue: b.matchValue != null ? b.matchValue : db.getDevice(id).match_value,
+      intervalSec: b.intervalSec != null ? b.intervalSec : db.getDevice(id).interval_sec,
+    });
+    if (v.error) return res.status(400).json({ error: v.error });
+  }
+  const d = db.updateDevice(id, {
+    name: b.name, matchType: b.matchType, matchValue: b.matchValue,
+    intervalSec: b.intervalSec, enabled: b.enabled,
+  });
+  devices.refresh();
+  res.json({ ok: true, device: d });
+});
+
+app.delete('/api/devices/:id', requireAuth, (req, res) => {
+  const n = db.deleteDevice(Number(req.params.id));
+  devices.refresh();
+  res.json({ ok: true, deleted: n });
 });
 
 // ---- clear logs (manual purge older than N days; 7 is the automatic sweep) ----
@@ -349,33 +443,54 @@ app.get('/api/export', requireAuth, async (req, res) => {
     res.write('received,event_time,source_ip,private_ip,host,facility,severity,app,procid,msgid,message\n');
   }
 
-  for (const m of it) {
-    let line;
-    const priv = privateIp(m.message);
-    if (format === 'csv') {
-      line = [
-        iso(m.ts), iso(m.event_ts), m.source_ip, priv, m.host,
-        facilityName(m.facility), severityName(m.severity),
-        m.app, m.procid, m.msgid, m.message,
-      ].map(csvCell).join(',') + '\n';
-    } else if (format === 'json') {
-      line = JSON.stringify({
-        received: iso(m.ts), event_time: iso(m.event_ts), source_ip: m.source_ip,
-        private_ip: priv || null, host: m.host, facility: facilityName(m.facility),
-        severity: severityName(m.severity), severity_code: m.severity,
-        app: m.app, procid: m.procid, msgid: m.msgid, message: m.message,
-      }) + '\n';
-    } else {
-      const tag = [m.app, m.procid && `[${m.procid}]`].filter(Boolean).join('');
-      line = `${iso(m.ts)}  ${severityName(m.severity).padEnd(13)} ${(m.host || m.source_ip || '-')}  ${tag}${tag ? ': ' : ''}${m.message || ''}\n`;
+  // The better-sqlite3 iterator holds an open cursor that makes the whole DB
+  // connection "busy" — every insert flush and retention prune throws until it
+  // is released. A for..of releases it on normal completion or `break`, but NOT
+  // if we stay suspended forever awaiting `drain` for a client that has already
+  // gone away. So: (a) the drain wait also resolves on disconnect, and (b) a
+  // try/finally guarantees the cursor is closed no matter how the loop exits.
+  try {
+    for (const m of it) {
+      let line;
+      const priv = privateIp(m.message);
+      if (format === 'csv') {
+        line = [
+          iso(m.ts), iso(m.event_ts), m.source_ip, priv, m.host,
+          facilityName(m.facility), severityName(m.severity),
+          m.app, m.procid, m.msgid, m.message,
+        ].map(csvCell).join(',') + '\n';
+      } else if (format === 'json') {
+        line = JSON.stringify({
+          received: iso(m.ts), event_time: iso(m.event_ts), source_ip: m.source_ip,
+          private_ip: priv || null, host: m.host, facility: facilityName(m.facility),
+          severity: severityName(m.severity), severity_code: m.severity,
+          app: m.app, procid: m.procid, msgid: m.msgid, message: m.message,
+        }) + '\n';
+      } else {
+        const tag = [m.app, m.procid && `[${m.procid}]`].filter(Boolean).join('');
+        line = `${iso(m.ts)}  ${severityName(m.severity).padEnd(13)} ${(m.host || m.source_ip || '-')}  ${tag}${tag ? ': ' : ''}${m.message || ''}\n`;
+      }
+      if (res.writableEnded || res.destroyed) break; // client disconnected — stop
+      // Real backpressure: if the socket buffer is full, PAUSE the DB iteration
+      // until it drains. Without this, a large export buffers every row in memory
+      // and OOM-kills the process (the box has little RAM). Also resolve on
+      // close/error so a client that vanishes mid-write can't wedge us forever.
+      if (!res.write(line)) {
+        await new Promise((resolve) => {
+          const done = () => {
+            res.removeListener('drain', done);
+            res.removeListener('close', done);
+            res.removeListener('error', done);
+            resolve();
+          };
+          res.once('drain', done);
+          res.once('close', done);
+          res.once('error', done);
+        });
+      }
     }
-    // Real backpressure: if the socket buffer is full, PAUSE the DB iteration
-    // until it drains. Without this, a large export buffers every row in memory
-    // and OOM-kills the process (the box has little RAM).
-    if (!res.write(line)) {
-      await new Promise((resolve) => res.once('drain', resolve));
-    }
-    if (res.writableEnded || res.destroyed) break; // client disconnected — stop
+  } finally {
+    if (typeof it.return === 'function') it.return(); // release the DB cursor
   }
   res.end();
 });

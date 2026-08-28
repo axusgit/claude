@@ -24,6 +24,62 @@ const NTFY_TOKEN = (process.env.ALERT_NTFY_TOKEN || '').trim();
 // phones stopped / lost service). 0 disables. Default 120 (2 min).
 const SILENCE_SEC = Math.max(0, Number(process.env.SILENCE_ALERT_SEC || 120));
 
+// --- email (SMTP, e.g. Microsoft 365) ---
+// Optional second alert channel. When configured, device + silence alerts also go
+// out by email. Everything stays best-effort: a missing/broken SMTP config never
+// blocks ntfy or ingest.
+const SMTP_HOST = (process.env.SMTP_HOST || '').trim();
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = (process.env.SMTP_USER || '').trim();
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_FROM = (process.env.SMTP_FROM || SMTP_USER || '').trim();
+const EMAIL_TO = (process.env.ALERT_EMAIL_TO || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+let _transport = null;
+let _nodemailer = null;
+function emailConfigured() {
+  return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && SMTP_FROM && EMAIL_TO.length);
+}
+function transport() {
+  if (_transport) return _transport;
+  if (!emailConfigured()) return null;
+  try {
+    if (!_nodemailer) _nodemailer = require('nodemailer');
+  } catch (err) {
+    console.error('[alert] nodemailer not installed — email disabled:', err.message);
+    return null;
+  }
+  _transport = _nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465, // 465=implicit TLS; 587=STARTTLS
+    requireTLS: SMTP_PORT !== 465,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
+  return _transport;
+}
+
+// Send an email. Resolves { ok } / { ok:false, error }. Never throws.
+async function sendEmail({ subject, text }) {
+  const t = transport();
+  if (!t) return { ok: false, error: 'Email (SMTP) is not configured on the server.' };
+  try {
+    await t.sendMail({
+      from: SMTP_FROM,
+      to: EMAIL_TO.join(', '),
+      subject: String(subject || 'Axus Syslog alert').slice(0, 200),
+      text: String(text || ''),
+    });
+    return { ok: true };
+  } catch (err) {
+    console.error('[alert] email send failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
 const lastSent = new Map(); // "host|keyword(lower)" -> ms epoch of last alert
 
 function topicSet() {
@@ -51,6 +107,37 @@ function notify({ title, body, tags = 'rotating_light,warning', priority = 'high
   })
     .then((res) => { if (!res.ok) console.error(`[alert] ntfy returned HTTP ${res.status} (${title})`); })
     .catch((err) => console.error('[alert] ntfy send failed:', err.message));
+}
+
+// Fire an alert to BOTH channels (ntfy push + email). Best-effort on each; used
+// for device up/down alerts so they reach the phone AND the inbox.
+function notifyAll({ title, body, tags, priority }) {
+  notify({ title, body, tags, priority });
+  if (emailConfigured()) {
+    sendEmail({ subject: title, text: body }).catch(() => {});
+  }
+}
+
+// A monitored device went offline / came back. Sends to ntfy + email.
+function deviceAlert(device, { down, quietSec }) {
+  const mins = Math.round((quietSec || 0) / 60);
+  if (down) {
+    notifyAll({
+      title: `Device offline: ${device.name}`,
+      body: `"${device.name}" has stopped sending syslog. No matching message for ~${mins} min ` +
+        `(threshold ${device.interval_sec}s). Match rule: ${device.match_type} "${device.match_value}". ` +
+        `It may have lost power, network, or service.`,
+      tags: 'rotating_light,warning',
+      priority: 'urgent',
+    });
+  } else {
+    notifyAll({
+      title: `Device back online: ${device.name}`,
+      body: `"${device.name}" is sending syslog again as of ${new Date().toISOString()}.`,
+      tags: 'white_check_mark',
+      priority: 'default',
+    });
+  }
 }
 
 function send(keyword, host, text) {
@@ -134,4 +221,17 @@ async function sendTest() {
   }
 }
 
-module.exports = { maybeAlert, notify, sendTest, checkSilence, resetSilence, enabled, topicSet, KEYWORDS, TOPIC, SILENCE_SEC };
+// Send a test email and report the result (awaited) so the UI can confirm delivery.
+async function sendTestEmail() {
+  if (!emailConfigured()) return { ok: false, error: 'Email (SMTP) is not configured on the server.' };
+  return sendEmail({
+    subject: 'Test alert — Axus Syslog',
+    text: `Test email from Axus Syslog at ${new Date().toISOString()} — if this reached your inbox, email alerts are working.`,
+  });
+}
+
+module.exports = {
+  maybeAlert, notify, notifyAll, deviceAlert, sendTest, sendTestEmail, sendEmail,
+  checkSilence, resetSilence, enabled, topicSet, emailConfigured,
+  KEYWORDS, TOPIC, SILENCE_SEC, EMAIL_TO,
+};

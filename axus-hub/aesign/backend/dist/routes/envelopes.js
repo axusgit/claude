@@ -9,6 +9,7 @@ import { getIdentity, hasEsignAccess } from "../identity.js";
 import { sendSigningInvite, sendPendingReminder } from "../mail.js";
 import { stampBaaPdf, etTodayLong } from "../baa.js";
 import { generateCocPdf } from "../cocpdf.js";
+import { envelopeDocName } from "../docname.js";
 import { logActivity, renameActivity } from "./activity.js";
 function requireStaff(req, reply) {
     const id = getIdentity(req);
@@ -421,7 +422,8 @@ export async function envelopeRoutes(app) {
         if (!id)
             return;
         const envId = req.params.id;
-        const env = await pool.query(`select pdf_file, source_file, sealed_file, status from envelope where id = $1`, [envId]);
+        const env = await pool.query(`select pdf_file, source_file, sealed_file, status, doc_type, title, company, quote_data
+       from envelope where id = $1`, [envId]);
         if (!env.rowCount)
             return reply.code(404).send({ error: "Not found" });
         const row = env.rows[0];
@@ -433,7 +435,10 @@ export async function envelopeRoutes(app) {
         const full = join(config.storageDir, fileName);
         if (!existsSync(full))
             return reply.code(404).send({ error: "File missing on disk" });
+        const ext = fileName.split(".").pop()?.toLowerCase() || "pdf";
+        const dlName = `${envelopeDocName(row)}.${ext}`;
         reply.header("Content-Type", fileName.endsWith(".pdf") ? "application/pdf" : "application/octet-stream");
+        reply.header("Content-Disposition", `attachment; filename="${dlName}"`);
         return reply.send(createReadStream(full));
     });
     // Replace the recipient list (client supplies stable UUIDs so fields can
@@ -527,6 +532,12 @@ export async function envelopeRoutes(app) {
             return reply.code(400).send({ error: "Upload a document first." });
         if (env.status !== "draft")
             return reply.code(409).send({ error: "This document has already been sent." });
+        // A Certificate of Completion must carry its Document Number before it goes out.
+        if ((env.doc_type ?? "").toUpperCase() === "CERTIFICATE OF COMPLETION" && !(env.doc_number ?? "").trim()) {
+            return reply
+                .code(400)
+                .send({ error: "Enter the Document Number before sending this Certificate of Completion." });
+        }
         const recips = await pool.query(`select * from recipient where envelope_id = $1 order by sign_order`, [envId]);
         if (!recips.rowCount)
             return reply.code(400).send({ error: "Add at least one recipient." });

@@ -1,5 +1,5 @@
 export interface SignField {
-  type: "signature" | "date" | "name" | "title";
+  type: "signature" | "date" | "name" | "title" | "text";
   page: number; // 1-based
   x: number;
   y: number;
@@ -245,6 +245,7 @@ export interface QuoteData {
   due_date?: string;
   items: QuoteItem[];
   tax?: string;
+  notes?: string;
 }
 
 export const quotesApi = {

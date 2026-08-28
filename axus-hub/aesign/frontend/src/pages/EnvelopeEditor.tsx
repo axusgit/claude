@@ -63,19 +63,19 @@ const COC_LAYOUT: SignSlot[] = [
   {
     role: "Customer",
     fields: [
-      { type: "signature", page: 2, x: 0.1775, y: 0.2462, w: 0.2998, h: 0.0215 },
-      { type: "name", page: 2, x: 0.1908, y: 0.279, w: 0.2998, h: 0.0215 },
-      { type: "title", page: 2, x: 0.1346, y: 0.3119, w: 0.2998, h: 0.0215 },
-      { type: "date", page: 2, x: 0.1386, y: 0.3447, w: 0.2998, h: 0.0215 },
+      { type: "signature", page: 1, x: 0.1758, y: 0.7323, w: 0.3013, h: 0.0189 },
+      { type: "name", page: 1, x: 0.1878, y: 0.7601, w: 0.2893, h: 0.0189 },
+      { type: "title", page: 1, x: 0.1367, y: 0.7879, w: 0.3404, h: 0.0189 },
+      { type: "date", page: 1, x: 0.1404, y: 0.8157, w: 0.3368, h: 0.0189 },
     ],
   },
   {
     role: "Axus Technologies",
     fields: [
-      { type: "signature", page: 2, x: 0.1775, y: 0.4432, w: 0.2998, h: 0.0215 },
-      { type: "name", page: 2, x: 0.1908, y: 0.476, w: 0.2998, h: 0.0215 },
-      { type: "title", page: 2, x: 0.1346, y: 0.5088, w: 0.2998, h: 0.0215 },
-      { type: "date", page: 2, x: 0.1386, y: 0.5417, w: 0.2998, h: 0.0215 },
+      { type: "signature", page: 1, x: 0.6072, y: 0.7323, w: 0.3013, h: 0.0189 },
+      { type: "name", page: 1, x: 0.6192, y: 0.7601, w: 0.2893, h: 0.0189 },
+      { type: "title", page: 1, x: 0.5681, y: 0.7879, w: 0.3404, h: 0.0189 },
+      { type: "date", page: 1, x: 0.5717, y: 0.8157, w: 0.3368, h: 0.0189 },
     ],
   },
 ];
@@ -153,7 +153,7 @@ export function EnvelopeEditor() {
   const [sequential, setSequential] = useState(false);
   const [docType, setDocType] = useState(isNew ? (sp.get("doc_type") ?? "BAA") : "SOW");
   const [company, setCompany] = useState(isNew ? (sp.get("company") ?? "") : "");
-  // Certificate of Completion: the referenced agreement # baked into the template.
+  // Certificate of Completion: staff-entered agreement # baked into the template.
   const [docNumber] = useState(isNew ? (sp.get("doc_number") ?? "") : "");
   const [reminder, setReminder] = useState("");
   const [reminderTime, setReminderTime] = useState("09:00");

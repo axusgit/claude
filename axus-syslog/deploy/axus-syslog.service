@@ -10,7 +10,10 @@ EnvironmentFile=/opt/axus-syslog/.env
 Environment=NODE_ENV=production
 # --max-old-space-size raises V8's heap ceiling (default is low on this small box,
 # which OOM-crashed the process). Backed by the box's 4GB swap for headroom.
-Environment=NODE_OPTIONS=--dns-result-order=ipv4first --max-old-space-size=640
+# NOTE: the value MUST be quoted — systemd splits Environment= on whitespace, so
+# without quotes the second flag is parsed as its own (invalid) assignment and the
+# heap ceiling is silently dropped ("Invalid environment assignment, ignoring: ...").
+Environment="NODE_OPTIONS=--dns-result-order=ipv4first --max-old-space-size=640"
 Environment=TZ=America/New_York
 ExecStart=/usr/bin/node /opt/axus-syslog/server.js
 Restart=on-failure

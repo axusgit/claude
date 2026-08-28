@@ -5,6 +5,7 @@ const { EventEmitter } = require('events');
 const { parse } = require('./parser');
 const db = require('./db');
 const alerts = require('./alerts');
+const devices = require('./devices');
 
 // UDP syslog collector. Receives datagrams, parses them, buffers them for the DB,
 // and emits a 'message' event so the web layer can push live-tail updates.
@@ -43,6 +44,8 @@ class Collector extends EventEmitter {
       db.enqueue(row);
       // Keyword alerts (e.g. "No Service") — never let this break ingest.
       try { alerts.maybeAlert(row); } catch (err) { console.error('[collector] alert error:', err.message); }
+      // Per-device dead-man: stamp last-seen for any monitored device this matches.
+      try { devices.observe(row); } catch (err) { console.error('[collector] device observe error:', err.message); }
       // Only fan out to live-tail listeners when someone is watching.
       if (this.listenerCount('message') > 0) this.emit('message', row);
     });
