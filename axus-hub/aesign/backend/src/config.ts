@@ -16,6 +16,9 @@ export const config = {
   // Shared bearer secret for the server-to-server /api/external routes (other
   // Axus products creating quotes headlessly). Empty = the external API is off.
   externalToken: process.env.EXTERNAL_API_TOKEN ?? "",
+  // Where to POST when an On Call-originated quote is completed (signed). Empty =
+  // callback off. Reuses EXTERNAL_API_TOKEN as the bearer (same shared secret).
+  onCallCallbackUrl: process.env.ON_CALL_CALLBACK_URL ?? "",
   mail: {
     host: process.env.SMTP_HOST ?? "",
     port: Number(process.env.SMTP_PORT ?? 587),

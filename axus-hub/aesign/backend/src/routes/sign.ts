@@ -10,6 +10,7 @@ import { sealPdf, type SealField, type SealRecipient } from "../seal.js";
 import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail.js";
 import { envelopeDocName } from "../docname.js";
 import { logActivity } from "./activity.js";
+import { isOnCallQuote, notifyOnCallQuoteCompleted } from "../oncall.js";
 
 // Seal the CURRENT state and email every participant a copy. On the last
 // signature it adds the certificate page, marks the envelope completed, and
@@ -61,6 +62,11 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     // Also notify the sender (staff) with the final signed copy.
     if (e.created_by && !recs.rows.some((r) => r.email === e.created_by)) {
       await sendCompleted({ to: e.created_by, recipientName: "Axus Team", title: e.title, attachment });
+    }
+    // If this is an On Call quote, notify On Call so it shows under Invoices.
+    // Fire-and-forget (the helper never throws) so completion stays snappy.
+    if (isOnCallQuote(e)) {
+      void notifyOnCallQuoteCompleted(e, bytes, sha256, recs.rows as { name: string; email: string; signed_at?: string | null }[]);
     }
   } else {
     await pool.query(
