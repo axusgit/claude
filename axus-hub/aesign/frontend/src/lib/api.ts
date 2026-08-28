@@ -261,15 +261,15 @@ export interface QuoteData {
 
 export const quotesApi = {
   templateUrl: () => "/api/quotes/template",
-  create: (title: string, quote: QuoteData) =>
+  create: (title: string, quote: QuoteData, recipient?: { name: string; email: string }) =>
     req<{ envelope: Envelope }>("/quotes", {
       method: "POST",
-      body: JSON.stringify({ title, quote }),
+      body: JSON.stringify({ title, quote, recipient }),
     }).then((r) => r.envelope),
-  update: (id: string, title: string, quote: QuoteData) =>
+  update: (id: string, title: string, quote: QuoteData, recipient?: { name: string; email: string }) =>
     req<{ envelope: Envelope }>(`/quotes/${id}`, {
       method: "PUT",
-      body: JSON.stringify({ title, quote }),
+      body: JSON.stringify({ title, quote, recipient }),
     }).then((r) => r.envelope),
 };
 

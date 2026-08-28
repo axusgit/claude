@@ -4,8 +4,11 @@ import { join } from "node:path";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { requireStaff } from "../identity.js";
-import { generateQuotePdf, generateQuoteTemplatePdf, type QuoteData } from "../quotepdf.js";
+import { generateQuotePdf, generateQuoteTemplatePdf, type QuoteData, type SignSlot } from "../quotepdf.js";
 import { logActivity, renameActivity } from "./activity.js";
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+type QuoteRecipient = { name?: string; email?: string };
 
 // Today's date in Eastern Time as MMDDYYYY (the quote-number prefix).
 function etDatePrefix(): string {
@@ -17,6 +20,36 @@ function etDatePrefix(): string {
   }).formatToParts(new Date());
   const get = (t: string) => p.find((x) => x.type === t)?.value ?? "";
   return `${get("month")}${get("day")}${get("year")}`;
+}
+
+// Auto-sync a quote's signer to match its contact: replace the envelope's
+// recipients + fields with a single "Customer" signer and the layout's signature
+// fields. No-op when no valid contact email is supplied (leaves recipients as-is),
+// so removing the contact doesn't wipe a manually-managed recipient.
+async function syncQuoteRecipient(
+  envId: string,
+  recipient: QuoteRecipient | undefined,
+  layout: SignSlot[] | undefined,
+): Promise<void> {
+  const email = (recipient?.email ?? "").trim().toLowerCase();
+  const name = (recipient?.name ?? "").trim();
+  if (!name || !EMAIL_RE.test(email)) return;
+  await pool.query(`delete from field where envelope_id = $1`, [envId]);
+  await pool.query(`delete from recipient where envelope_id = $1`, [envId]);
+  const rec = await pool.query(
+    `insert into recipient (envelope_id, name, email, role, sign_order)
+     values ($1, $2, $3, 'signer', 1) returning id`,
+    [envId, name, email],
+  );
+  const recipientId = rec.rows[0].id;
+  const slot = (layout ?? []).find((s) => s.role === "Customer") ?? layout?.[0];
+  for (const f of slot?.fields ?? []) {
+    await pool.query(
+      `insert into field (envelope_id, recipient_id, type, page, x, y, w, h, required)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, true)`,
+      [envId, recipientId, f.type, f.page, f.x, f.y, f.w, f.h],
+    );
+  }
 }
 
 export async function quoteRoutes(app: FastifyInstance) {
@@ -35,7 +68,7 @@ export async function quoteRoutes(app: FastifyInstance) {
   app.post("/", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
-    const body = (req.body ?? {}) as { title?: string; quote?: QuoteData };
+    const body = (req.body ?? {}) as { title?: string; quote?: QuoteData; recipient?: QuoteRecipient };
     const q = body.quote;
     if (!q || !q.customer?.company?.trim()) {
       return reply.code(400).send({ error: "A customer company is required." });
@@ -63,6 +96,8 @@ export async function quoteRoutes(app: FastifyInstance) {
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`,
       [envId, id.email, title],
     );
+    // Auto-add the signer to match the quote's contact.
+    await syncQuoteRecipient(envId, body.recipient, layout);
     const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
     logActivity(id.email, "Created quote", title, envId);
     return reply.code(201).send({ envelope: updated.rows[0] });
@@ -73,7 +108,7 @@ export async function quoteRoutes(app: FastifyInstance) {
     const id = requireStaff(req, reply);
     if (!id) return;
     const envId = (req.params as { id: string }).id;
-    const body = (req.body ?? {}) as { quote?: QuoteData; title?: string };
+    const body = (req.body ?? {}) as { quote?: QuoteData; title?: string; recipient?: QuoteRecipient };
     const q = body.quote;
     if (!q?.customer?.company?.trim()) return reply.code(400).send({ error: "A customer company is required." });
     const cur = await pool.query(`select status, quote_data from envelope where id = $1`, [envId]);
@@ -101,6 +136,8 @@ export async function quoteRoutes(app: FastifyInstance) {
               field_layout = $4, title = $5 where id = $6`,
       [JSON.stringify(q), q.customer.company.trim(), fname, JSON.stringify(layout), newTitle, envId],
     );
+    // Keep the signer in sync with the quote's contact on edit.
+    await syncQuoteRecipient(envId, body.recipient, layout);
     const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
     renameActivity(envId, newTitle);
     return { envelope: updated.rows[0] };

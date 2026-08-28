@@ -188,9 +188,12 @@ export function QuoteBuilder() {
         tax,
         notes: notes.trim() || undefined,
       };
+      // Auto-add the signer to match the selected contact (name + email).
+      const person = contacts.find((c) => c.name === contact && (c.company ?? "") === company);
+      const recipient = person?.email ? { name: person.name, email: person.email } : undefined;
       const env = edit
-        ? await quotesApi.update(edit, `${company.trim()} Quote`, quote)
-        : await quotesApi.create(`${company.trim()} Quote`, quote);
+        ? await quotesApi.update(edit, `${company.trim()} Quote`, quote, recipient)
+        : await quotesApi.create(`${company.trim()} Quote`, quote, recipient);
       nav(`/envelopes/${env.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : `Failed to ${edit ? "save" : "generate"} the quote`);
