@@ -90,13 +90,19 @@ export async function quoteRoutes(app: FastifyInstance) {
     const { bytes, layout } = await generateQuotePdf(q);
     const fname = `${envId}-quote.pdf`;
     await writeFile(join(config.storageDir, fname), Buffer.from(bytes));
+    // Keep the standard "<Company> — Quote <number>" title on edit (the editor
+    // otherwise sends a plain "<Company> Quote", dropping the quote number).
+    const num = (q.quote_number || prev.quote_number || "").trim();
+    const newTitle = (num
+      ? `${q.customer.company.trim()} — Quote ${num}`
+      : `${q.customer.company.trim()} Quote`).slice(0, 200);
     await pool.query(
       `update envelope set quote_data = $1, company = $2, source_file = $3, pdf_file = $3,
-              field_layout = $4, title = coalesce($5, title) where id = $6`,
-      [JSON.stringify(q), q.customer.company.trim(), fname, JSON.stringify(layout), body.title?.trim() || null, envId],
+              field_layout = $4, title = $5 where id = $6`,
+      [JSON.stringify(q), q.customer.company.trim(), fname, JSON.stringify(layout), newTitle, envId],
     );
     const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
-    if (body.title?.trim()) renameActivity(envId, body.title.trim().slice(0, 200));
+    renameActivity(envId, newTitle);
     return { envelope: updated.rows[0] };
   });
 }
