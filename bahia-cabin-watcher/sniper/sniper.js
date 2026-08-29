@@ -45,7 +45,9 @@ function loadCfg() {
     // email + SMS-gateway (reuse the watcher's .env values)
     smtpHost: env('SMTP_HOST', ''), smtpPort: intEnv('SMTP_PORT', 587), smtpSecure: boolEnv('SMTP_SECURE', false),
     smtpUser: env('SMTP_USER', ''), smtpPass: env('SMTP_PASS', ''),
-    emailFrom: env('EMAIL_FROM', ''), emailTo: env('EMAIL_TO', ''), emailSmsTo: env('EMAIL_SMS_TO', '') };
+    emailFrom: env('EMAIL_FROM', ''), emailTo: env('EMAIL_TO', ''), emailSmsTo: env('EMAIL_SMS_TO', ''),
+    // Optional target window: only alert on arrivals within [watchStart, watchEnd] (ISO). Empty = any date.
+    watchStart: '', watchEnd: '' };
   try { const j = JSON.parse(fs.readFileSync(path.join(__dirname, 'sniper.config.json'), 'utf8')); return { ...d, ...j, ntfyTopic: j.ntfyTopic || d.ntfyTopic }; } catch { return d; }
 }
 
@@ -69,13 +71,15 @@ async function freeDatesFor(unitId, startISO, nights) {
   return free;
 }
 
+function inWatch(d) { if (CFG.watchStart && d < CFG.watchStart) return false; if (CFG.watchEnd && d > CFG.watchEnd) return false; return true; }
+
 function staysFrom(results, furthest, arrivalsFilter) {
   const stays = [];
   for (const { name, free } of results) {
     const arrivals = arrivalsFilter ? arrivalsFilter : [...free].sort();
     for (const d of arrivals) {
       const n2 = iso(addDays(parseIso(d), 1));
-      if (free.has(d) && free.has(n2) && n2 <= furthest) stays.push({ cabin: name, arrival: d, depart: iso(addDays(parseIso(d), NIGHTS)), key: `${name}|${d}` });
+      if (free.has(d) && free.has(n2) && n2 <= furthest && inWatch(d)) stays.push({ cabin: name, arrival: d, depart: iso(addDays(parseIso(d), NIGHTS)), key: `${name}|${d}` });
     }
   }
   stays.sort((a, b) => (a.arrival < b.arrival ? -1 : 1));
@@ -107,7 +111,7 @@ async function scanSingleDay(dayISO) {
   const results = await allFree(dayISO, 2);
   const n2 = iso(addDays(parseIso(dayISO), 1));
   const stays = [];
-  for (const { name, free } of results) if (free.has(dayISO) && free.has(n2)) stays.push({ cabin: name, arrival: dayISO, depart: iso(addDays(parseIso(dayISO), NIGHTS)), key: `${name}|${dayISO}` });
+  if (inWatch(dayISO)) for (const { name, free } of results) if (free.has(dayISO) && free.has(n2)) stays.push({ cabin: name, arrival: dayISO, depart: iso(addDays(parseIso(dayISO), NIGHTS)), key: `${name}|${dayISO}` });
   return { stays };
 }
 
@@ -150,13 +154,24 @@ async function hunt() { // long-lived loop, for interactive use
 }
 
 async function arm() {
+  // Support multiple burst windows (e.g. 8AM and 8PM ET while we confirm the real
+  // release time). Each of the (DST-doubled) cron entries picks the window it's
+  // near, or exits — so exactly one burst runs per real window, in either season.
+  const windows = [
+    { s: CFG.windowStartAM, e: CFG.windowEndAM, label: '8AM' },
+    { s: CFG.windowStartET, e: CFG.windowEndET, label: '8PM' },
+  ].filter((w) => w.s && w.e);
+  const now0 = etHMS();
+  const win = windows.find((w) => now0 >= minusMinutesET(w.s, 10) && now0 <= w.e);
+  if (!win) { log(`--arm launched at ${now0} ET, outside any burst window; exiting.`); return; }
   const day0 = elevenMonthDayISO();
-  log(`ARMED for the 8PM release. Target single 11-month-ahead day = ${day0}. Waiting for ${CFG.windowStartET} ET (now ${etHMS()} ET)…`);
-  while (etHMS() < CFG.windowStartET) await sleep(200);
-  log(`Release window OPEN at ${etHMS()} ET — polling the single day every ${CFG.intervalMs}ms.`);
+  log(`ARMED for the ${win.label} release. Target single 11-month-ahead day = ${day0}. Waiting for ${win.s} ET (now ${now0} ET)…`);
+  while (etHMS() < win.s) await sleep(200);
+  log(`${win.label} release window OPEN at ${etHMS()} ET — polling the single day every ${CFG.intervalMs}ms.`);
+  const windowEndET = win.e;
   const seen = loadSeen(); // shared with --tick so neither double-alerts
   let polls = 0, hits = 0;
-  while (etHMS() < CFG.windowEndET) {
+  while (etHMS() < windowEndET) {
     polls++;
     const day = elevenMonthDayISO(); // stable through the window; recomputed defensively
     let stays = [];
@@ -250,6 +265,7 @@ function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); retu
 function startOfToday() { const x = new Date(); x.setHours(0, 0, 0, 0); return x; }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 function etHMS() { return new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/[^\d:]/g, '').slice(-8); }
+function minusMinutesET(hms, min) { const [h, m, s] = hms.split(':').map(Number); let t = (h * 3600 + m * 60 + s - min * 60 + 86400) % 86400; const p = (n) => String(n).padStart(2, '0'); return `${p(Math.floor(t / 3600))}:${p(Math.floor((t % 3600) / 60))}:${p(t % 60)}`; }
 async function fetchT(url, opts, ms) { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms || 8000); try { return await fetch(url, { ...opts, signal: ac.signal }); } finally { clearTimeout(t); } }
 function ascii(s) { return String(s).replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim(); }
 function log(m) { console.error(`[${new Date().toISOString()}] ${m}`); }

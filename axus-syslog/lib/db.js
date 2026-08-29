@@ -79,6 +79,27 @@ CREATE TABLE IF NOT EXISTS monitored_devices (
   down_notified INTEGER NOT NULL DEFAULT 0,
   created_ts    INTEGER
 );
+
+-- Auto-discovery: stable per-device identifiers (MAC / endpoint IP) seen in the
+-- stream. A brand-new source is alerted on and (optionally) auto-registered as a
+-- monitored_device so it gets dead-man up/down detection with no manual setup.
+-- 'notified' prevents re-alerting across restarts; 'device_id' links the created
+-- monitored device; 'ignored' lets an operator dismiss a source for good.
+CREATE TABLE IF NOT EXISTS discovered_sources (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  key           TEXT UNIQUE NOT NULL,     -- 'mac:aa:bb:..' | 'ip:192.168.x.y'
+  kind          TEXT NOT NULL,            -- 'mac' | 'ip'
+  value         TEXT NOT NULL,            -- the mac or ip
+  label         TEXT,                     -- friendly, e.g. 'Phone 4050 (192.168.19.175)'
+  ext           TEXT,                     -- correlated extension, best-effort
+  ip            TEXT,                     -- correlated endpoint IP, best-effort
+  first_seen_ts INTEGER,
+  last_seen_ts  INTEGER,
+  msg_count     INTEGER NOT NULL DEFAULT 0,
+  device_id     INTEGER,                  -- monitored_devices.id if registered
+  notified      INTEGER NOT NULL DEFAULT 0,
+  ignored       INTEGER NOT NULL DEFAULT 0
+);
 `);
 
 // Separate READ-ONLY connection used only for long-running streamed exports.
@@ -349,6 +370,63 @@ function saveDeviceState(id, { lastSeenTs, state, downNotified }) {
   });
 }
 
+// --- discovered sources (auto-discovery) ---
+function listDiscovered() {
+  return db.prepare('SELECT * FROM discovered_sources ORDER BY last_seen_ts DESC').all();
+}
+function upsertDiscovered(s) {
+  // Insert a new source or refresh an existing one's sighting/enrichment fields.
+  // Returns the row. Keyed on the unique `key`.
+  db.prepare(`
+    INSERT INTO discovered_sources
+      (key, kind, value, label, ext, ip, first_seen_ts, last_seen_ts, msg_count, device_id, notified, ignored)
+    VALUES
+      (@key, @kind, @value, @label, @ext, @ip, @firstTs, @lastTs, @count, @deviceId, @notified, @ignored)
+    ON CONFLICT(key) DO UPDATE SET
+      last_seen_ts = excluded.last_seen_ts,
+      msg_count    = excluded.msg_count,
+      label        = COALESCE(excluded.label, discovered_sources.label),
+      ext          = COALESCE(excluded.ext,   discovered_sources.ext),
+      ip           = COALESCE(excluded.ip,    discovered_sources.ip),
+      device_id    = COALESCE(excluded.device_id, discovered_sources.device_id),
+      notified     = MAX(excluded.notified, discovered_sources.notified),
+      ignored      = MAX(excluded.ignored,  discovered_sources.ignored)
+  `).run({
+    key: s.key, kind: s.kind, value: s.value,
+    label: s.label != null ? s.label : null,
+    ext: s.ext != null ? s.ext : null,
+    ip: s.ip != null ? s.ip : null,
+    firstTs: s.firstTs != null ? Number(s.firstTs) : null,
+    lastTs: s.lastTs != null ? Number(s.lastTs) : null,
+    count: Number(s.count) || 0,
+    deviceId: s.deviceId != null ? Number(s.deviceId) : null,
+    notified: s.notified ? 1 : 0,
+    ignored: s.ignored ? 1 : 0,
+  });
+  return db.prepare('SELECT * FROM discovered_sources WHERE key = ?').get(s.key);
+}
+function setDiscoveredFields(id, fields) {
+  const cur = db.prepare('SELECT * FROM discovered_sources WHERE id = ?').get(Number(id));
+  if (!cur) return null;
+  const m = {
+    label: fields.label != null ? fields.label : cur.label,
+    ext: fields.ext != null ? fields.ext : cur.ext,
+    ip: fields.ip != null ? fields.ip : cur.ip,
+    device_id: fields.deviceId !== undefined ? (fields.deviceId != null ? Number(fields.deviceId) : null) : cur.device_id,
+    notified: fields.notified != null ? (fields.notified ? 1 : 0) : cur.notified,
+    ignored: fields.ignored != null ? (fields.ignored ? 1 : 0) : cur.ignored,
+  };
+  db.prepare(`
+    UPDATE discovered_sources
+    SET label=@label, ext=@ext, ip=@ip, device_id=@device_id, notified=@notified, ignored=@ignored
+    WHERE id=@id
+  `).run({ ...m, id: Number(id) });
+  return db.prepare('SELECT * FROM discovered_sources WHERE id = ?').get(Number(id));
+}
+function deleteDiscovered(id) {
+  return db.prepare('DELETE FROM discovered_sources WHERE id = ?').run(Number(id)).changes;
+}
+
 // Total on-disk size of the log store (main DB + WAL + shared-memory files).
 function dbSize() {
   let total = 0;
@@ -378,5 +456,9 @@ module.exports = {
   updateDevice,
   deleteDevice,
   saveDeviceState,
+  listDiscovered,
+  upsertDiscovered,
+  setDiscoveredFields,
+  deleteDiscovered,
   DB_PATH,
 };

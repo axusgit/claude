@@ -10,6 +10,7 @@ const db = require('./lib/db');
 const fw = require('./lib/firewall');
 const alerts = require('./lib/alerts');
 const devices = require('./lib/devices');
+const discovery = require('./lib/discovery');
 const { Collector } = require('./lib/collector');
 const { severityName, facilityName } = require('./lib/parser');
 const { loginPage, dashboardPage } = require('./lib/views');
@@ -92,6 +93,14 @@ setInterval(watchdogTick, 30000).unref();
 devices.refresh();
 setInterval(() => {
   try { devices.tick(); } catch (err) { console.error('[devices] tick error:', err.message); }
+}, 30000).unref();
+
+// Auto-discovery: notice new sources (by MAC / endpoint IP) and (optionally)
+// auto-register them for dead-man monitoring. Refresh loads known sources so a
+// restart never re-alerts; the tick persists sightings + promotes new ones.
+discovery.refresh();
+setInterval(() => {
+  try { discovery.tick(); } catch (err) { console.error('[discovery] tick error:', err.message); }
 }, 30000).unref();
 
 // --------------------------------- web ----------------------------------
@@ -360,6 +369,34 @@ app.delete('/api/devices/:id', requireAuth, (req, res) => {
   res.json({ ok: true, deleted: n });
 });
 
+// ---- auto-discovery (new-source detection + optional auto-register) ----
+app.get('/api/discovery', requireAuth, (req, res) => {
+  res.json({
+    sources: discovery.statusList(),
+    settings: discovery.settings(),
+    channels: { ntfy: alerts.topicSet(), email: alerts.emailConfigured() },
+    emailTo: alerts.EMAIL_TO,
+  });
+});
+
+app.post('/api/discovery/settings', requireAuth, (req, res) => {
+  const r = discovery.setSettings(req.body || {});
+  if (r && r.error) return res.status(400).json({ error: r.error });
+  res.json({ ok: true, settings: r });
+});
+
+app.post('/api/discovery/:id/adopt', requireAuth, (req, res) => {
+  const r = discovery.adopt(Number(req.params.id));
+  if (r && r.error) return res.status(400).json({ error: r.error });
+  res.json(r);
+});
+
+app.delete('/api/discovery/:id', requireAuth, (req, res) => {
+  const r = discovery.forget(Number(req.params.id));
+  if (r && r.error) return res.status(400).json({ error: r.error });
+  res.json(r);
+});
+
 // ---- clear logs (manual purge older than N days; 7 is the automatic sweep) ----
 app.post('/api/clearlogs', requireAuth, (req, res) => {
   const days = Number((req.body || {}).days);
@@ -417,7 +454,19 @@ function privateIp(text) {
   return '';
 }
 
+// Only ONE export may stream at a time. Each export holds the single read-only DB
+// cursor and drives heavy disk I/O; two at once conflict on that cursor and can
+// saturate this small box's I/O, wedging the whole process. Serialize them.
+let exportsActive = 0;
+
 app.get('/api/export', requireAuth, async (req, res) => {
+  if (exportsActive >= 1) {
+    return res.status(429).type('application/json').send(JSON.stringify({
+      error: 'A log download is already in progress. This server streams one download at a time — please wait for the current one to finish, then try again.',
+    }));
+  }
+  exportsActive++;
+  try {
   const format = ['csv', 'json', 'txt'].includes(req.query.format) ? req.query.format : 'csv';
   const order = req.query.order === 'desc' ? 'desc' : 'asc';
   const iso = localIso;
@@ -493,6 +542,9 @@ app.get('/api/export', requireAuth, async (req, res) => {
     if (typeof it.return === 'function') it.return(); // release the DB cursor
   }
   res.end();
+  } finally {
+    exportsActive--; // free the export slot no matter how this request ended
+  }
 });
 
 // ---- firewall: manage the UDP 514 allow-list ----

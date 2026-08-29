@@ -195,6 +195,7 @@ function dashboardPage() {
   <div class="tabs">
     <button class="tab active" data-tab="messages">Messages</button>
     <button class="tab" data-tab="devices">Devices</button>
+    <button class="tab" data-tab="discovery">Discovery</button>
     <button class="tab" data-tab="firewall">Firewall</button>
     <button class="tab" data-tab="watchdog">Watchdog</button>
   </div>
@@ -331,6 +332,45 @@ function dashboardPage() {
     </div>
   </div>
   </div><!-- /panel-devices -->
+
+  <div class="panel" id="panel-discovery">
+  <div class="card">
+    <h2 style="margin:0 0 4px">Auto-discovery</h2>
+    <p class="muted" style="margin:0 0 12px">Automatically notices any <strong>new source</strong> that starts sending syslog — identified by its <strong>MAC</strong> (survives DHCP changes) or endpoint IP — and, when auto-register is on, adds it for offline monitoring with no manual setup. You get an alert (ntfy push + email) the first time a new device appears.</p>
+    <p class="muted" id="discChannels" style="margin:0 0 12px"></p>
+    <div id="discFlash"></div>
+    <div class="row" style="align-items:center;flex-wrap:wrap;gap:18px;margin:0 0 4px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
+        <input type="checkbox" id="discEnabled" style="width:auto"> <span>Discovery enabled</span></label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
+        <input type="checkbox" id="discAuto" style="width:auto"> <span>Auto-register new sources</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="margin:0">Monitor offline after</label>
+        <select id="discInterval" style="width:auto">
+          <option value="120">2 minutes</option>
+          <option value="300">5 minutes</option>
+          <option value="600" selected>10 minutes</option>
+          <option value="900">15 minutes</option>
+          <option value="1800">30 minutes</option>
+          <option value="3600">1 hour</option>
+        </select></div>
+    </div>
+    <div class="logwrap" style="margin-top:14px">
+      <table class="log" style="font-family:Inter,sans-serif;font-size:13px">
+        <thead><tr>
+          <th style="width:100px">Status</th>
+          <th>Source</th>
+          <th style="width:200px">Identifier</th>
+          <th style="width:150px">Last seen</th>
+          <th style="width:80px">Msgs</th>
+          <th style="width:170px"></th>
+        </tr></thead>
+        <tbody id="discRows"></tbody>
+      </table>
+      <div class="empty" id="discEmpty" style="display:none">No sources discovered yet. As devices send syslog, they'll appear here automatically.</div>
+    </div>
+  </div>
+  </div><!-- /panel-discovery -->
 
   <div class="panel" id="panel-firewall">
   <div class="card">
@@ -702,6 +742,65 @@ async function devDelete(id){
 $('devAdd').onclick=devAdd;
 ['devName','devValue'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter')devAdd();}));
 
+// ---- auto-discovery ----
+function discFlash(msg,ok){$('discFlash').innerHTML='<div class="flash '+(ok?'':'err')+'" style="'+(ok?'background:#f0fdf4;border:1px solid #bbf7d0;color:#166534':'')+'">'+esc(msg)+'</div>';if(ok)setTimeout(()=>{$('discFlash').innerHTML='';},4000);}
+let discSettingsInit=false;
+function discBadge(s){
+  if(!s.monitored)return '<span class="sev s7">New</span>';
+  const m={up:['Online','s6'],down:['OFFLINE','s2'],disabled:['Disabled','s7'],unknown:['Monitored','s7']};
+  const b=m[s.deviceState]||m.unknown; return '<span class="sev '+b[1]+'">'+b[0]+'</span>';
+}
+function renderDiscovery(data){
+  const ch=data.channels||{}; const to=(data.emailTo||[]).join(', ');
+  $('discChannels').innerHTML='Alert channels: <strong>'+(ch.ntfy?'ntfy ✓':'ntfy ✗')+'</strong> · <strong>'+
+    (ch.email?('email ✓'+(to?' ('+esc(to)+')':'')):'email ✗ (not configured)')+'</strong>';
+  const st=data.settings||{};
+  if(!discSettingsInit){ // don't stomp a control the user is mid-change on
+    $('discEnabled').checked=!!st.enabled; $('discAuto').checked=!!st.autoRegister;
+    if(st.intervalSec)$('discInterval').value=String(st.intervalSec); discSettingsInit=true;
+  }
+  const list=data.sources||[];
+  $('discEmpty').style.display=list.length?'none':'block';
+  const rows=$('discRows');
+  rows.innerHTML=list.map(s=>{
+    const seen=s.lastSeenTs?esc(fmtTime(s.lastSeenTs))+' ('+devAgo(s.quietSec)+')':'never';
+    const idlabel=(s.kind==='mac'?'MAC':'IP')+': <code>'+esc(s.value)+'</code>';
+    const action=s.monitored
+      ? '<span class="muted">monitored</span> <button class="btn ghost sm" data-discforget="'+s.id+'">Dismiss</button>'
+      : '<button class="btn sm" data-discadopt="'+s.id+'">Monitor</button> <button class="btn ghost sm" data-discforget="'+s.id+'">Ignore</button>';
+    return '<tr>'+
+      '<td>'+discBadge(s)+'</td>'+
+      '<td style="font-weight:600">'+esc(s.label)+'</td>'+
+      '<td class="muted">'+idlabel+'</td>'+
+      '<td class="muted">'+seen+'</td>'+
+      '<td class="muted">'+(s.count||0)+'</td>'+
+      '<td>'+action+'</td></tr>';
+  }).join('');
+  rows.querySelectorAll('button[data-discadopt]').forEach(b=>b.onclick=()=>discAdopt(b.dataset.discadopt));
+  rows.querySelectorAll('button[data-discforget]').forEach(b=>b.onclick=()=>discForget(b.dataset.discforget));
+}
+async function loadDiscovery(){
+  const res=await fetch('/api/discovery'); if(res.status===401){location.href='/login';return;} if(!res.ok)return;
+  renderDiscovery(await res.json());
+}
+async function discSave(){
+  const body={enabled:$('discEnabled').checked,autoRegister:$('discAuto').checked,intervalSec:Number($('discInterval').value)};
+  const res=await fetch('/api/discovery/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res.ok)discFlash('Settings saved.',true); else discFlash('Save failed',false);
+}
+async function discAdopt(id){
+  const res=await fetch('/api/discovery/'+id+'/adopt',{method:'POST'});
+  const d=await res.json().catch(()=>({}));
+  if(res.ok){discFlash('Now monitoring.',true);loadDiscovery();loadDevices();} else discFlash(d.error||'Failed',false);
+}
+async function discForget(id){
+  if(!confirm('Dismiss this source? It will stop showing here (a linked monitored device is NOT removed).'))return;
+  const res=await fetch('/api/discovery/'+id,{method:'DELETE'});
+  if(res.ok){discFlash('Dismissed.',true);loadDiscovery();} else discFlash('Failed',false);
+}
+['discEnabled','discAuto'].forEach(id=>$(id).addEventListener('change',discSave));
+$('discInterval').addEventListener('change',discSave);
+
 // ---- tabs ----
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -711,12 +810,14 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   if(t.dataset.tab==='firewall')loadFirewall();
   if(t.dataset.tab==='watchdog')loadWatchdog();
   if(t.dataset.tab==='devices')loadDevices();
+  if(t.dataset.tab==='discovery')loadDiscovery();
 });
 
 load();loadStats();loadHosts();loadFirewall();
 setInterval(()=>{loadStats();loadHosts();},15000);
 setInterval(()=>{if(!live)load();},15000);
 setInterval(()=>{if(document.getElementById('panel-devices').classList.contains('active'))loadDevices();},15000);
+setInterval(()=>{if(document.getElementById('panel-discovery').classList.contains('active'))loadDiscovery();},15000);
 `;
 
 module.exports = { loginPage, dashboardPage, esc };

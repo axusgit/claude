@@ -3,5 +3,9 @@
   "intervalMs": 100,
   "huntSec": 30,
   "windowStartET": "19:59:55",
-  "windowEndET": "20:00:55"
+  "windowEndET": "20:00:55",
+  "windowStartAM": "07:59:55",
+  "windowEndAM": "08:00:55",
+  "watchStart": "2027-06-05",
+  "watchEnd": "2027-08-05"
 }

@@ -215,6 +215,9 @@ services:
       # Shared bearer secret for the server-to-server /api/external quote intake
       # (currently the On Call AI Agent). Empty disables the external API.
       EXTERNAL_API_TOKEN: ${AESIGN_EXTERNAL_API_TOKEN}
+      # Where to POST when an On Call quote is signed/completed (uses the same
+      # shared secret as the bearer). Empty disables the completion callback.
+      ON_CALL_CALLBACK_URL: ${AESIGN_ON_CALL_CALLBACK_URL:-}
     volumes:
       - aesign_data:/data/aesign
     depends_on:
