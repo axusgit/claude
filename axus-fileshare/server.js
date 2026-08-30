@@ -11,6 +11,7 @@ const multer = require('multer');
 
 const Store = require('./lib/store');
 const views = require('./lib/views');
+const mailer = require('./lib/mailer');
 
 // ---------------------------------------------------------------------------
 // Config
@@ -281,6 +282,10 @@ app.post('/admin/links', requireAdmin, (req, res) => {
     uploads: [],
   };
   store.add(link);
+  mailer.notifyLinkCreated({
+    kind: 'upload', label: link.label, url: `${baseUrl(req)}/u/${link.token}`,
+    note: link.note, expiresAt: link.expiresAt, maxUses: link.maxUses,
+  });
   req.session.flash = { type: 'ok', msg: `Link created: ${baseUrl(req)}/u/${link.token}` };
   res.redirect('/admin');
 });
@@ -414,6 +419,10 @@ app.post('/admin/files/:token/:stored/share', requireAdmin, (req, res) => {
         },
       ],
     });
+    mailer.notifyLinkCreated({
+      kind: 'download', label: `Shared: ${up.originalName}`, url: `${baseUrl(req)}/d/${token}`,
+      files: [{ originalName: up.originalName, size: up.size }],
+    });
     req.session.flash = {
       type: 'ok',
       msg: `Download link created: ${baseUrl(req)}/d/${token} — copy it from "Download links" below.`,
@@ -471,6 +480,10 @@ app.post('/admin/sends', requireAdmin, (req, res) => {
       })),
     };
     store.addSend(send);
+    mailer.notifyLinkCreated({
+      kind: 'download', label: send.label, url: `${baseUrl(req)}/d/${send.token}`,
+      note: send.note, expiresAt: send.expiresAt, maxDownloads: send.maxDownloads, files: send.files,
+    });
     res.json({ ok: true, url: `${baseUrl(req)}/d/${send.token}`, count: files.length });
   });
 });
@@ -584,6 +597,11 @@ app.post('/u/:token', (req, res) => {
         ip,
       });
     }
+    mailer.notifyUpload({
+      label: link.label, url: `${baseUrl(req)}/u/${link.token}`,
+      files: files.map((f) => ({ originalName: f.originalname, size: f.size })),
+      uploaderName, ip,
+    });
     res.json({ ok: true, count: files.length });
   });
 });

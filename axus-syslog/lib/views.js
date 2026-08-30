@@ -48,7 +48,7 @@ a:hover{text-decoration:underline}
 .brand img{height:34px;width:auto;display:block}
 .brand .sep{width:1px;height:24px;background:var(--border)}
 .brand .prod{font-weight:600;font-size:16px;color:var(--muted);letter-spacing:.01em}
-.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:22px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-top:48px;margin-bottom:22px}
 .tab{padding:10px 18px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border:none;background:none;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-1px}
 .tab:hover{color:var(--text)}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
@@ -140,6 +140,20 @@ tr.new td{animation:flash-in 1.2s}
 .hostbar .bar span{display:block;height:100%;background:var(--accent);border-radius:999px}
 .hostbar .name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hostbar .c{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* Fixed host-metrics gauges (top center, visible on every tab + while scrolling) */
+.sysgauges{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;
+  display:flex;gap:10px;padding:7px 12px 5px;
+  background:rgba(255,255,255,.92);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 14px rgba(17,24,39,.08)}
+.gauge{width:70px;text-align:center}
+.gauge svg{width:70px;height:38px;display:block;margin:0 auto}
+.gauge .track{stroke:#eef0f3}
+.gauge .arc{transition:stroke-dashoffset .35s ease,stroke .3s ease}
+.gauge .needle{transition:transform .35s ease}
+.gauge .gval{font-size:12.5px;font-weight:700;line-height:1;margin-top:1px;font-variant-numeric:tabular-nums}
+.gauge .glabel{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:1px}
+@media(max-width:600px){.sysgauges{gap:4px;padding:6px 8px 4px}.gauge{width:58px}.gauge svg{width:58px;height:32px}}
 `;
 
 function layout({ title, body, extraJs = '' }) {
@@ -181,8 +195,27 @@ function loginPage({ error, user } = {}) {
   return layout({ title: 'Sign in', body });
 }
 
+function gaugeSvg(key, label) {
+  const arc = 'M8 50 A42 42 0 0 1 92 50';
+  return `<div class="gauge">
+    <svg viewBox="0 0 100 54" role="img" aria-label="${label} usage">
+      <path class="track" d="${arc}" fill="none" stroke-width="8" stroke-linecap="round"></path>
+      <path id="${key}Arc" class="arc" d="${arc}" fill="none" stroke-width="8" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" stroke="#16a34a"></path>
+      <line id="${key}Needle" class="needle" x1="50" y1="50" x2="50" y2="15" stroke="#111827" stroke-width="2.4" stroke-linecap="round" transform="rotate(-90 50 50)"></line>
+      <circle cx="50" cy="50" r="3.2" fill="#111827"></circle>
+    </svg>
+    <div class="gval"><span id="${key}Val">–</span>%</div>
+    <div class="glabel">${label}</div>
+  </div>`;
+}
+
 function dashboardPage() {
   const body = `
+<div class="sysgauges" title="Live host metrics — CPU, memory, disk">
+  ${gaugeSvg('cpu', 'CPU')}
+  ${gaugeSvg('mem', 'MEM')}
+  ${gaugeSvg('disk', 'DISK')}
+</div>
 <div class="wrap">
   <div class="topbar">
     <div class="brand"><img src="${LOGO}" alt="Axus Technologies"><span class="sep"></span><span class="prod">Syslog</span></div>
@@ -207,7 +240,7 @@ function dashboardPage() {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;flex-wrap:wrap">
       <h2 style="margin:0">Messages</h2>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <span class="muted" style="font-size:12px;white-space:nowrap" title="Logs older than 7 days are removed automatically">Auto-clears after 7 days</span>
+        <span class="muted" style="font-size:12px;white-space:nowrap" title="Logs older than 24 hours are removed automatically">Auto-clears after 24 hours</span>
         <div style="display:flex;align-items:center;gap:6px">
           <select id="fmt" style="width:auto;padding:6px 9px;font-size:13px">
             <option value="csv">CSV</option>
@@ -242,18 +275,10 @@ function dashboardPage() {
         <option value="8">Last 8h</option>
         <option value="12">Last 12h</option>
         <option value="24" selected>Last 24h</option>
-        <option value="168">Last 7 days</option>
-        <option value="custom">Custom range…</option>
       </select></div>
       <div style="display:flex;gap:8px">
         <button class="btn" id="apply">Search</button>
         <button class="btn ghost" id="reset">Reset</button>
-      </div>
-      <div id="customRange" class="full" style="display:none">
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <div style="flex:1;min-width:180px"><label>From</label><input type="datetime-local" id="from" step="1"></div>
-          <div style="flex:1;min-width:180px"><label>To</label><input type="datetime-local" id="to" step="1"></div>
-        </div>
       </div>
     </div>
   </div>
@@ -433,23 +458,6 @@ function dashboardPage() {
     <p class="muted" id="wdChannels" style="margin:8px 0 0"></p>
   </div>
 
-  <div class="card">
-    <h2 style="margin:0 0 4px">Clear logs</h2>
-    <p class="muted" style="margin:0 0 18px">Logs auto-clear after <strong>7 days</strong>. To free space sooner, manually remove anything older than a shorter window:</p>
-    <div id="clFlash"></div>
-    <div class="fieldrow">
-      <div class="field">
-        <label>Delete logs older than</label>
-        <select id="clDays" style="width:160px">
-          <option value="1">1 day</option>
-          <option value="3">3 days</option>
-          <option value="5">5 days</option>
-          <option value="7">7 days</option>
-        </select>
-      </div>
-      <div class="field"><button class="btn danger" id="clRun">Clear now</button></div>
-    </div>
-  </div>
   </div><!-- /panel-watchdog -->
 
   <div class="foot">${esc(BRAND)} · UDP syslog collector</div>
@@ -474,11 +482,7 @@ function filters(){
   if($('host').value)f.host=$('host').value;
   if($('sev').value!=='')f.maxSeverity=$('sev').value;
   const rv=$('range').value;
-  if(rv==='custom'){
-    const from=$('from').value, to=$('to').value;   // datetime-local = viewer local time
-    if(from){const t=Date.parse(from); if(!isNaN(t))f.since=t;}
-    if(to){const t=Date.parse(to); if(!isNaN(t))f.until=t;}
-  } else {
+  {
     const h=Number(rv); if(h>0)f.since=Date.now()-h*3600000;
   }
   return f;
@@ -551,11 +555,6 @@ function matchesFilters(m){
   if(q){const hay=((m.message||'')+' '+(m.host||'')+' '+(m.app||'')+' '+(m.source_ip||'')).toLowerCase();if(!hay.includes(q))return false;}
   if($('host').value){const name=m.host||m.source_ip;if(name!==$('host').value)return false;}
   if($('sev').value!==''&&m.severity>Number($('sev').value))return false;
-  if($('range').value==='custom'){
-    const from=$('from').value, to=$('to').value;
-    if(from){const t=Date.parse(from); if(!isNaN(t)&&m.ts<t)return false;}
-    if(to){const t=Date.parse(to); if(!isNaN(t)&&m.ts>t)return false;}
-  }
   return true;
 }
 
@@ -577,20 +576,14 @@ function setLive(on){
 }
 
 $('apply').onclick=()=>{offset=0;load();};
-$('reset').onclick=()=>{$('q').value='';$('host').value='';$('sev').value='';$('range').value='24';$('from').value='';$('to').value='';$('customRange').style.display='none';offset=0;load();};
+$('reset').onclick=()=>{$('q').value='';$('host').value='';$('sev').value='';$('range').value='24';offset=0;load();};
 $('q').addEventListener('keydown',e=>{if(e.key==='Enter'){offset=0;load();}});
 $('next').onclick=()=>{offset+=limit;load();};
 $('prev').onclick=()=>{offset=Math.max(0,offset-limit);load();};
 $('liveToggle').onclick=()=>setLive(!live);
 [$('host'),$('sev')].forEach(el=>el.onchange=()=>{offset=0;load();});
-// Range: presets apply immediately; "Custom range…" reveals From/To and waits for Search.
-$('range').onchange=()=>{
-  const custom=$('range').value==='custom';
-  $('customRange').style.display=custom?'block':'none';
-  offset=0;
-  if(!custom)load();
-};
-['from','to'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter'){offset=0;load();}}));
+// Range presets apply immediately.
+$('range').onchange=()=>{offset=0;load();};
 
 // ---- download / export ----
 $('download').onclick=()=>{
@@ -671,19 +664,6 @@ $('wdTest').onclick=async()=>{
   $('wdTest').disabled=false;
   if(d._ok)wdFlash('Test alert sent ✓ — check your phone (ntfy).',true);
   else wdFlash('Test failed: '+(d.error||'unknown'),false);
-};
-
-// ---- clear logs ----
-function clFlash(msg,ok){$('clFlash').innerHTML='<div class="flash '+(ok?'':'err')+'" style="'+(ok?'background:#f0fdf4;border:1px solid #bbf7d0;color:#166534':'')+'">'+esc(msg)+'</div>';if(ok)setTimeout(()=>{$('clFlash').innerHTML='';},5000);}
-$('clRun').onclick=async()=>{
-  const days=Number($('clDays').value);
-  if(!confirm('Delete all logs older than '+days+' day(s)?\\n\\nThis permanently removes those messages now and cannot be undone.'))return;
-  $('clRun').disabled=true;
-  const res=await fetch('/api/clearlogs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days})});
-  const d=await res.json().catch(()=>({}));
-  $('clRun').disabled=false;
-  if(res.ok){clFlash('Cleared '+fmtNum(d.deleted)+' message(s) older than '+days+' day(s).',true);loadStats();if(!live)load();}
-  else clFlash(d.error||'Clear failed',false);
 };
 
 // ---- monitored devices ----
@@ -812,6 +792,28 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   if(t.dataset.tab==='devices')loadDevices();
   if(t.dataset.tab==='discovery')loadDiscovery();
 });
+
+// ---- host metrics gauges (CPU / MEM / DISK) ----
+function gaugeColor(v){return v>=90?'#dc2626':v>=70?'#f59e0b':'#16a34a';}
+function setGauge(key,v){
+  v=Math.max(0,Math.min(100,Math.round(Number(v)||0)));
+  const arc=$(key+'Arc'),needle=$(key+'Needle'),val=$(key+'Val');
+  if(!arc||!needle||!val)return;
+  arc.setAttribute('stroke-dashoffset',100-v);
+  arc.setAttribute('stroke',gaugeColor(v));
+  needle.setAttribute('transform','rotate('+(-90+v*1.8)+' 50 50)');
+  val.textContent=v;
+}
+async function loadMetrics(){
+  try{
+    const res=await fetch('/api/sysmetrics');
+    if(res.status===401){location.href='/login';return;}
+    if(!res.ok)return;
+    const d=await res.json();
+    setGauge('cpu',d.cpu);setGauge('mem',d.mem);setGauge('disk',d.disk);
+  }catch(_){}
+}
+loadMetrics();setInterval(loadMetrics,1000);
 
 load();loadStats();loadHosts();loadFirewall();
 setInterval(()=>{loadStats();loadHosts();},15000);

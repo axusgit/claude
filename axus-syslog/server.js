@@ -5,6 +5,8 @@ require('dotenv').config();
 const express = require('express');
 const cookieSession = require('cookie-session');
 const crypto = require('crypto');
+const os = require('os');
+const fs = require('fs');
 
 const db = require('./lib/db');
 const fw = require('./lib/firewall');
@@ -43,9 +45,9 @@ if (!ADMIN_PASSWORD && !OIDC_ENABLED) {
 const collector = new Collector({ port: UDP_PORT, bind: UDP_BIND });
 collector.start();
 
-// Retention: logs auto-clear after RETENTION_DAYS (fixed; default 7). The sweep
-// runs every minute and prunes anything older. No UI control — it just expires.
-const RETENTION_DAYS_EFFECTIVE = RETENTION_DAYS > 0 ? RETENTION_DAYS : 7;
+// Retention: logs auto-clear after RETENTION_DAYS (fixed; default 1 = 24 hours).
+// The sweep runs every minute and prunes anything older. No UI control — it just expires.
+const RETENTION_DAYS_EFFECTIVE = RETENTION_DAYS > 0 ? RETENTION_DAYS : 1;
 function sweep() {
   try {
     const n = db.prune({ retentionDays: RETENTION_DAYS_EFFECTIVE, maxRows: MAX_ROWS });
@@ -56,6 +58,56 @@ function sweep() {
 }
 setTimeout(sweep, 10000);
 setInterval(sweep, 60000).unref();
+
+// ------------------------------- host metrics -------------------------------
+// Lightweight CPU/MEM/DISK readings for the dashboard gauges. CPU is sampled
+// from os.cpus() deltas on a short interval so a single API hit is instant and
+// never blocks. All three are percentages (0-100).
+let prevCpu = os.cpus().map((c) => ({ ...c.times }));
+let metricsCache = { cpu: 0, mem: 0, disk: 0 };
+function sampleMetrics() {
+  try {
+    // CPU: busy fraction across all cores since the previous sample.
+    const now = os.cpus();
+    let idleD = 0, totalD = 0;
+    for (let i = 0; i < now.length; i++) {
+      const a = prevCpu[i] || now[i].times, b = now[i].times;
+      const at = a.user + a.nice + a.sys + a.idle + a.irq;
+      const bt = b.user + b.nice + b.sys + b.idle + b.irq;
+      idleD += b.idle - a.idle;
+      totalD += bt - at;
+    }
+    prevCpu = now.map((c) => ({ ...c.times }));
+    const cpu = totalD > 0
+      ? Math.max(0, Math.min(100, Math.round((1 - idleD / totalD) * 100)))
+      : metricsCache.cpu;
+
+    // MEM: prefer Linux /proc/meminfo (MemAvailable accounts for cache); else os.
+    let mem;
+    try {
+      const mi = fs.readFileSync('/proc/meminfo', 'utf8');
+      const total = Number((mi.match(/MemTotal:\s+(\d+)/) || [])[1]);
+      const avail = Number((mi.match(/MemAvailable:\s+(\d+)/) || [])[1]);
+      mem = total > 0 ? Math.round((1 - avail / total) * 100) : 0;
+    } catch (_) {
+      mem = Math.round((1 - os.freemem() / os.totalmem()) * 100);
+    }
+
+    // DISK: usage of the app's filesystem (matches `df` Use%).
+    let disk = metricsCache.disk;
+    try {
+      const s = fs.statfsSync(__dirname);
+      const used = s.blocks - s.bfree;
+      const denom = used + s.bavail;
+      disk = denom > 0 ? Math.round((used / denom) * 100) : 0;
+    } catch (_) { /* keep last good disk reading */ }
+
+    metricsCache = { cpu, mem, disk };
+  } catch (_) { /* keep last good sample */ }
+}
+sampleMetrics();
+setTimeout(sampleMetrics, 1000);
+setInterval(sampleMetrics, 1000).unref();
 
 // ------------------------------- stats cache -------------------------------
 // The dashboard's summary stats come from aggregate queries that scan large
@@ -263,6 +315,10 @@ app.get('/api/facets', requireAuth, (req, res) => {
   res.json(db.facets());
 });
 
+app.get('/api/sysmetrics', requireAuth, (req, res) => {
+  res.json(metricsCache);
+});
+
 // ---- watchdog (no-syslog alert) settings ----
 const WATCHDOG_SECS = [60, 120, 180, 300, 600];
 app.get('/api/watchdog', requireAuth, (req, res) => {
@@ -395,16 +451,6 @@ app.delete('/api/discovery/:id', requireAuth, (req, res) => {
   const r = discovery.forget(Number(req.params.id));
   if (r && r.error) return res.status(400).json({ error: r.error });
   res.json(r);
-});
-
-// ---- clear logs (manual purge older than N days; 7 is the automatic sweep) ----
-app.post('/api/clearlogs', requireAuth, (req, res) => {
-  const days = Number((req.body || {}).days);
-  if (![1, 3, 5, 7].includes(days)) return res.status(400).json({ error: 'Invalid range (allowed: 1, 3, 5, 7 days).' });
-  let deleted = 0;
-  try { deleted = db.prune({ retentionDays: days }); }
-  catch (err) { return res.status(500).json({ error: err.message }); }
-  res.json({ ok: true, days, deleted });
 });
 
 // ---- export / download ----
