@@ -1,0 +1,52 @@
+// Axus Order — Prisma schema (SQLite for the MVP).
+// Catalog/Quote models below come from the provided quote-schema.prisma.
+// Identity/login is delegated to Authentik (see lib/auth.ts) — no local User table.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model CatalogItem {
+  id           String      @id @default(cuid())
+  internalName String
+  description  String?
+  category     String?
+  mfgPN        String?
+  synnexSKU    String?
+  marginType   String      @default("PERCENT") // "PERCENT" | "FIXED"
+  marginValue  Float       @default(15)
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  quoteLines   QuoteLine[]
+}
+
+model Quote {
+  id         String      @id @default(cuid())
+  // organizationId String?   // enable when multi-tenant
+  status     String      @default("DRAFT")
+  subtotal   Float
+  currency   String      @default("USD")
+  validUntil DateTime
+  createdAt  DateTime    @default(now())
+  lines      QuoteLine[]
+}
+
+model QuoteLine {
+  id               String       @id @default(cuid())
+  quoteId          String
+  quote            Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  catalogItemId    String?
+  catalogItem      CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  description      String
+  synnexSKU        String?
+  qty              Int
+  unitBallpark     Float?
+  lineTotal        Float?
+  unitCostSnapshot Float?       // SERVER ONLY — never return in an API response
+  status           String
+}

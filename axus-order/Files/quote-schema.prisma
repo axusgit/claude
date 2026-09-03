@@ -1,0 +1,43 @@
+// Merge these models into prisma/schema.prisma, then:
+//   npx prisma migrate dev --name add_quotes
+// (If CatalogItem already exists from the scaffold, keep one copy — don't duplicate.)
+
+model CatalogItem {
+  id           String      @id @default(cuid())
+  internalName String
+  description  String?
+  category     String?
+  mfgPN        String?
+  synnexSKU    String?
+  marginType   String      @default("PERCENT") // "PERCENT" | "FIXED"
+  marginValue  Float       @default(15)
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  quoteLines   QuoteLine[]
+}
+
+model Quote {
+  id         String      @id @default(cuid())
+  // organizationId String?   // enable when multi-tenant
+  status     String      @default("DRAFT")
+  subtotal   Float
+  currency   String      @default("USD")
+  validUntil DateTime
+  createdAt  DateTime    @default(now())
+  lines      QuoteLine[]
+}
+
+model QuoteLine {
+  id               String       @id @default(cuid())
+  quoteId          String
+  quote            Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  catalogItemId    String?
+  catalogItem      CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  description      String
+  synnexSKU        String?
+  qty              Int
+  unitBallpark     Float?
+  lineTotal        Float?
+  unitCostSnapshot Float?       // SERVER ONLY — never return in an API response
+  status           String
+}

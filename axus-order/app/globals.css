@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+/* --- Axus brand tokens (clean shadcn-style: Inter, white cards, 1px borders,
+   tight radii, orange accent). Committed light look for a client-facing tool. --- */
+@theme {
+  --color-canvas: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-faint: #94a3b8;
+  --color-line: #e5e7eb;
+  --color-accent: #ea580c;
+  --color-accent-hover: #c2410c;
+  --color-accent-soft: #fff2ec;
+  --color-ok: #16a34a;
+  --color-warn: #b45309;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius: 0.5rem;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric alignment for prices/quantities */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

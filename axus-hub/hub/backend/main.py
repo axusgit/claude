@@ -31,6 +31,7 @@ APP_CATALOG = [
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
     {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
     {"key": "esign", "name": "eSign", "desc": "E-signatures, agreements & quotes", "group": "app-aesign", "icon": "✍️", "internal": False, "url": "https://aesign.axustechnologies.com"},
+    {"key": "order", "name": "Order", "desc": "IT hardware ordering & ballpark quotes", "group": "app-order", "icon": "🛒", "internal": False, "url": "https://order.axustechnologies.com", "health": "https://order.axustechnologies.com/api/health"},
     # On-Call: launcher tile + live health only. It keeps its OWN login/auth —
     # NOT gated by Authentik forward-auth (app-oncall just controls tile visibility).
     {"key": "oncall", "name": "On-Call", "desc": "After-hours on-call answering & escalation", "group": "app-oncall", "icon": "📞", "internal": False, "url": "https://oncall.axustechnologies.com", "health": "https://oncall.axustechnologies.com/health"},

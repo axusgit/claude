@@ -1,0 +1,58 @@
+category,internalName,mfgPN,synnexSKU,marginType,marginValue,notes
+Firewall / SD-WAN,FortiGate / FortiWiFi 40F,FG-40F,,PERCENT,15,Fortinet (doc recommends Fortinet not Meraki)
+Firewall / SD-WAN,FortiGate / FortiWiFi 60F,FG-60F,,PERCENT,15,Fortinet
+Firewall / SD-WAN,FortiGate 90G,FG-90G,,PERCENT,15,Fortinet
+Firewall / SD-WAN,FortiGate 120G,FG-120G,,PERCENT,15,Fortinet
+Firewall / SD-WAN,FortiGate 200G,FG-200G,,PERCENT,15,Fortinet (replaces EOO 200F)
+Networking,Managed Gigabit Switch,FS-124G-FPOE,,PERCENT,15,Business-grade managed gigabit (FortiSwitch 124G-FPOE)
+Networking,Wireless Access Point (WiFi6 dual-band),FAP-231F-A,,PERCENT,15,Centralized mgmt (FortiAP 231F Americas)
+Power,Redundant UPS,SMT1500RM2UC,,PERCENT,15,APC Smart-UPS 1500VA 2U rackmount
+Workstation,Client Workstation (Win11 / i5-i7 or Ryzen 5-7 / 16GB / SSD),,,PERCENT,15,Configurable - needs specific model
+Workstation,Welcome Kiosk PC (Win11 / touch),,,PERCENT,15,Configurable - 17in+ touchscreen
+Workstation,Welcome Tablet PC (Win11 / 10in multitouch),,,PERCENT,15,Configurable
+Monitor,24in Monitor 1920x1080,P2425H,,PERCENT,15,Dell P2425H FHD (replaces EOL 23in P2319H)
+Monitor,24in Monitor 1920x1200,P2425,,PERCENT,15,Dell P-series 24in WUXGA 16:10
+Monitor,17in+ Touchscreen Monitor (kiosk),E126096,,PERCENT,15,Elo 2202L 22in touchscreen
+Webcam,Logitech C615 Webcam,C615,,PERCENT,15,HCN Recommended
+Webcam,Logitech C920e Business Webcam,960-001401,,PERCENT,15,Replaces discontinued MS LifeCam Studio
+Webcam,Provider Webcam 1080p+,,,PERCENT,15,Needs model
+Tablet / Mobile,Apple iPad (Canto / Haiku),,,PERCENT,15,
+Tablet / Mobile,Apple iPhone / iPod Touch (Haiku),,,PERCENT,15,
+Server,MiPACS Storage Server (Win Server / Xeon 6-core / 16GB / 1TB RAID1),,,PERCENT,15,Configurable
+Server,MiPACS Central Regional Server (Win Server / 8-16 vCPU / 32-64GB),,,PERCENT,15,Configurable
+Payment Terminal,Verifone P200 EMV,P200,,PERCENT,15,HCN Recommended
+Payment Terminal,PAX A80 EMV,A80,,PERCENT,15,HCN Recommended
+Payment Terminal,SRedkey 2 EMV,IDSK2-504ED,,PERCENT,15,HCN Recommended (ID TECH SREDKey 2)
+Signature Pad,Topaz T-S461-HSB-R,T-S461-HSB-R,,PERCENT,15,HCN Recommended
+Signature Pad,Topaz T-LBK755-BHSB-R,T-LBK755-BHSB-R,,PERCENT,15,HCN Recommended
+Signature Pad,Scriptel SlimShield LCD ST1580 ProScript,ST1580,,PERCENT,15,HCN Recommended
+Barcode Scanner,Datalogic Gryphon GD4520 (corded 2D),,,PERCENT,15,HCN Recommended (specify GD4520 variant)
+Barcode Scanner,Datalogic Gryphon GM4500 (wireless),GM4500,,PERCENT,15,Wireless (EOO Oct 2026; successor GM4600)
+Biometrics,Imprivata PatientSecure,,,PERCENT,15,
+Biometrics,M2SYS RightPatient,,,PERCENT,15,
+Thermal Printer (Kiosk),Custom Engineering KPM216H,KPM216H,,PERCENT,15,USB
+Thermal Printer (Kiosk),Custom Engineering KPM216HII,KPM216HII,,PERCENT,15,USB
+Thermal Printer (Kiosk),Practical Automation ITK 38,ITK38,,PERCENT,15,USB
+Label Printer,Dymo LabelWriter 550,2112552,,PERCENT,15,
+Label Printer,Dymo LabelWriter 550 Turbo,2112553,,PERCENT,15,Replaces EOL 450 Turbo
+Label Printer,Zebra ZD411 (direct thermal),ZD4A022-D01M00EZ,,PERCENT,15,Replaces EOL LP2824 Plus
+Kiosk Scanner,Ambir DS490i,DS490i,,PERCENT,15,8.5in full size
+Kiosk Scanner,Ambir DS490ix,DS490ix,,PERCENT,15,8.5in full size
+Kiosk Scanner,Ambir DS687,DS687,,PERCENT,15,business cards
+Kiosk Scanner,Inuvio Ecoscan i6d,ECSC-i6d,,PERCENT,15,business card
+Kiosk Scanner,Plustek MobileOffice D620,D620,,PERCENT,15,business card
+Document Scanner,Fujitsu fi-8820,FI-8820,,PERCENT,15,High-volume
+Document Scanner,Fujitsu fi-8930,FI-8930,,PERCENT,15,High-volume
+Document Scanner,Fujitsu fi-8950,FI-8950,,PERCENT,15,High-volume
+Document Scanner,Fujitsu fi-8150,FI-8150,,PERCENT,15,Departmental
+Document Scanner,Fujitsu fi-8270 (flatbed),FI-8270,,PERCENT,15,Departmental
+Document Scanner,Fujitsu fi-8190,FI-8190,,PERCENT,15,Departmental / Registration
+Document Scanner,Fujitsu fi-8170,FI-8170,,PERCENT,15,Registration
+Document Scanner,Kodak Alaris S3120,S3120,,PERCENT,15,High-volume (replaces EOL i4250)
+Document Scanner,Kodak Alaris i5650S,I5650S,,PERCENT,15,High-volume
+Document Scanner,Kodak Alaris i5850S,I5850S,,PERCENT,15,High-volume
+Document Scanner,Kodak Alaris S2040,S2040,,PERCENT,15,Departmental (replaces EOL i1190E)
+Document Scanner,Kodak Alaris S2070,S2070,,PERCENT,15,Departmental (replaces EOL i2820)
+Document Scanner,Kodak Alaris S3060,S3060,,PERCENT,15,Departmental (replaces EOL i2900)
+Document Scanner,Kodak Alaris E1025,E1025,,PERCENT,15,Registration
+Document Scanner,Kodak Alaris E1035,E1035,,PERCENT,15,Registration
