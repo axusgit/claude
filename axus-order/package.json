@@ -10,7 +10,8 @@
     "prisma:generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
-    "test:synnex": "node scripts/test-synnex.mjs"
+    "test:synnex": "node scripts/test-synnex.mjs",
+    "check:catalog": "node --env-file=.env scripts/check-catalog.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

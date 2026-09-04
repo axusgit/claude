@@ -77,11 +77,22 @@ See `.env.example`. Key ones:
 | `SYNNEX_CLIENT_ID` / `SYNNEX_CLIENT_SECRET` | — | your sandbox/prod keys |
 | `SYNNEX_API_BASE` | `https://api-uat.us.tdsynnex.com` (sandbox) | prod base when live |
 
+### Budgetary rounding
+`BUDGET_ROUND_UP` (default `5`) rounds every client-facing unit price **up** to the
+nearest dollar increment so quotes read as budgetary estimates (shown as `~$…`, no
+cents, and rounded in the safe direction for a budget). Set `BUDGET_ROUND_UP=0` for
+exact figures. Applied at the cost→ballpark boundary, so unit, line total and subtotal
+stay consistent.
+
 ### Switching to real TD SYNNEX pricing
 1. Put your keys in `.env`: `SYNNEX_CLIENT_ID`, `SYNNEX_CLIENT_SECRET`.
 2. Set `SYNNEX_ADAPTER=real`.
-3. Restart. (`SYNNEX_API_BASE` defaults to the UAT sandbox; set the production base
-   when you go live.)
+3. **Set the endpoint.** `SYNNEX_API_BASE` defaults to the **UAT sandbox**
+   (`https://api-uat.us.tdsynnex.com`), which has a sparse catalog. For production you
+   MUST set `SYNNEX_API_BASE` (and `SYNNEX_TOKEN_URL` if different) to the **production**
+   TD SYNNEX endpoint, with production credentials — otherwise prices/availability will
+   be sandbox data.
+4. Restart. The "sample pricing" banner disappears automatically once `SYNNEX_ADAPTER=real`.
 
 You can validate keys independently of the app with the provided smoke test:
 
@@ -109,6 +120,11 @@ DATABASE_URL="file:/home/ubuntu/axus-order/prod.db"
 SYNNEX_ADAPTER=real
 SYNNEX_CLIENT_ID=...
 SYNNEX_CLIENT_SECRET=...
+SYNNEX_API_BASE=https://api.us.tdsynnex.com     # PRODUCTION (default is the UAT sandbox!)
+SYNNEX_TOKEN_URL=https://sso.us.tdsynnex.com/oauth2/v1/token
+SYNNEX_PA_VERSION=2.8
+SYNNEX_PRICE_TYPE=REGULAR
+BUDGET_ROUND_UP=5
 AUTH_MODE=central
 APP_GROUP=app-order
 ```
@@ -127,10 +143,13 @@ pm2 save
 ```
 (Or an `ecosystem.config.js` with `env: { PORT: 3000, ... }` if you prefer.)
 
-**5. Nginx + TLS** — `order.axustechnologies.com` → `127.0.0.1:3000`
+**5. DNS + Nginx + TLS** — `rorder.axustechnologies.com` → `127.0.0.1:3000`
+
+First point DNS at the box: add an **A record** `rorder.axustechnologies.com → 98.88.111.130`
+(axustechnologies.com DNS is managed at Hover). Wait for it to resolve, then reverse-proxy:
 ```nginx
 server {
-    server_name order.axustechnologies.com;
+    server_name rorder.axustechnologies.com;
 
     # --- Authentik forward-auth (see step 6) ---
     location /outpost.goauthentik.io/ {
@@ -167,7 +186,7 @@ server {
     }
 }
 ```
-Then `sudo certbot --nginx -d order.axustechnologies.com`.
+Then `sudo certbot --nginx -d rorder.axustechnologies.com`.
 
 > **Health check** `GET /api/health` is intentionally left unauthenticated (excluded in
 > `proxy.ts`) so the Hub command center can probe it — keep it outside the `auth_request`
@@ -175,7 +194,7 @@ Then `sudo certbot --nginx -d order.axustechnologies.com`.
 
 **6. Authentik**
 - Create a **Proxy Provider** (Forward auth, single application) + **Application** for
-  `order.axustechnologies.com`, attached to the box's Nginx outpost.
+  `rorder.axustechnologies.com`, attached to the box's Nginx outpost.
 - Create the group **`app-order`** and add the users/clients who should have access.
   Membership drives both the Hub tile visibility and the app's `APP_GROUP` gate.
 - The app reads `X-authentik-email/username/name/groups` via `lib/auth.ts` — the same
@@ -186,8 +205,8 @@ Then `sudo certbot --nginx -d order.axustechnologies.com`.
 ```python
 {"key": "order", "name": "Order", "desc": "IT hardware ordering & ballpark quotes",
  "group": "app-order", "icon": "🛒", "internal": False,
- "url": "https://order.axustechnologies.com",
- "health": "https://order.axustechnologies.com/api/health"},
+ "url": "https://rorder.axustechnologies.com",
+ "health": "https://rorder.axustechnologies.com/api/health"},
 ```
 Deploy the Hub (per the Hub's own deploy procedure) to surface the tile. Users see it only
 if they're in `app-order`.

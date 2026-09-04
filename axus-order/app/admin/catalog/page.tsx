@@ -11,16 +11,37 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-const usd = (n: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+const usd0 = (n: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(n);
+const approx = (n: number) => `~${usd0(n)}`;
+
+// --- "closest item" helpers for the Replacement column ---
+function tokens(s: string): Set<string> {
+  return new Set(
+    s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean)
+  );
+}
+// Jaccard similarity of the two names' word sets (0..1).
+function similarity(a: string, b: string): number {
+  const A = tokens(a);
+  const B = tokens(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);
+}
 
 export default async function AdminCatalogPage() {
   const identity = await getIdentity();
   const isAdmin = identity ? roleOf(identity) === "admin" : false;
   if (!isAdmin) {
     return (
-      <div className="mx-auto max-w-lg rounded-lg border border-line bg-surface p-8 text-center">
-        <h1 className="text-lg font-semibold">Admins only</h1>
+      <div className="glass mx-auto max-w-lg rounded-xl p-8 text-center">
+        <h1 className="font-display text-lg font-semibold">Admins only</h1>
         <p className="mt-2 text-sm text-muted">
           The catalog status view is restricted to administrators.
         </p>
@@ -111,11 +132,31 @@ export default async function AdminCatalogPage() {
     noSku: rows.filter((r) => r.statusLabel === "No SKU").length,
   };
 
+  // For each unavailable item, the closest AVAILABLE item in the same category.
+  const available = rows.filter((r) => r.tone === "ok");
+  function replacementFor(r: (typeof rows)[number]) {
+    if (r.tone === "ok") return null; // it's available itself
+    const sameCat = available.filter((a) => a.category === r.category && a.id !== r.id);
+    if (!sameCat.length) return null;
+    let best = sameCat[0];
+    let bestScore = similarity(r.name, best.name);
+    for (const c of sameCat.slice(1)) {
+      const s = similarity(r.name, c.name);
+      if (s > bestScore) {
+        bestScore = s;
+        best = c;
+      }
+    }
+    return best;
+  }
+
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Catalog Status</h1>
-        <Link href="/" className="text-sm text-muted hover:text-ink transition-colors">
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Catalog <span className="grad-text">Status</span>
+        </h1>
+        <Link href="/" className="text-sm text-muted transition-colors hover:text-ink">
           ← Back to catalog
         </Link>
       </div>
@@ -131,23 +172,24 @@ export default async function AdminCatalogPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-line bg-surface">
+      <div className="glass overflow-hidden rounded-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-faint">
+              <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-faint">
                 <th className="px-4 py-3 font-medium">Category</th>
                 <th className="px-4 py-3 font-medium">Item</th>
                 <th className="px-4 py-3 font-medium">SKU (mfgPN)</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 text-right font-medium">Avail.</th>
-                <th className="px-4 py-3 text-right font-medium">Unit (ballpark)</th>
+                <th className="px-4 py-3 text-right font-medium">Unit (approx.)</th>
+                <th className="px-4 py-3 font-medium">Replacement</th>
                 <th className="px-4 py-3 font-medium">Notes</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-line last:border-0 align-top">
+                <tr key={r.id} className="row-glow border-b border-line/70 align-top last:border-0">
                   <td className="px-4 py-2.5 text-muted whitespace-nowrap">{r.category}</td>
                   <td className="px-4 py-2.5 font-medium">{r.name}</td>
                   <td className="px-4 py-2.5 font-mono text-[11px] text-faint whitespace-nowrap">
@@ -163,8 +205,25 @@ export default async function AdminCatalogPage() {
                     {r.ballpark == null ? (
                       <span className="text-warn">Contact us</span>
                     ) : (
-                      usd(r.ballpark)
+                      approx(r.ballpark)
                     )}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs">
+                    {(() => {
+                      const rep = replacementFor(r);
+                      if (r.tone === "ok") return <span className="text-faint">—</span>;
+                      if (!rep) return <span className="text-faint">No in-category match</span>;
+                      return (
+                        <span className="text-ink">
+                          {rep.name}
+                          {rep.sku !== "—" && (
+                            <span className="ml-1 font-mono text-[10px] text-faint">
+                              {rep.sku}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-muted">{r.notes}</td>
                 </tr>
@@ -186,10 +245,10 @@ function StatusBadge({
 }) {
   const styles =
     tone === "ok"
-      ? "bg-green-50 text-green-700 border-green-200"
+      ? "border-ok/40 bg-ok/10 text-ok"
       : tone === "warn"
-        ? "bg-accent-soft text-warn border-line"
-        : "bg-canvas text-faint border-line";
+        ? "border-warn/40 bg-warn/10 text-warn"
+        : "border-line bg-white/[0.03] text-faint";
   return (
     <span className={`inline-block rounded-full border px-2 py-0.5 text-xs font-medium ${styles}`}>
       {label}

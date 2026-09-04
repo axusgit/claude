@@ -21,13 +21,22 @@ export interface BallparkLine {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+// Budgetary presentation: round the client-facing unit price UP to the nearest
+// increment (BUDGET_ROUND_UP, default $5) so quotes read as estimates and round
+// in the safe direction for a budget. Set BUDGET_ROUND_UP=0 for exact figures.
+const roundUp = (n: number): number => {
+  const step = Number(process.env.BUDGET_ROUND_UP ?? "5");
+  return step > 0 ? Math.ceil(n / step) * step : round2(n);
+};
+
 export function toBallpark(pa: PriceAvailability, rule: MarginRule): BallparkLine {
   let unitBallpark: number | null = null;
   if (pa.isQuotable && pa.cost != null) {
-    unitBallpark =
+    const marked =
       rule.type === "PERCENT"
-        ? round2(pa.cost * (1 + rule.value / 100))
-        : round2(pa.cost + rule.value);
+        ? pa.cost * (1 + rule.value / 100)
+        : pa.cost + rule.value;
+    unitBallpark = roundUp(marked);
   }
   return {
     synnexSKU: pa.synnexSKU,

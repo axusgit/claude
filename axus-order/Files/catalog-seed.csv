@@ -7,9 +7,10 @@ Firewall / SD-WAN,FortiGate 200G,FG-200G,,PERCENT,15,Fortinet (replaces EOO 200F
 Networking,Managed Gigabit Switch,FS-124G-FPOE,,PERCENT,15,Business-grade managed gigabit (FortiSwitch 124G-FPOE)
 Networking,Wireless Access Point (WiFi6 dual-band),FAP-231F-A,,PERCENT,15,Centralized mgmt (FortiAP 231F Americas)
 Power,Redundant UPS,SMT1500RM2UC,,PERCENT,15,APC Smart-UPS 1500VA 2U rackmount
-Workstation,Client Workstation (Win11 / i5-i7 or Ryzen 5-7 / 16GB / SSD),,,PERCENT,15,Configurable - needs specific model
-Workstation,Welcome Kiosk PC (Win11 / touch),,,PERCENT,15,Configurable - 17in+ touchscreen
-Workstation,Welcome Tablet PC (Win11 / 10in multitouch),,,PERCENT,15,Configurable
+Workstation,Client Workstation (Win11 / i5-i7 or Ryzen 5-7 / 16GB / SSD),G2V4X,,PERCENT,15,Dell OptiPlex 7020 SFF (i5-14500 / 16GB / 512GB SSD; config-to-order)
+Workstation,Welcome Kiosk PC (Win11 / touch),2NTMN,,PERCENT,15,Dell OptiPlex 7420 AIO 23.8in multi-touch
+Workstation,Welcome Tablet PC (Win11 / 10in multitouch),XGT-00003,,PERCENT,15,Microsoft Surface Go 4 for Business 10.5in
+Workstation,Laptop Workstation (Dell Pro 16 Plus / Ryzen AI 7 PRO / 32GB / 512GB / Win11 Pro),,14753676,PERCENT,15,Dell Pro 16 Plus PB16255 16in FHD+ (drop-ship)
 Monitor,24in Monitor 1920x1080,P2425H,,PERCENT,15,Dell P2425H FHD (replaces EOL 23in P2319H)
 Monitor,24in Monitor 1920x1200,P2425,,PERCENT,15,Dell P-series 24in WUXGA 16:10
 Monitor,17in+ Touchscreen Monitor (kiosk),E126096,,PERCENT,15,Elo 2202L 22in touchscreen
@@ -18,8 +19,8 @@ Webcam,Logitech C920e Business Webcam,960-001401,,PERCENT,15,Replaces discontinu
 Webcam,Provider Webcam 1080p+,,,PERCENT,15,Needs model
 Tablet / Mobile,Apple iPad (Canto / Haiku),,,PERCENT,15,
 Tablet / Mobile,Apple iPhone / iPod Touch (Haiku),,,PERCENT,15,
-Server,MiPACS Storage Server (Win Server / Xeon 6-core / 16GB / 1TB RAID1),,,PERCENT,15,Configurable
-Server,MiPACS Central Regional Server (Win Server / 8-16 vCPU / 32-64GB),,,PERCENT,15,Configurable
+Server,MiPACS Storage Server (Win Server / Xeon 6-core / 16GB / 1TB RAID1),210-BJTQ,,PERCENT,15,Dell PowerEdge R360 base (config-to-order: 6-core E-2456 / 16GB / 2x1TB RAID1)
+Server,MiPACS Central Regional Server (Win Server / 8-16 vCPU / 32-64GB),8GP0F,,PERCENT,15,Dell PowerEdge R660xs base (config-to-order: Xeon Silver 4410Y / 32-64GB)
 Payment Terminal,Verifone P200 EMV,P200,,PERCENT,15,HCN Recommended
 Payment Terminal,PAX A80 EMV,A80,,PERCENT,15,HCN Recommended
 Payment Terminal,SRedkey 2 EMV,IDSK2-504ED,,PERCENT,15,HCN Recommended (ID TECH SREDKey 2)

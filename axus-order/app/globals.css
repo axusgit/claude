@@ -1,37 +1,148 @@
 @import "tailwindcss";
 
-/* --- Axus brand tokens (clean shadcn-style: Inter, white cards, 1px borders,
-   tight radii, orange accent). Committed light look for a client-facing tool. --- */
+/* --- Axus Readiness Order — futuristic dark theme (glass + neon accents) --- */
 @theme {
-  --color-canvas: #f7f8fa;
-  --color-surface: #ffffff;
-  --color-ink: #0f172a;
-  --color-muted: #64748b;
-  --color-faint: #94a3b8;
-  --color-line: #e5e7eb;
-  --color-accent: #ea580c;
-  --color-accent-hover: #c2410c;
-  --color-accent-soft: #fff2ec;
-  --color-ok: #16a34a;
-  --color-warn: #b45309;
+  --color-canvas: #060910;
+  --color-surface: #0d1522;
+  --color-surface-2: #111c2e;
+  --color-ink: #e9f0fb;
+  --color-muted: #93a3bd;
+  --color-faint: #5c6a83;
+  --color-line: #1c2a44;
+  --color-accent: #ff7a3d;
+  --color-accent-hover: #ff9159;
+  --color-accent-soft: rgba(255, 122, 61, 0.14);
+  --color-cyan: #38e1ff;
+  --color-cyan-soft: rgba(56, 225, 255, 0.13);
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
 
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-space), var(--font-inter), sans-serif;
+  --font-mono: var(--font-mono-code), ui-monospace, "SFMono-Regular", monospace;
 
-  --radius: 0.5rem;
+  --radius: 0.75rem;
+}
+
+:root {
+  color-scheme: dark;
 }
 
 html {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
-  background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  background-color: #060910;
+  background-image:
+    radial-gradient(1200px 620px at 12% -12%, rgba(255, 122, 61, 0.12), transparent 58%),
+    radial-gradient(1050px 720px at 102% -6%, rgba(56, 225, 255, 0.10), transparent 55%),
+    linear-gradient(180deg, #080d18 0%, #060910 60%);
+  background-attachment: fixed;
+  min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Numeric alignment for prices/quantities */
+/* Faint tech grid, fading toward the top */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(120, 160, 220, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 160, 220, 0.05) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 55% at 50% -5%, #000 35%, transparent 100%);
+  mask-image: radial-gradient(ellipse 85% 55% at 50% -5%, #000 35%, transparent 100%);
+}
+
+/* Glass surfaces */
+.glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018));
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 18px 44px -22px rgba(0, 0, 0, 0.85);
+}
+.glass-hover {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.glass-hover:hover {
+  border-color: rgba(255, 122, 61, 0.4);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(255, 122, 61, 0.12),
+    0 22px 48px -22px rgba(255, 122, 61, 0.28);
+}
+
+/* Gradient text (logo / headings) */
+.grad-text {
+  background: linear-gradient(92deg, #ff8a4d 0%, #ffd6b0 42%, #7ce9ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Neon accent CTA */
+.btn-accent {
+  background: linear-gradient(180deg, #ff9057, #f2591f);
+  color: #0a0a0a;
+  border: 1px solid rgba(255, 173, 130, 0.55);
+  box-shadow:
+    0 8px 22px -8px rgba(255, 122, 61, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: box-shadow 0.2s ease, transform 0.1s ease, filter 0.2s ease;
+}
+.btn-accent:hover {
+  filter: brightness(1.06);
+  box-shadow:
+    0 10px 30px -8px rgba(255, 122, 61, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.btn-accent:active {
+  transform: translateY(1px);
+}
+
+/* Thin gradient hairline divider */
+.hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 122, 61, 0.5), rgba(56, 225, 255, 0.4), transparent);
+}
+
+/* Focusable glow for interactive rows */
+.row-glow {
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+.row-glow:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Selection */
+::selection {
+  background: rgba(255, 122, 61, 0.3);
+  color: #fff;
+}
+
+/* Custom scrollbar (webkit) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 150, 200, 0.22);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 122, 61, 0.4);
 }

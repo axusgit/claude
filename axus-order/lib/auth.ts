@@ -45,6 +45,21 @@ export function roleOf(id: Identity): Role | "technician" {
   return "technician";
 }
 
+// Only these emails may see TD SYNNEX data (pricing, SKUs, availability, quotes).
+// Other app-order members added later are let into the platform but NOT into the
+// pricing data until their email is added here. Comma-separated; defaults to admin.
+export const PRICING_ALLOWED_EMAILS = (
+  process.env.TDSYNNEX_ALLOWED_EMAILS ?? "admin@axustechnologies.com"
+)
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+export function canSeePricing(id: Identity | null): boolean {
+  if (!id) return false;
+  return PRICING_ALLOWED_EMAILS.includes(id.email.toLowerCase());
+}
+
 function splitGroups(raw: string | null | undefined): string[] {
   if (!raw) return [];
   const sep = raw.includes("|") ? "|" : ",";

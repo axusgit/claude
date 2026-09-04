@@ -22,7 +22,6 @@ export function CatalogBrowser({ catalog }: { catalog: CatalogCardItem[] }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load / persist cart (per-browser convenience only).
   useEffect(() => {
     try {
       const raw = localStorage.getItem(CART_KEY);
@@ -94,16 +93,22 @@ export function CatalogBrowser({ catalog }: { catalog: CatalogCardItem[] }) {
 
   return (
     <div className="pb-28">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Hardware Catalog</h1>
-        <p className="mt-1 text-sm text-muted">
-          Choose the equipment you need and add quantities. Request a ballpark
-          quote when you&rsquo;re ready — no obligation.
+      <div className="mb-7">
+        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan/30 bg-cyan-soft px-3 py-1 text-[11px] font-medium uppercase tracking-widest text-cyan">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan" />
+          Live TD SYNNEX pricing
+        </div>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Hardware <span className="grad-text">Catalog</span>
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm text-muted">
+          Select the equipment you need and set quantities. Generate a ballpark
+          quote when you&rsquo;re ready — indicative, non-binding, no obligation.
         </p>
       </div>
 
       {/* Category filter chips */}
-      <div className="mb-7 flex flex-wrap gap-2">
+      <div className="mb-8 flex flex-wrap gap-2">
         <Chip label="All" active={active === "All"} onClick={() => setActive("All")} />
         {categories.map((cat) => (
           <Chip
@@ -115,26 +120,95 @@ export function CatalogBrowser({ catalog }: { catalog: CatalogCardItem[] }) {
         ))}
       </div>
 
-      {/* Category sections */}
-      <div className="space-y-10">
+      {/* Category tables */}
+      <div className="space-y-9">
         {grouped.map(({ category, items }) => (
           <section key={category}>
-            <div className="mb-3 flex items-baseline gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+            <div className="mb-3 flex items-center gap-3">
+              <h2 className="font-display text-sm font-semibold uppercase tracking-[0.15em] text-cyan">
                 {category}
               </h2>
-              <span className="h-px flex-1 bg-line" />
-              <span className="text-xs text-faint">{items.length}</span>
+              <span className="hairline flex-1 opacity-60" />
+              <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-faint">
+                {items.length}
+              </span>
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {items.map((item) => (
-                <ProductCard
-                  key={item.id}
-                  item={item}
-                  qty={cart[item.id] ?? 0}
-                  onSetQty={(q) => setQty(item.id, q)}
-                />
-              ))}
+            <div className="glass overflow-hidden rounded-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-faint">
+                      <th className="px-4 py-3 font-medium">Item</th>
+                      <th className="px-4 py-3 font-medium">Part No.</th>
+                      <th className="px-4 py-3 text-right font-medium">Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item) => {
+                      const partNo = item.mfgPN ?? item.synnexSKU;
+                      const qty = cart[item.id] ?? 0;
+                      return (
+                        <tr
+                          key={item.id}
+                          className={
+                            "row-glow border-b border-line/70 align-top last:border-0 " +
+                            (qty > 0 ? "bg-accent-soft/40" : "")
+                          }
+                        >
+                          <td className="px-4 py-3">
+                            <div className="font-medium leading-snug text-ink">
+                              {item.internalName}
+                            </div>
+                            {item.description && (
+                              <div className="mt-0.5 text-xs text-muted">
+                                {item.description}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 align-middle">
+                            {partNo ? (
+                              <span className="rounded border border-line bg-white/[0.03] px-1.5 py-0.5 font-mono text-[11px] text-cyan/90">
+                                {partNo}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-faint">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 align-middle">
+                            <div className="flex justify-end">
+                              {qty <= 0 ? (
+                                <button
+                                  onClick={() => setQty(item.id, 1)}
+                                  className="rounded-lg border border-line bg-white/[0.02] px-3.5 py-1.5 text-sm font-medium text-ink transition-all hover:border-accent hover:text-accent hover:shadow-[0_0_16px_-6px_rgba(255,122,61,0.8)]"
+                                >
+                                  Add
+                                </button>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <QtyBtn label="−" onClick={() => setQty(item.id, qty - 1)} />
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={qty}
+                                    onChange={(e) =>
+                                      setQty(
+                                        item.id,
+                                        Math.max(0, Math.floor(Number(e.target.value) || 0))
+                                      )
+                                    }
+                                    className="tabular w-12 rounded-lg border border-line bg-canvas/60 py-1 text-center text-sm text-ink outline-none focus:border-accent"
+                                  />
+                                  <QtyBtn label="+" onClick={() => setQty(item.id, qty + 1)} />
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </section>
         ))}
@@ -142,30 +216,33 @@ export function CatalogBrowser({ catalog }: { catalog: CatalogCardItem[] }) {
 
       {/* Sticky cart bar */}
       {lineCount > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
-            <div className="text-sm">
-              <span className="font-semibold">{lineCount}</span>{" "}
-              <span className="text-muted">
-                {lineCount === 1 ? "item" : "items"} · {unitCount} unit
-                {unitCount === 1 ? "" : "s"}
-              </span>
-              {error && <span className="ml-3 text-warn">{error}</span>}
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setCart({})}
-                className="text-sm text-muted hover:text-ink transition-colors"
-              >
-                Clear
-              </button>
-              <button
-                onClick={getQuote}
-                disabled={submitting}
-                className="rounded-md bg-accent px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
-              >
-                {submitting ? "Building quote…" : "Get Quote →"}
-              </button>
+        <div className="fixed inset-x-0 bottom-0 z-30">
+          <div className="hairline" />
+          <div className="bg-canvas/80 backdrop-blur-xl">
+            <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
+              <div className="text-sm">
+                <span className="font-display font-semibold text-ink">{lineCount}</span>{" "}
+                <span className="text-muted">
+                  {lineCount === 1 ? "item" : "items"} · {unitCount} unit
+                  {unitCount === 1 ? "" : "s"}
+                </span>
+                {error && <span className="ml-3 text-warn">{error}</span>}
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setCart({})}
+                  className="text-sm text-muted transition-colors hover:text-ink"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={getQuote}
+                  disabled={submitting}
+                  className="btn-accent rounded-lg px-5 py-2 text-sm font-semibold disabled:opacity-60"
+                >
+                  {submitting ? "Building quote…" : "Get Quote →"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -187,10 +264,10 @@ function Chip({
     <button
       onClick={onClick}
       className={
-        "rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors " +
+        "rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all " +
         (active
-          ? "border-accent bg-accent-soft text-accent"
-          : "border-line bg-surface text-muted hover:text-ink")
+          ? "border-accent/60 bg-accent-soft text-accent shadow-[0_0_16px_-6px_rgba(255,122,61,0.8)]"
+          : "border-line bg-white/[0.02] text-muted hover:border-white/20 hover:text-ink")
       }
     >
       {label}
@@ -198,71 +275,11 @@ function Chip({
   );
 }
 
-function ProductCard({
-  item,
-  qty,
-  onSetQty,
-}: {
-  item: CatalogCardItem;
-  qty: number;
-  onSetQty: (q: number) => void;
-}) {
-  const partNo = item.mfgPN ?? item.synnexSKU;
-  return (
-    <div className="flex flex-col rounded-lg border border-line bg-surface p-4 transition-shadow hover:shadow-sm">
-      <div className="flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-semibold leading-snug">{item.internalName}</h3>
-          {partNo && (
-            <span className="shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint">
-              {partNo}
-            </span>
-          )}
-        </div>
-        {item.description && (
-          <p className="mt-1.5 text-xs leading-relaxed text-muted">{item.description}</p>
-        )}
-      </div>
-
-      <div className="mt-4 border-t border-line pt-3">
-        {qty <= 0 ? (
-          <button
-            onClick={() => onSetQty(1)}
-            className="w-full rounded-md border border-line bg-surface py-1.5 text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
-          >
-            Add to cart
-          </button>
-        ) : (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1">
-              <QtyBtn label="−" onClick={() => onSetQty(qty - 1)} />
-              <input
-                type="number"
-                min={0}
-                value={qty}
-                onChange={(e) => onSetQty(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-                className="tabular w-12 rounded-md border border-line bg-surface py-1 text-center text-sm"
-              />
-              <QtyBtn label="+" onClick={() => onSetQty(qty + 1)} />
-            </div>
-            <button
-              onClick={() => onSetQty(0)}
-              className="text-xs text-muted hover:text-warn transition-colors"
-            >
-              Remove
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function QtyBtn({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-surface text-base leading-none text-muted transition-colors hover:border-accent hover:text-accent"
+      className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-white/[0.02] text-base leading-none text-muted transition-all hover:border-accent hover:text-accent"
     >
       {label}
     </button>

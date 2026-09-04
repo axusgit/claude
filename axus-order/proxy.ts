@@ -1,16 +1,22 @@
 // proxy.ts  (Next.js 16 "proxy" convention — formerly middleware.ts)
 // Defense-in-depth auth gate. In production the Authentik forward-auth outpost in
 // front of this app is the real gate (it redirects unauthenticated users to the
-// IdP and injects the X-authentik-* headers). This middleware simply refuses any
-// request that did NOT arrive through that outpost, or from a user lacking this
-// app's entitlement group. In local dev (AUTH_MODE=local) it lets everything
-// through so the app runs standalone.
-//
-// Kept intentionally in lock-step with lib/auth.ts.
+// IdP and injects the X-authentik-* headers). This proxy then enforces:
+//   1. a valid identity + the app-order entitlement group, and
+//   2. an EMAIL ALLOWLIST — only these users may see any TD SYNNEX data (pricing,
+//      SKUs, availability, quotes). Other app-order members are let in but routed
+//      to /no-access until their email is added to TDSYNNEX_ALLOWED_EMAILS.
+// In local dev (AUTH_MODE=local) everything is allowed so the app runs standalone.
 import { NextRequest, NextResponse } from "next/server";
 
 const AUTH_MODE = process.env.AUTH_MODE ?? "local";
 const APP_GROUP = process.env.APP_GROUP ?? "app-order";
+const ALLOWED_EMAILS = (
+  process.env.TDSYNNEX_ALLOWED_EMAILS ?? "admin@axustechnologies.com"
+)
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
 
 function splitGroups(raw: string | null): string[] {
   if (!raw) return [];
@@ -19,8 +25,10 @@ function splitGroups(raw: string | null): string[] {
 }
 
 export function proxy(req: NextRequest) {
+  const pathname = req.nextUrl.pathname;
+
   // Health endpoint is unauthenticated (server-to-server Hub health checks).
-  if (req.nextUrl.pathname === "/api/health") return NextResponse.next();
+  if (pathname === "/api/health") return NextResponse.next();
 
   if (AUTH_MODE === "local") return NextResponse.next();
 
@@ -38,10 +46,28 @@ export function proxy(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  // --- TD SYNNEX data allowlist ---
+  const isAllowed = ALLOWED_EMAILS.includes(email.toLowerCase());
+
+  if (pathname === "/no-access") {
+    // Allowed users never need this page; bounce them to the catalog.
+    return isAllowed ? NextResponse.redirect(new URL("/", req.url)) : NextResponse.next();
+  }
+  if (!isAllowed) {
+    // No TD SYNNEX data for non-allowlisted users.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Pricing access is restricted to authorized administrators." },
+        { status: 403 }
+      );
+    }
+    return NextResponse.rewrite(new URL("/no-access", req.url));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  // Run on everything except Next internals and static assets.
   matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp)$).*)"],
 };
