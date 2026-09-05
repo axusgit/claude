@@ -1,7 +1,10 @@
 @import "tailwindcss";
 
-/* --- Axus Readiness Order — futuristic dark theme (glass + neon accents) --- */
+/* --- Axus Readiness Order — theme tokens. Dark is the default; a light theme is
+   applied via [data-theme="light"]. All utilities reference these CSS variables,
+   so overriding them flips the whole UI at runtime. --- */
 @theme {
+  /* DARK defaults (emitted to :root; utilities read these vars) */
   --color-canvas: #060910;
   --color-surface: #0d1522;
   --color-surface-2: #111c2e;
@@ -12,8 +15,9 @@
   --color-accent: #ff7a3d;
   --color-accent-hover: #ff9159;
   --color-accent-soft: rgba(255, 122, 61, 0.14);
-  --color-cyan: #38e1ff;
-  --color-cyan-soft: rgba(56, 225, 255, 0.13);
+  /* Secondary accent = HCN brand blue (token kept named "cyan" for class reuse) */
+  --color-cyan: #33abde;
+  --color-cyan-soft: rgba(51, 171, 222, 0.14);
   --color-ok: #34d399;
   --color-warn: #fbbf24;
 
@@ -24,22 +28,67 @@
   --radius: 0.75rem;
 }
 
+/* Non-token theme variables (DARK defaults) */
 :root {
   color-scheme: dark;
+  --body-base: #060910;
+  --body-glow-1: rgba(255, 122, 61, 0.12);
+  --body-glow-2: rgba(51, 171, 222, 0.10);
+  --body-top: #080d18;
+  --body-bot: #060910;
+  --grid-color: rgba(120, 160, 220, 0.05);
+  --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018));
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-inset: rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 18px 44px -22px rgba(0, 0, 0, 0.85);
+  --row-hover: rgba(255, 255, 255, 0.03);
+  --grad: linear-gradient(92deg, #ff8a4d 0%, #ffd6b0 42%, #33abde 100%);
+}
+
+/* LIGHT theme overrides */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-canvas: #f4f7fc;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef2f8;
+  --color-ink: #0f1a2e;
+  --color-muted: #51607a;
+  --color-faint: #8492a8;
+  --color-line: #e2e8f1;
+  --color-accent: #ea580c;
+  --color-accent-hover: #c2410c;
+  --color-accent-soft: rgba(234, 88, 12, 0.10);
+  --color-cyan: #0077b3;
+  --color-cyan-soft: rgba(0, 119, 179, 0.10);
+  --color-ok: #16a34a;
+  --color-warn: #b45309;
+
+  --body-base: #f4f7fc;
+  --body-glow-1: rgba(255, 122, 61, 0.10);
+  --body-glow-2: rgba(0, 119, 179, 0.12);
+  --body-top: #ffffff;
+  --body-bot: #f2f6fc;
+  --grid-color: rgba(40, 70, 120, 0.055);
+  --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72));
+  --glass-border: rgba(15, 26, 46, 0.10);
+  --glass-inset: rgba(255, 255, 255, 0.7);
+  --glass-shadow: 0 16px 36px -20px rgba(20, 40, 80, 0.22);
+  --row-hover: rgba(20, 40, 80, 0.035);
+  --grad: linear-gradient(92deg, #ea580c 0%, #c2410c 45%, #0077b3 100%);
 }
 
 html {
-  color-scheme: dark;
+  transition: none;
 }
 
 body {
   color: var(--color-ink);
   font-family: var(--font-sans);
-  background-color: #060910;
+  background-color: var(--body-base);
   background-image:
-    radial-gradient(1200px 620px at 12% -12%, rgba(255, 122, 61, 0.12), transparent 58%),
-    radial-gradient(1050px 720px at 102% -6%, rgba(56, 225, 255, 0.10), transparent 55%),
-    linear-gradient(180deg, #080d18 0%, #060910 60%);
+    radial-gradient(1200px 620px at 12% -12%, var(--body-glow-1), transparent 58%),
+    radial-gradient(1050px 720px at 102% -6%, var(--body-glow-2), transparent 55%),
+    linear-gradient(180deg, var(--body-top) 0%, var(--body-bot) 60%);
   background-attachment: fixed;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
@@ -53,8 +102,8 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background-image:
-    linear-gradient(rgba(120, 160, 220, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(120, 160, 220, 0.05) 1px, transparent 1px);
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
   background-size: 46px 46px;
   -webkit-mask-image: radial-gradient(ellipse 85% 55% at 50% -5%, #000 35%, transparent 100%);
   mask-image: radial-gradient(ellipse 85% 55% at 50% -5%, #000 35%, transparent 100%);
@@ -62,13 +111,11 @@ body::before {
 
 /* Glass surfaces */
 .glass {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018));
+  background: var(--glass-bg);
   backdrop-filter: blur(14px) saturate(1.2);
   -webkit-backdrop-filter: blur(14px) saturate(1.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 18px 44px -22px rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-inset), var(--glass-shadow);
 }
 .glass-hover {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
@@ -76,14 +123,14 @@ body::before {
 .glass-hover:hover {
   border-color: rgba(255, 122, 61, 0.4);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 var(--glass-inset),
     0 0 0 1px rgba(255, 122, 61, 0.12),
     0 22px 48px -22px rgba(255, 122, 61, 0.28);
 }
 
 /* Gradient text (logo / headings) */
 .grad-text {
-  background: linear-gradient(92deg, #ff8a4d 0%, #ffd6b0 42%, #7ce9ff 100%);
+  background: var(--grad);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -120,7 +167,7 @@ body::before {
   transition: background-color 0.18s ease, box-shadow 0.18s ease;
 }
 .row-glow:hover {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: var(--row-hover);
   box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
@@ -128,10 +175,79 @@ body::before {
   font-variant-numeric: tabular-nums;
 }
 
-/* Selection */
+/* HCN co-brand wordmark ships white (for dark theme); invert to dark for light */
+.hcn-logo {
+  transition: filter 0.2s ease;
+}
+:root[data-theme="light"] .hcn-logo {
+  filter: invert(1);
+}
+
+/* Axus color logo is built for light backgrounds; give it a white plate on dark */
+.axus-logo {
+  border-radius: 8px;
+}
+:root:not([data-theme="light"]) .axus-logo {
+  background: #ffffff;
+  padding: 5px 9px;
+}
+
 ::selection {
   background: rgba(255, 122, 61, 0.3);
   color: #fff;
+}
+
+/* Print / Save-as-PDF: clean black-on-white document */
+@media print {
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  body::before {
+    display: none !important;
+  }
+  header,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+  .glass {
+    background: #fff !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    border: 1px solid #d1d5db !important;
+    box-shadow: none !important;
+  }
+  .grad-text {
+    -webkit-text-fill-color: #b3410f !important;
+    color: #b3410f !important;
+  }
+  .text-ink {
+    color: #111 !important;
+  }
+  .text-muted,
+  .text-faint {
+    color: #444 !important;
+  }
+  .text-accent {
+    color: #b3410f !important;
+  }
+  .text-warn {
+    color: #92400e !important;
+  }
+  [class*="text-cyan"] {
+    color: #0e7490 !important;
+  }
+  [class*="bg-accent-soft"] {
+    background: #fff5ef !important;
+  }
+  .hcn-logo {
+    filter: invert(1) !important;
+  }
 }
 
 /* Custom scrollbar (webkit) */

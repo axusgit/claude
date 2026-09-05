@@ -47,7 +47,7 @@ export async function buildQuote(
   opts?: { adapter?: SynnexAdapter; validHours?: number }
 ): Promise<QuoteBuild> {
   const adapter = opts?.adapter ?? getAdapter();
-  const validHours = opts?.validHours ?? 24;
+  const validHours = opts?.validHours ?? 24 * 30; // 30-day budgetary validity window
   const byId = new Map(catalog.map((c) => [c.id, c]));
 
   // Build P&A queries with stable line numbers so we can match results back.
@@ -55,6 +55,9 @@ export async function buildQuote(
   cart.forEach((cl, i) => {
     const item = byId.get(cl.catalogItemId);
     if (!item) return;
+    // No identifier -> don't send an empty query to the API (it can error the whole
+    // batch). It falls through as "Not found" -> "Contact us" below.
+    if (!item.synnexSKU && !item.mfgPN) return;
     queries.push({
       synnexSKU: item.synnexSKU ?? undefined,
       mfgPN: item.synnexSKU ? undefined : item.mfgPN ?? undefined, // prefer exact SKU

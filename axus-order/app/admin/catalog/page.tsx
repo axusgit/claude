@@ -163,7 +163,7 @@ export default async function AdminCatalogPage() {
       <p className="mb-5 text-sm text-muted">
         {counts.total} items · {counts.active} active · {counts.noSku} without a SKU.
         Status &amp; availability are live from the pricing source
-        {adapterMode === "real" ? " (TD SYNNEX)." : " — sample data (mock adapter)."}
+        {adapterMode === "real" ? " (third-party distributor)." : " — sample data (mock adapter)."}
       </p>
 
       {sourceError && (

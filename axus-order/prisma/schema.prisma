@@ -33,6 +33,13 @@ model Quote {
   currency   String      @default("USD")
   validUntil DateTime
   createdAt  DateTime    @default(now())
+  // Human-friendly quote number: <3-letter business><MMDDYYYY><NNN> (e.g. AXU09032026001).
+  quoteNumber          String?   @unique
+  // Customer identity captured from the logged-in Authentik user at creation.
+  customerName         String?
+  customerEmail        String?
+  // Disclaimer acceptance (required before a quote is created).
+  disclaimerAcceptedAt DateTime?
   lines      QuoteLine[]
 }
 
