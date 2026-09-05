@@ -1,0 +1,90 @@
+:root {
+  --bg: #0e1116;
+  --panel: #161b22;
+  --panel-2: #1c232d;
+  --border: #2a323d;
+  --text: #e6edf3;
+  --muted: #8b98a9;
+  --accent: #f97316;
+  --pass: #2ea043;
+  --fail: #f85149;
+  --warn: #d29922;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 "Segoe UI", Inter, system-ui, sans-serif;
+}
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 5;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand h1 { font-size: 16px; margin: 0; font-weight: 600; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.conn { font-size: 12px; color: var(--muted); }
+.conn.live { color: var(--pass); }
+.conn.down { color: var(--fail); }
+
+main { padding: 20px; max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; }
+.panel-head h2, .panel-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.muted { color: var(--muted); font-weight: 400; font-size: 12px; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr { cursor: default; }
+#tests-body tr { cursor: pointer; }
+#tests-body tr:hover { background: var(--panel-2); }
+#tests-body tr.active { background: var(--panel-2); outline: 1px solid var(--accent); }
+.empty { text-align: center; color: var(--muted); padding: 24px; }
+.code { font-family: "Cascadia Code", Consolas, monospace; color: var(--accent); letter-spacing: .05em; }
+
+.state { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); }
+.state.created { color: var(--muted); }
+.state.claimed { color: var(--warn); border-color: var(--warn); }
+.state.running { color: var(--accent); border-color: var(--accent); }
+.state.complete { color: var(--pass); border-color: var(--pass); }
+.state.expired { color: var(--fail); border-color: var(--fail); }
+
+.badge { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 6px; }
+.badge.pass { background: rgba(46,160,67,.15); color: var(--pass); }
+.badge.fail { background: rgba(248,81,73,.15); color: var(--fail); }
+.verdict-pass { color: var(--pass); font-weight: 600; }
+.verdict-fail { color: var(--fail); font-weight: 600; }
+
+.detail-meta { display: flex; align-items: center; gap: 12px; }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+
+.tcp-note { background: rgba(210,153,34,.1); border: 1px solid var(--warn); color: #e8d9a8; padding: 8px 12px; border-radius: 8px; font-size: 12px; margin: 4px 0 14px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.card .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.card .v { font-size: 22px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.card .v small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.card.good .v { color: var(--pass); }
+.card.bad .v { color: var(--fail); }
+
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 18px; }
+figure { margin: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+figcaption { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+canvas { width: 100%; display: block; }
+
+.reports { display: flex; gap: 14px; }
+.reports a { color: var(--accent); font-size: 12px; text-decoration: none; }
+.reports a:hover { text-decoration: underline; }
+.foot { margin-top: 8px; }
+tr.chan-fail td { background: rgba(248,81,73,.07); }

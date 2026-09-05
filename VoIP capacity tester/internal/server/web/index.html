@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VoIP Capacity Collector</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>VoIP Capacity Collector</h1>
+    </div>
+    <div class="conn" id="conn">connecting…</div>
+  </header>
+
+  <main>
+    <!-- TEST LIST -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Tests</h2>
+        <span class="muted" id="test-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="tests">
+          <thead>
+            <tr>
+              <th>CODE</th><th>State</th><th>Codec</th><th>Transport</th>
+              <th class="num">Chans</th><th class="num">Ptime</th>
+              <th>Client</th><th class="num">Elapsed</th><th class="num">Remain</th>
+              <th class="num">Loss%</th><th class="num">MOS</th><th>Verdict</th>
+            </tr>
+          </thead>
+          <tbody id="tests-body">
+            <tr><td colspan="12" class="empty">No tests yet. Create one via the control API.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TEST DETAIL -->
+    <section class="panel" id="detail" hidden>
+      <div class="panel-head">
+        <h2>Test <span id="d-code" class="code"></span></h2>
+        <div class="detail-meta">
+          <span id="d-config" class="muted"></span>
+          <span id="d-verdict" class="badge"></span>
+          <button id="d-close" class="btn-ghost">close</button>
+        </div>
+      </div>
+
+      <p id="d-tcpnote" class="tcp-note" hidden>
+        TCP transport: RFC 4571 framed, one connection per channel. Retransmits &
+        Nagle inflate jitter/RTT and can mask loss versus UDP — interpret accordingly.
+      </p>
+
+      <div class="cards" id="d-cards"></div>
+
+      <div class="charts">
+        <figure><figcaption>Packet loss %</figcaption><canvas id="chart-loss" height="150"></canvas></figure>
+        <figure><figcaption>Mean jitter (ms)</figcaption><canvas id="chart-jitter" height="150"></canvas></figure>
+        <figure><figcaption>Mean MOS</figcaption><canvas id="chart-mos" height="150"></canvas></figure>
+      </div>
+
+      <div class="panel-head">
+        <h3>Per-channel <span class="muted">(worst first)</span></h3>
+        <div class="reports">
+          <a id="r-txt" target="_blank" rel="noopener">report.txt</a>
+          <a id="r-json" target="_blank" rel="noopener">json</a>
+          <a id="r-csv" target="_blank" rel="noopener">csv</a>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="channels">
+          <thead>
+            <tr>
+              <th class="num">Ch</th><th>Verdict</th><th class="num">Loss%</th>
+              <th class="num">Bursts</th><th class="num">Jitter</th><th class="num">Jit p95</th>
+              <th class="num">RTT</th><th class="num">1-way*</th>
+              <th class="num">kbps</th><th class="num">R</th><th class="num">MOS</th>
+            </tr>
+          </thead>
+          <tbody id="channels-body"></tbody>
+        </table>
+      </div>
+      <p class="muted foot">* one-way delay is estimated as RTT/2 (clocks not assumed NTP-synced).</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
