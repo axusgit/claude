@@ -38,6 +38,7 @@ type Channel struct {
 	mu sync.Mutex
 
 	index      int
+	profileID  int
 	ssrc       uint32
 	ci         codec.Info
 	cfg        protocol.TestConfig
@@ -96,6 +97,10 @@ func NewChannel(index int, cfg protocol.TestConfig) *Channel {
 
 // SSRC returns the RTP SSRC assigned to this channel.
 func (c *Channel) SSRC() uint32 { return c.ssrc }
+
+// SetProfile tags this channel with the profile ordinal it belongs to, for
+// per-profile grouping in reports.
+func (c *Channel) SetProfile(id int) { c.profileID = id }
 
 // RecvSummary is a receive-only view of a channel, used by the collector to
 // report the forward leg (client -> collector) it measures on the echo path.
@@ -342,6 +347,7 @@ func (c *Channel) Snapshot(elapsedSec float64) protocol.ChannelStats {
 
 	st := protocol.ChannelStats{
 		Channel:         c.index,
+		ProfileID:       c.profileID,
 		SSRC:            c.ssrc,
 		PacketsExpected: int64(math.Round(elapsedSec * pps)),
 		PacketsSent:     sent,

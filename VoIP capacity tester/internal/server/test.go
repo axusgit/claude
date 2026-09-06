@@ -3,7 +3,9 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -87,7 +89,21 @@ func (t *Test) forwardChannel(ssrc uint32) *metrics.Channel {
 	defer t.fwdMu.Unlock()
 	c := t.fwd[ssrc]
 	if c == nil {
-		c = metrics.NewChannel(0, t.Config)
+		// Use the test's shared codec (if any) so forward jitter is scaled by the
+		// right RTP clock. For a mixed-codec test this falls back to the default
+		// clock, making forward JITTER approximate for the minority codec; forward
+		// LOSS is clock-independent and remains exact.
+		pt := 20
+		if len(t.Config.Profiles) > 0 {
+			pt = t.Config.Profiles[0].PtimeMs
+		}
+		eff := protocol.TestConfig{
+			Codec:     t.Config.PrimaryCodec(),
+			Channels:  1,
+			PtimeMs:   pt,
+			Transport: t.Config.Transport,
+		}
+		c = metrics.NewChannel(0, eff)
 		t.fwd[ssrc] = c
 	}
 	return c
@@ -105,13 +121,15 @@ func (t *Test) observeForward(pkt []byte, now int64) {
 }
 
 // startMedia allocates and starts the echo listener for this test. bind is the
-// interface to bind on ("" = all). A single port serves every channel: for UDP
-// each datagram is echoed to its source; for TCP each channel opens its own
-// RFC 4571-framed connection to this listener.
-func (t *Test) startMedia(bind string) error {
+// interface to bind on ("" = all). When portMin>0 the media port is chosen from
+// [portMin,portMax] (so a cloud firewall can allow just that range); otherwise
+// an ephemeral port is used. A single port serves every channel: for UDP each
+// datagram is echoed to its source; for TCP each channel opens its own RFC 4571
+// framed connection to this listener.
+func (t *Test) startMedia(bind string, portMin, portMax int) error {
 	switch t.Config.Transport {
 	case protocol.TransportTCP:
-		ln, err := net.Listen("tcp", net.JoinHostPort(bind, "0"))
+		ln, err := listenTCPInRange(bind, portMin, portMax)
 		if err != nil {
 			return err
 		}
@@ -119,11 +137,7 @@ func (t *Test) startMedia(bind string) error {
 		t.mediaPort = ln.Addr().(*net.TCPAddr).Port
 		go t.acceptTCP(ln)
 	default:
-		addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(bind, "0"))
-		if err != nil {
-			return err
-		}
-		conn, err := net.ListenUDP("udp", addr)
+		conn, err := listenUDPInRange(bind, portMin, portMax)
 		if err != nil {
 			return err
 		}
@@ -133,6 +147,42 @@ func (t *Test) startMedia(bind string) error {
 		go t.echoUDP(conn)
 	}
 	return nil
+}
+
+// listenUDPInRange binds a UDP socket on a port in [min,max], or an ephemeral
+// port when min<=0.
+func listenUDPInRange(bind string, min, max int) (*net.UDPConn, error) {
+	if min <= 0 {
+		addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(bind, "0"))
+		if err != nil {
+			return nil, err
+		}
+		return net.ListenUDP("udp", addr)
+	}
+	for port := min; port <= max; port++ {
+		addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(bind, strconv.Itoa(port)))
+		if err != nil {
+			continue
+		}
+		if conn, err := net.ListenUDP("udp", addr); err == nil {
+			return conn, nil
+		}
+	}
+	return nil, fmt.Errorf("no free UDP port in range %d-%d", min, max)
+}
+
+// listenTCPInRange binds a TCP listener on a port in [min,max], or an ephemeral
+// port when min<=0.
+func listenTCPInRange(bind string, min, max int) (net.Listener, error) {
+	if min <= 0 {
+		return net.Listen("tcp", net.JoinHostPort(bind, "0"))
+	}
+	for port := min; port <= max; port++ {
+		if ln, err := net.Listen("tcp", net.JoinHostPort(bind, strconv.Itoa(port))); err == nil {
+			return ln, nil
+		}
+	}
+	return nil, fmt.Errorf("no free TCP port in range %d-%d", min, max)
 }
 
 // echoUDP reflects every datagram back to its sender unchanged, acting as the
@@ -393,10 +443,10 @@ func (t *Test) summary() protocol.TestSummary {
 	return protocol.TestSummary{
 		Code:       t.Code,
 		State:      t.State,
-		Codec:      t.Config.Codec,
+		Codec:      summaryCodec(t.Config),
 		Transport:  t.Config.Transport,
-		Channels:   t.Config.Channels,
-		PtimeMs:    t.Config.PtimeMs,
+		Channels:   t.Config.TotalChannels(),
+		PtimeMs:    summaryPtime(t.Config),
 		ClientID:   t.ClientID,
 		ClientIP:   t.ClientIP,
 		MediaPort:  t.mediaPort,
@@ -457,6 +507,29 @@ func (t *Test) broadcast(msg []byte) {
 		default: // drop for slow consumers; next update supersedes it
 		}
 	}
+}
+
+// summaryCodec is the codec shown in the compact list: the shared codec, or
+// "mixed" when profiles use different codecs.
+func summaryCodec(cfg protocol.TestConfig) protocol.Codec {
+	if pc := cfg.PrimaryCodec(); pc != "" {
+		return pc
+	}
+	return protocol.Codec("mixed")
+}
+
+// summaryPtime is the ptime shown in the list: the shared ptime, or 0 (mixed).
+func summaryPtime(cfg protocol.TestConfig) int {
+	if len(cfg.Profiles) == 0 {
+		return cfg.PtimeMs
+	}
+	pt := cfg.Profiles[0].PtimeMs
+	for _, p := range cfg.Profiles[1:] {
+		if p.PtimeMs != pt {
+			return 0
+		}
+	}
+	return pt
 }
 
 func round1(v float64) float64 {

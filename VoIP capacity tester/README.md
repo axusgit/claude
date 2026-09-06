@@ -53,6 +53,16 @@ Flags:
 - `-data-dir` — directory to **persist completed test reports** so history and
   the compare view survive a collector restart (default: in-memory only). Each
   finished test is written as `<CODE>.json` and reloaded on startup.
+- `-media-port-min` / `-media-port-max` — pin the per-test RTP echo ports to a
+  fixed range so a cloud firewall can allow just those (default: ephemeral). One
+  port per concurrent test is used from the range.
+- `-probe-exe` — path to a `probe.exe` to serve at `/download/probe.exe`, so the
+  dashboard's create screen can offer it as a download.
+
+**Technician run:** with a probe built with the server URL baked in
+(`-ldflags "-X main.defaultServer=https://voiptest.axustechnologies.com"`), the
+technician only needs the CODE: `probe.exe -code AB12CD`, or just **double-click
+`probe.exe`** and paste the CODE when prompted.
 
 **2. Create a test** (operator), e.g. 50 concurrent G.711 calls over UDP:
 
@@ -66,9 +76,31 @@ curl -X POST http://collector:8080/api/tests \
   -d '{"codec":"opus","bitrate_kbps":48,"channels":20,"transport":"udp","duration_sec":60,"dscp":46}'
 ```
 
-Config fields: `codec` (`g711`/`g729`/`g722`/`opus`), `channels`, `transport`
-(`udp`/`tcp`), `duration_sec`, `ptime_ms` (10/20/30), `bitrate_kbps` (Opus only),
-`dscp` (0–63), and optional `thresholds`.
+A test is **test-level** settings (`transport` udp/tcp, `duration_sec`, `dscp`
+0–63, optional `thresholds`) plus one or more **profiles**. Each profile is a
+codec + channel group: `codec` (`g711`/`g729`/`g722`/`opus`), `channels`,
+`ptime_ms` (10/20/30), `bitrate_kbps` (Opus only). A **mixed** test simply lists
+several profiles that run together:
+
+```bash
+curl -X POST http://collector:8080/api/tests -d '{
+  "transport":"udp","duration_sec":60,"dscp":46,
+  "profiles":[
+    {"codec":"g711","channels":30,"ptime_ms":20},
+    {"codec":"g729","channels":20,"ptime_ms":20}
+  ]}'
+```
+
+The report then breaks results down **per profile** as well as overall. A
+single-profile test may also use the flat shorthand
+(`{"codec":"g711","channels":50,...}`) instead of a `profiles` list.
+
+### Easiest: create it in the dashboard
+
+Click **+ New test** on the dashboard to fill in transport/duration/DSCP,
+add one or more profiles, and create the test — no curl. You get the CODE plus
+a ready-to-copy run command (and a **Download probe.exe** link when the collector
+was started with `-probe-exe`). Hand the technician the `.exe` and the CODE.
 
 **3. Run the probe** inside the network under test:
 

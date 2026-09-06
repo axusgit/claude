@@ -16,11 +16,59 @@
   </header>
 
   <main>
+    <!-- CREATE TEST -->
+    <section class="panel" id="create" hidden>
+      <div class="panel-head">
+        <h2>New test</h2>
+        <button id="create-close" class="btn-ghost">close</button>
+      </div>
+
+      <div class="form-grid">
+        <label>Transport
+          <select id="f-transport">
+            <option value="udp">UDP</option>
+            <option value="tcp">TCP</option>
+          </select>
+        </label>
+        <label>Duration (s)<input id="f-duration" type="number" value="30" min="1" max="86400"></label>
+        <label>DSCP (0–63)<input id="f-dscp" type="number" value="0" min="0" max="63"></label>
+      </div>
+
+      <h3 class="dir-head">Profiles <span class="muted">(one codec + channel count each; add more for a mixed test)</span></h3>
+      <div class="table-wrap">
+        <table id="profiles-table">
+          <thead>
+            <tr><th>Codec</th><th class="num">Channels</th><th>Ptime</th><th>Opus kbps</th><th></th></tr>
+          </thead>
+          <tbody id="profiles-body"></tbody>
+        </table>
+      </div>
+      <button id="add-profile" class="btn-ghost">+ Add profile</button>
+
+      <details class="thresholds-box">
+        <summary>Pass/fail thresholds</summary>
+        <div class="form-grid">
+          <label>Loss % &lt;<input id="t-loss" type="number" step="0.1" value="1"></label>
+          <label>Jitter ms &lt;<input id="t-jitter" type="number" value="30"></label>
+          <label>One-way ms &lt;<input id="t-oneway" type="number" value="150"></label>
+          <label>MOS ≥<input id="t-mos" type="number" step="0.1" value="4"></label>
+        </div>
+      </details>
+
+      <div class="create-actions">
+        <button id="create-submit" class="btn-primary">Create test</button>
+        <span id="create-error" class="verdict-fail"></span>
+      </div>
+
+      <div id="create-result" class="result-box" hidden></div>
+    </section>
+
     <!-- TEST LIST -->
     <section class="panel">
       <div class="panel-head">
         <h2>Tests</h2>
         <div class="detail-meta">
+          <button id="new-test-btn" class="btn-primary">+ New test</button>
           <span class="muted" id="compare-hint">Tick two or more finished tests to compare.</span>
           <button id="compare-btn" class="btn-ghost" disabled>Compare (0)</button>
           <span class="muted" id="test-count"></span>

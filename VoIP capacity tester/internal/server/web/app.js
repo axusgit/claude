@@ -166,10 +166,13 @@ function renderCompare(results) {
 
 function renderDetail(d) {
   const c = d.config || {};
-  const rate = c.codec === "opus" ? ` ${c.bitrate_kbps || 32}k` : "";
+  const profs = (c.profiles || []).map((p) => {
+    const r = p.codec === "opus" ? ` ${p.bitrate_kbps || 32}k` : "";
+    return `${codecName(p.codec)}${r}×${p.channels}@${p.ptime_ms}ms`;
+  }).join(" + ");
   const dscp = c.dscp ? ` · DSCP ${c.dscp}${c.dscp === 46 ? " (EF)" : ""}` : "";
   $("#d-config").textContent =
-    `${codecName(c.codec)}${rate} · ${(c.transport||"").toUpperCase()} · ${c.channels} ch · ${c.ptime_ms}ms · ${c.duration_sec}s${dscp} · state ${d.state}`;
+    `${profs} · ${(c.transport||"").toUpperCase()} · ${c.duration_sec}s${dscp} · state ${d.state}`;
   $("#d-tcpnote").hidden = c.transport !== "tcp";
 
   const v = $("#d-verdict");
@@ -252,6 +255,112 @@ function renderChannels(chans) {
       <td class="num">${fmt(c.mos, 2)}</td>`;
     body.appendChild(tr);
   }
+}
+
+// ---- Create test ------------------------------------------------------------
+
+let probeDownload = false;
+fetch("/api/config").then((r) => r.json()).then((c) => { probeDownload = !!c.probe_download; }).catch(() => {});
+
+const CODECS = [["g711", "G.711"], ["g729", "G.729"], ["g722", "G.722"], ["opus", "Opus"]];
+
+$("#new-test-btn").addEventListener("click", () => {
+  const panel = $("#create");
+  panel.hidden = false;
+  if (!$("#profiles-body").children.length) addProfileRow();
+  $("#create-result").hidden = true;
+  $("#create-error").textContent = "";
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+$("#create-close").addEventListener("click", () => { $("#create").hidden = true; });
+$("#add-profile").addEventListener("click", () => addProfileRow());
+$("#create-submit").addEventListener("click", submitCreate);
+
+function addProfileRow(preset) {
+  const tr = document.createElement("tr");
+  const codecOpts = CODECS.map(([v, n]) => `<option value="${v}">${n}</option>`).join("");
+  tr.innerHTML = `
+    <td><select class="p-codec">${codecOpts}</select></td>
+    <td class="num"><input class="p-chans" type="number" min="1" max="5000" value="${preset?.channels || 10}"></td>
+    <td>
+      <select class="p-ptime">
+        <option value="10">10 ms</option><option value="20" selected>20 ms</option><option value="30">30 ms</option>
+      </select>
+    </td>
+    <td><input class="p-bitrate" type="number" min="6" max="510" value="32" disabled title="Opus only"></td>
+    <td><button class="row-del" title="remove">✕</button></td>`;
+  const codecSel = tr.querySelector(".p-codec");
+  const bitrate = tr.querySelector(".p-bitrate");
+  codecSel.addEventListener("change", () => { bitrate.disabled = codecSel.value !== "opus"; });
+  tr.querySelector(".row-del").addEventListener("click", () => {
+    tr.remove();
+    if (!$("#profiles-body").children.length) addProfileRow();
+  });
+  if (preset?.codec) codecSel.value = preset.codec;
+  $("#profiles-body").appendChild(tr);
+}
+
+function submitCreate() {
+  const err = $("#create-error");
+  err.textContent = "";
+  const profiles = [...$("#profiles-body").children].map((tr) => {
+    const codec = tr.querySelector(".p-codec").value;
+    const p = {
+      codec,
+      channels: parseInt(tr.querySelector(".p-chans").value, 10) || 0,
+      ptime_ms: parseInt(tr.querySelector(".p-ptime").value, 10),
+    };
+    if (codec === "opus") p.bitrate_kbps = parseInt(tr.querySelector(".p-bitrate").value, 10) || 32;
+    return p;
+  });
+  if (profiles.some((p) => p.channels < 1)) { err.textContent = "Every profile needs at least 1 channel."; return; }
+
+  const body = {
+    transport: $("#f-transport").value,
+    duration_sec: parseInt($("#f-duration").value, 10) || 30,
+    dscp: parseInt($("#f-dscp").value, 10) || 0,
+    thresholds: {
+      loss_pct: parseFloat($("#t-loss").value) || 1,
+      jitter_ms: parseFloat($("#t-jitter").value) || 30,
+      oneway_ms: parseFloat($("#t-oneway").value) || 150,
+      mos: parseFloat($("#t-mos").value) || 4,
+    },
+    profiles,
+  };
+
+  const btn = $("#create-submit");
+  btn.disabled = true;
+  fetch("/api/tests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then(async (r) => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `server returned ${r.status}`);
+      return data;
+    })
+    .then((data) => showCreateResult(data.code))
+    .catch((e) => { err.textContent = e.message; })
+    .finally(() => { btn.disabled = false; });
+}
+
+function showCreateResult(code) {
+  const origin = window.location.origin;
+  const dl = probeDownload
+    ? `<p><a href="/download/probe.exe" download>⬇ Download probe.exe</a> — give this and the CODE to whoever runs the test.</p>`
+    : `<p class="muted">Give the technician <code>probe.exe</code> and the CODE below.</p>`;
+  const simple = probeDownload ? `probe.exe -code ${code}` : `probe.exe -server ${origin} -code ${code}`;
+  const box = $("#create-result");
+  box.hidden = false;
+  box.innerHTML = `
+    <div>Test created — CODE <span class="code">${code}</span></div>
+    ${dl}
+    <p>On a computer inside the network under test, run:</p>
+    <pre>${simple}</pre>
+    <button class="btn-copy" data-copy="${simple}">copy command</button>
+    ${probeDownload ? `<p class="muted" style="margin-top:10px">Or double-click the downloaded <code>probe.exe</code> and paste the CODE when prompted.</p>` : ""}
+    <p class="muted" style="margin-top:10px">Explicit form (any probe build): <code>probe.exe -server ${origin} -code ${code}</code></p>`;
+  box.querySelector(".btn-copy").addEventListener("click", (e) => {
+    navigator.clipboard?.writeText(e.target.dataset.copy);
+    e.target.textContent = "copied ✓";
+  });
 }
 
 // ---- Canvas charts ----------------------------------------------------------

@@ -11,6 +11,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"flag"
@@ -25,8 +26,14 @@ import (
 	"voiptest/internal/protocol"
 )
 
+// defaultServer is the collector URL the probe talks to when -server is not
+// given. It can be baked at build time so a technician only needs a CODE:
+//
+//	go build -ldflags "-X main.defaultServer=https://voiptest.axustechnologies.com" ./cmd/probe
+var defaultServer = "http://127.0.0.1:8080"
+
 func main() {
-	server := flag.String("server", "http://127.0.0.1:8080", "collector base URL")
+	server := flag.String("server", defaultServer, "collector base URL")
 	code := flag.String("code", "", "test CODE to claim (leave empty to create a test from the flags below)")
 	id := flag.String("id", defaultID(), "client identity reported to the collector")
 	out := flag.String("out", ".", "directory for the written report files")
@@ -43,6 +50,24 @@ func main() {
 
 	base := strings.TrimRight(*server, "/")
 	testCode := strings.ToUpper(strings.TrimSpace(*code))
+
+	// Which flags were explicitly set? Used to decide whether an empty -code
+	// means "prompt me for one" (technician double-click) vs "create a test".
+	setFlags := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
+	createFlagsUsed := setFlags["codec"] || setFlags["channels"] || setFlags["transport"] ||
+		setFlags["duration"] || setFlags["ptime"] || setFlags["bitrate"] || setFlags["dscp"]
+
+	// Technician flow: no CODE, no create flags, running interactively -> ask for
+	// the CODE the admin gave them. Makes a double-clicked probe.exe just work.
+	interactive := isInteractive()
+	if testCode == "" && !createFlagsUsed && interactive {
+		fmt.Printf("VoIP capacity probe — collector: %s\n", base)
+		testCode = strings.ToUpper(strings.TrimSpace(prompt("Enter the test CODE from your admin: ")))
+		if testCode == "" {
+			fatal("no CODE entered")
+		}
+	}
 
 	if testCode == "" {
 		created, err := createTest(base, protocol.TestConfig{
@@ -69,8 +94,32 @@ func main() {
 		ReportInterval: time.Second,
 	})
 	if err != nil {
+		if interactive {
+			fmt.Fprintf(os.Stderr, "probe: %v\n", err)
+			prompt("\nPress Enter to close…")
+		}
 		fatal("%v", err)
 	}
+	if interactive {
+		prompt("\nDone. Press Enter to close…")
+	}
+}
+
+// isInteractive reports whether stdin is a terminal (i.e. the probe was run by a
+// person, not piped/scheduled). Used to enable the CODE prompt and pause-on-exit.
+func isInteractive() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// prompt writes a message and reads one line from stdin.
+func prompt(msg string) string {
+	fmt.Print(msg)
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	return strings.TrimRight(line, "\r\n")
 }
 
 func createTest(base string, cfg protocol.TestConfig) (*protocol.CreateTestResponse, error) {

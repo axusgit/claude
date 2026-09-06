@@ -91,9 +91,11 @@ func WriteText(w io.Writer, r Result) error {
 	p("  Test CODE:    %s\n", r.Code)
 	p("  Generated:    %s\n", r.GeneratedAt.Format(time.RFC3339))
 	p("  Client:       %s (%s)\n", r.ClientID, r.ClientIP)
-	p("  Codec:        %s        Transport: %s\n", codecLabel(cfg), up(string(cfg.Transport)))
-	p("  Channels:     %-3d        Ptime: %d ms        Duration: %d s\n",
-		cfg.Channels, cfg.PtimeMs, cfg.DurationSec)
+	p("  Transport:    %s        Duration: %d s        Total channels: %d\n",
+		up(string(cfg.Transport)), cfg.DurationSec, cfg.TotalChannels())
+	for i, pr := range cfg.Profiles {
+		p("  Profile %d:    %s × %d   ptime %d ms\n", i, profileLabel(pr), pr.Channels, pr.PtimeMs)
+	}
 	p("  QoS (DSCP):   %s\n", dscpLabel(cfg.DSCP))
 	p("  Thresholds:   loss<%.2g%%  jitter<%gms  one-way<%gms  MOS>=%.2g\n",
 		cfg.Thresholds.LossPct, cfg.Thresholds.JitterMs, cfg.Thresholds.OneWayMs, cfg.Thresholds.MOS)
@@ -139,6 +141,25 @@ func WriteText(w io.Writer, r Result) error {
 		p("\n")
 	}
 
+	// ---- Tier 2c: PER-PROFILE (mixed tests) ---------------------------------
+	if len(cfg.Profiles) > 1 {
+		p("--------------------------------------------------------------------------------\n")
+		p("  PER-PROFILE\n")
+		p("--------------------------------------------------------------------------------\n")
+		p("  %-2s %-22s %5s %8s %8s %8s %6s %5s\n",
+			"#", "codec", "chans", "loss%", "jit(ms)", "1way(ms)", "MOS", "pass")
+		for i, pr := range cfg.Profiles {
+			pa := profileAggregate(r.Channels, i)
+			res := "yes"
+			if !pa.pass {
+				res = "NO"
+			}
+			p("  %-2d %-22s %5d %8.3f %8.2f %8.2f %6.2f %5s\n",
+				i, profileLabel(pr), pa.count, pa.lossPct, pa.jitterMs, pa.oneWayMs, pa.mosMean, res)
+		}
+		p("\n")
+	}
+
 	// ---- Tier 3: PER-CHANNEL TABLE ------------------------------------------
 	p("--------------------------------------------------------------------------------\n")
 	p("  PER-CHANNEL\n")
@@ -162,6 +183,48 @@ func WriteText(w io.Writer, r Result) error {
 	return nil
 }
 
+// profileAgg is a small per-profile roll-up for the mixed-test breakdown.
+type profileAgg struct {
+	count             int
+	lossPct           float64
+	jitterMs          float64
+	oneWayMs          float64
+	mosMean           float64
+	pass              bool
+}
+
+// profileAggregate rolls up the channels belonging to one profile.
+func profileAggregate(chans []protocol.ChannelStats, profileID int) profileAgg {
+	pa := profileAgg{pass: true}
+	var jitSum, owSum, mosSum float64
+	var recv, lost int64
+	for _, c := range chans {
+		if c.ProfileID != profileID {
+			continue
+		}
+		pa.count++
+		recv += c.PacketsRecv
+		lost += c.Lost
+		jitSum += c.JitterMs
+		owSum += c.OneWayMs
+		mosSum += c.MOS
+		if !c.Pass {
+			pa.pass = false
+		}
+	}
+	if pa.count == 0 {
+		return pa
+	}
+	if d := recv + lost; d > 0 {
+		pa.lossPct = 100 * float64(lost) / float64(d)
+	}
+	n := float64(pa.count)
+	pa.jitterMs = jitSum / n
+	pa.oneWayMs = owSum / n
+	pa.mosMean = mosSum / n
+	return pa
+}
+
 // indexDirection maps channel index -> its one-way stats for quick joins.
 func indexDirection(ds []protocol.DirectionStats) map[int]protocol.DirectionStats {
 	m := make(map[int]protocol.DirectionStats, len(ds))
@@ -178,15 +241,15 @@ func sortedChannels(in []protocol.ChannelStats) []protocol.ChannelStats {
 	return out
 }
 
-// codecLabel is a friendly codec name, including the Opus bitrate.
-func codecLabel(cfg protocol.TestConfig) string {
-	switch cfg.Codec {
+// profileLabel is a friendly codec name for a profile, including Opus bitrate.
+func profileLabel(p protocol.Profile) string {
+	switch p.Codec {
 	case protocol.CodecG729:
 		return "G.729"
 	case protocol.CodecG722:
 		return "G.722 (wideband)"
 	case protocol.CodecOpus:
-		kbps := cfg.BitrateKbps
+		kbps := p.BitrateKbps
 		if kbps == 0 {
 			kbps = 32
 		}
@@ -194,7 +257,7 @@ func codecLabel(cfg protocol.TestConfig) string {
 	case protocol.CodecG711:
 		return "G.711 u-law"
 	default:
-		return string(cfg.Codec)
+		return string(p.Codec)
 	}
 }
 

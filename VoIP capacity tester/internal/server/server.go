@@ -33,6 +33,10 @@ type Options struct {
 	Advertise string  // media host advertised to clients ("" = derive from request Host)
 	SSEHz     float64 // dashboard refresh rate hint (informational; pushes are event-driven)
 	DataDir   string  // if set, completed test reports are persisted here and reloaded on startup (history)
+
+	MediaPortMin int // if >0, per-test media echo ports are chosen from [MediaPortMin,MediaPortMax] (for cloud firewalls)
+	MediaPortMax int
+	ProbeExe     string // if set, this probe.exe is served at /download/probe.exe for technicians
 }
 
 // Server is the collector.
@@ -84,6 +88,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tests/{code}/stream", s.handleTestStream)
 	mux.HandleFunc("GET /api/tests/{code}/report", s.handleReport)
 	mux.HandleFunc("GET /api/stream", s.handleListStream)
+	mux.HandleFunc("GET /api/config", s.handleServerConfig)
+	if s.opts.ProbeExe != "" {
+		mux.HandleFunc("GET /download/probe.exe", s.handleProbeDownload)
+	}
 
 	sub, err := fs.Sub(webFS, "web")
 	if err != nil {
@@ -117,7 +125,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	// Allocate a unique code and its media listener.
 	code := s.uniqueCode()
 	t := newTest(code, cfg)
-	if err := t.startMedia(s.opts.MediaBind); err != nil {
+	if err := t.startMedia(s.opts.MediaBind, s.opts.MediaPortMin, s.opts.MediaPortMax); err != nil {
 		httpErr(w, http.StatusInternalServerError, "media allocation failed: %v", err)
 		return
 	}
@@ -333,6 +341,26 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleServerConfig tells the dashboard what optional features are available
+// (currently: whether a probe.exe can be downloaded from this collector).
+func (s *Server) handleServerConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"probe_download": s.opts.ProbeExe != "",
+	})
+}
+
+// handleProbeDownload serves the configured probe.exe so an admin can hand it to
+// a technician straight from the dashboard.
+func (s *Server) handleProbeDownload(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ProbeExe == "" {
+		httpErr(w, http.StatusNotFound, "no probe binary configured")
+		return
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=probe.exe")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeFile(w, r, s.opts.ProbeExe)
+}
+
 // ---- SSE --------------------------------------------------------------------
 
 func (s *Server) handleTestStream(w http.ResponseWriter, r *http.Request) {
@@ -461,10 +489,10 @@ func resultSummary(res report.Result) protocol.TestSummary {
 	return protocol.TestSummary{
 		Code:       res.Code,
 		State:      protocol.StateComplete,
-		Codec:      res.Config.Codec,
+		Codec:      summaryCodec(res.Config),
 		Transport:  res.Config.Transport,
-		Channels:   res.Config.Channels,
-		PtimeMs:    res.Config.PtimeMs,
+		Channels:   res.Config.TotalChannels(),
+		PtimeMs:    summaryPtime(res.Config),
 		ClientID:   res.ClientID,
 		ClientIP:   res.ClientIP,
 		ElapsedSec: float64(res.Config.DurationSec),
@@ -545,26 +573,7 @@ func (s *Server) janitor() {
 }
 
 func normalizeConfig(c *protocol.TestConfig) error {
-	switch c.Codec {
-	case protocol.CodecG711, protocol.CodecG729, protocol.CodecG722, protocol.CodecOpus:
-	case "":
-		c.Codec = protocol.CodecG711
-	default:
-		return fmt.Errorf("unknown codec %q (want g711, g729, g722 or opus)", c.Codec)
-	}
-	if c.Codec == protocol.CodecOpus {
-		switch {
-		case c.BitrateKbps == 0:
-			c.BitrateKbps = codec.DefaultOpusKbps
-		case c.BitrateKbps < 6 || c.BitrateKbps > 510:
-			return fmt.Errorf("bitrate_kbps for opus must be 6..510 (got %d)", c.BitrateKbps)
-		}
-	} else {
-		c.BitrateKbps = 0 // fixed-rate codecs ignore any supplied bitrate
-	}
-	if c.DSCP < 0 || c.DSCP > 63 {
-		return fmt.Errorf("dscp must be 0..63 (got %d)", c.DSCP)
-	}
+	// Test-level transport.
 	switch c.Transport {
 	case protocol.TransportUDP, protocol.TransportTCP:
 	case "":
@@ -572,22 +581,61 @@ func normalizeConfig(c *protocol.TestConfig) error {
 	default:
 		return fmt.Errorf("unknown transport %q (want udp or tcp)", c.Transport)
 	}
-	if c.Channels < 1 {
-		return fmt.Errorf("channels must be >= 1")
-	}
-	if c.Channels > 5000 {
-		return fmt.Errorf("channels %d exceeds sane limit (5000)", c.Channels)
-	}
-	switch c.PtimeMs {
-	case 0:
-		c.PtimeMs = 20
-	case 10, 20, 30:
-	default:
-		return fmt.Errorf("ptime_ms must be 10, 20 or 30 (got %d)", c.PtimeMs)
+	if c.DSCP < 0 || c.DSCP > 63 {
+		return fmt.Errorf("dscp must be 0..63 (got %d)", c.DSCP)
 	}
 	if c.DurationSec < 1 {
 		return fmt.Errorf("duration_sec must be >= 1")
 	}
+
+	// Fold single-profile shorthand into a Profiles list.
+	if len(c.Profiles) == 0 {
+		c.Profiles = []protocol.Profile{{
+			Codec:       c.Codec,
+			Channels:    c.Channels,
+			PtimeMs:     c.PtimeMs,
+			BitrateKbps: c.BitrateKbps,
+		}}
+	}
+	// Clear the shorthand so the canonical representation is Profiles only.
+	c.Codec, c.Channels, c.PtimeMs, c.BitrateKbps = "", 0, 0, 0
+
+	total := 0
+	for i := range c.Profiles {
+		p := &c.Profiles[i]
+		switch p.Codec {
+		case protocol.CodecG711, protocol.CodecG729, protocol.CodecG722, protocol.CodecOpus:
+		case "":
+			p.Codec = protocol.CodecG711
+		default:
+			return fmt.Errorf("profile %d: unknown codec %q (want g711, g729, g722 or opus)", i, p.Codec)
+		}
+		if p.Codec == protocol.CodecOpus {
+			switch {
+			case p.BitrateKbps == 0:
+				p.BitrateKbps = codec.DefaultOpusKbps
+			case p.BitrateKbps < 6 || p.BitrateKbps > 510:
+				return fmt.Errorf("profile %d: bitrate_kbps for opus must be 6..510 (got %d)", i, p.BitrateKbps)
+			}
+		} else {
+			p.BitrateKbps = 0
+		}
+		switch p.PtimeMs {
+		case 0:
+			p.PtimeMs = 20
+		case 10, 20, 30:
+		default:
+			return fmt.Errorf("profile %d: ptime_ms must be 10, 20 or 30 (got %d)", i, p.PtimeMs)
+		}
+		if p.Channels < 1 {
+			return fmt.Errorf("profile %d: channels must be >= 1", i)
+		}
+		total += p.Channels
+	}
+	if total > 5000 {
+		return fmt.Errorf("total channels %d across %d profile(s) exceeds sane limit (5000)", total, len(c.Profiles))
+	}
+
 	dt := protocol.DefaultThresholds()
 	if c.Thresholds.LossPct == 0 {
 		c.Thresholds.LossPct = dt.LossPct

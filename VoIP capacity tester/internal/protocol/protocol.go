@@ -54,17 +54,75 @@ func DefaultThresholds() Thresholds {
 	return Thresholds{LossPct: 1.0, JitterMs: 30, OneWayMs: 150, MOS: 4.0}
 }
 
+// Profile is one codec/channel group within a test. A test may contain several
+// profiles that run together (e.g. 20×G.711 + 10×G.729), simulating a realistic
+// call mix. Transport and DSCP are test-level (shared by all profiles) so the
+// collector needs only one echo endpoint and one QoS marking per test.
+type Profile struct {
+	Codec       Codec `json:"codec"`
+	Channels    int   `json:"channels"`
+	PtimeMs     int   `json:"ptime_ms"`     // 10, 20 or 30
+	BitrateKbps int   `json:"bitrate_kbps"` // Opus only (0 = default 32); ignored by fixed-rate codecs
+}
+
 // TestConfig fully describes a test run. It is created by the operator and
 // echoed back to the client at claim time.
+//
+// A test is a set of Profiles plus test-level Transport/DSCP/Thresholds. For
+// convenience and backward compatibility a single-profile test may be given
+// with the top-level Codec/Channels/PtimeMs/BitrateKbps shorthand instead of a
+// Profiles list; normalizeConfig folds that shorthand into one Profile.
 type TestConfig struct {
-	Codec       Codec      `json:"codec"`
-	Channels    int        `json:"channels"`
+	Profiles    []Profile  `json:"profiles"`
 	Transport   Transport  `json:"transport"`
 	DurationSec int        `json:"duration_sec"`
-	PtimeMs     int        `json:"ptime_ms"`      // 10, 20 or 30
-	BitrateKbps int        `json:"bitrate_kbps"`  // Opus only: nominal bitrate (0 = codec default, 32); ignored by fixed-rate codecs
-	DSCP        int        `json:"dscp"`          // DiffServ code point 0..63 to mark RTP with (0 = best effort; e.g. 46 = EF). See QoS notes.
+	DSCP        int        `json:"dscp"` // DiffServ code point 0..63 (0 = best effort; e.g. 46 = EF). See QoS notes.
 	Thresholds  Thresholds `json:"thresholds"`
+
+	// Single-profile shorthand (used only when Profiles is empty).
+	Codec       Codec `json:"codec,omitempty"`
+	Channels    int   `json:"channels,omitempty"`
+	PtimeMs     int   `json:"ptime_ms,omitempty"`
+	BitrateKbps int   `json:"bitrate_kbps,omitempty"`
+}
+
+// PrimaryCodec returns the shared codec if every profile uses the same one,
+// else "" (a mixed-codec test). Used where a single codec must represent the
+// whole test (e.g. the collector's forward-jitter clock).
+func (c TestConfig) PrimaryCodec() Codec {
+	if len(c.Profiles) == 0 {
+		return c.Codec
+	}
+	first := c.Profiles[0].Codec
+	for _, p := range c.Profiles[1:] {
+		if p.Codec != first {
+			return ""
+		}
+	}
+	return first
+}
+
+// TotalChannels returns the sum of channels across all profiles.
+func (c TestConfig) TotalChannels() int {
+	n := 0
+	for _, p := range c.Profiles {
+		n += p.Channels
+	}
+	return n
+}
+
+// ChannelPlan returns one Profile entry per channel, in the order channels are
+// assigned global indices (profile 0's channels first, then profile 1's, ...).
+// The returned slice length equals TotalChannels. profileIndex[i] is the profile
+// ordinal for global channel i.
+func (c TestConfig) ChannelPlan() (profiles []Profile, profileIndex []int) {
+	for pi, p := range c.Profiles {
+		for j := 0; j < p.Channels; j++ {
+			profiles = append(profiles, p)
+			profileIndex = append(profileIndex, pi)
+		}
+	}
+	return profiles, profileIndex
 }
 
 // MediaEndpoint tells the client where to send the RTP streams. A single media
@@ -102,8 +160,9 @@ type ClaimResponse struct {
 // struct is used for periodic live snapshots and for the final report, so the
 // dashboard and the report share one shape.
 type ChannelStats struct {
-	Channel int    `json:"channel"`
-	SSRC    uint32 `json:"ssrc"` // RTP SSRC for this channel; lets the collector attribute forward-path packets to the channel
+	Channel   int    `json:"channel"`
+	ProfileID int    `json:"profile_id"` // index into TestConfig.Profiles this channel belongs to
+	SSRC      uint32 `json:"ssrc"`       // RTP SSRC for this channel; lets the collector attribute forward-path packets to the channel
 
 	// Volume / throughput
 	PacketsExpected int64   `json:"packets_expected"`

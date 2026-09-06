@@ -76,18 +76,30 @@ func Run(opts Options) error {
 	}
 	mediaAddr := net.JoinHostPort(mediaHost, fmt.Sprintf("%d", claim.Media.Port))
 
-	ci := codec.ForConfig(cfg)
-	fmt.Printf("Claimed %s: %s %s, %d channels, ptime %dms, duration %ds\n",
-		opts.Code, ci.Name, strings.ToUpper(string(cfg.Transport)), cfg.Channels, cfg.PtimeMs, cfg.DurationSec)
+	// Expand the profiles into one entry per channel.
+	profiles, profileIndex := cfg.ChannelPlan()
+	total := len(profiles)
+	fmt.Printf("Claimed %s: %s, %d channel(s) across %d profile(s), duration %ds\n",
+		opts.Code, strings.ToUpper(string(cfg.Transport)), total, len(cfg.Profiles), cfg.DurationSec)
+	for pi, p := range cfg.Profiles {
+		fmt.Printf("  profile %d: %s × %d, ptime %dms%s\n",
+			pi, codec.ForConfig(effConfig(cfg, p)).Name, p.Channels, p.PtimeMs, opusRate(p))
+	}
 	fmt.Printf("Media far-end: %s (%s)\n", mediaAddr, strings.ToUpper(string(cfg.Transport)))
 	if cfg.Transport == protocol.TransportTCP {
 		fmt.Println("NOTE: TCP transport — jitter/RTT/loss will be distorted by retransmits and Nagle vs UDP.")
 	}
 
-	// 2. Build per-channel accumulators and run the calls.
-	chans := make([]*metrics.Channel, cfg.Channels)
+	// 2. Build per-channel accumulators (each with its profile's codec) and run.
+	chans := make([]*metrics.Channel, total)
+	chanCfg := make([]protocol.TestConfig, total)
+	chanCI := make([]codec.Info, total)
 	for i := range chans {
-		chans[i] = metrics.NewChannel(i, cfg)
+		ec := effConfig(cfg, profiles[i])
+		chanCfg[i] = ec
+		chanCI[i] = codec.ForConfig(ec)
+		chans[i] = metrics.NewChannel(i, ec)
+		chans[i].SetProfile(profileIndex[i])
 	}
 
 	start := time.Now()
@@ -96,14 +108,14 @@ func Run(opts Options) error {
 	defer cancelSend()
 
 	var wg sync.WaitGroup
-	closers := make([]io.Closer, cfg.Channels)
+	closers := make([]io.Closer, total)
 	var closersMu sync.Mutex
 
-	for i := 0; i < cfg.Channels; i++ {
+	for i := 0; i < total; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			c, err := runChannel(sendCtx, cfg, ci, mediaAddr, chans[idx], start)
+			c, err := runChannel(sendCtx, chanCfg[idx], chanCI[idx], mediaAddr, chans[idx], start)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "channel %d: %v\n", idx, err)
 			}
@@ -179,6 +191,33 @@ func Run(opts Options) error {
 		fmt.Fprintf(os.Stderr, "writing reports: %v\n", err)
 	}
 	return nil
+}
+
+// effConfig builds an effective single-profile TestConfig for one channel,
+// combining the profile's codec/ptime/bitrate with the test-level transport,
+// duration, DSCP and thresholds.
+func effConfig(cfg protocol.TestConfig, p protocol.Profile) protocol.TestConfig {
+	return protocol.TestConfig{
+		Codec:       p.Codec,
+		Channels:    1,
+		PtimeMs:     p.PtimeMs,
+		BitrateKbps: p.BitrateKbps,
+		Transport:   cfg.Transport,
+		DurationSec: cfg.DurationSec,
+		DSCP:        cfg.DSCP,
+		Thresholds:  cfg.Thresholds,
+	}
+}
+
+func opusRate(p protocol.Profile) string {
+	if p.Codec == protocol.CodecOpus {
+		k := p.BitrateKbps
+		if k == 0 {
+			k = codec.DefaultOpusKbps
+		}
+		return fmt.Sprintf(" @ %dk", k)
+	}
+	return ""
 }
 
 // runChannel sends and receives one channel's RTP stream. It returns the closer
