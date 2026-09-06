@@ -28,6 +28,12 @@ body {
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand h1 { font-size: 16px; margin: 0; font-weight: 600; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.user { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.user-name { color: var(--text); }
+.user-name::before { content: "👤 "; }
+.user-logout { color: var(--accent); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; }
+.user-logout:hover { text-decoration: none; border-color: var(--accent); }
 .conn { font-size: 12px; color: var(--muted); }
 .conn.live { color: var(--pass); }
 .conn.down { color: var(--fail); }

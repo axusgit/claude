@@ -443,4 +443,13 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 }
 
+// Show the signed-in user + logout (when reached through SSO).
+fetch("/api/whoami").then((r) => r.json()).then((u) => {
+  const name = u.name || u.user || u.email;
+  if (name) {
+    $("#user-name").textContent = name;
+    $("#user").hidden = false;
+  }
+}).catch(() => {});
+
 openListStream();

@@ -89,6 +89,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tests/{code}/report", s.handleReport)
 	mux.HandleFunc("GET /api/stream", s.handleListStream)
 	mux.HandleFunc("GET /api/config", s.handleServerConfig)
+	mux.HandleFunc("GET /api/whoami", s.handleWhoami)
+	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	if s.opts.ProbeExe != "" {
 		mux.HandleFunc("GET /download/probe.exe", s.handleProbeDownload)
 	}
@@ -339,6 +341,24 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_ = report.WriteText(w, res)
 	}
+}
+
+// handleHealthz is an unauthenticated liveness probe (used by the Hub command
+// center to show this tool's status).
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	_, _ = w.Write([]byte("ok"))
+}
+
+// handleWhoami returns the signed-in user, read from the Authentik forward-auth
+// headers the reverse proxy injects on protected routes. Empty when not proxied
+// through SSO (e.g. local dev).
+func (s *Server) handleWhoami(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"user":  r.Header.Get("X-Authentik-Username"),
+		"email": r.Header.Get("X-Authentik-Email"),
+		"name":  r.Header.Get("X-Authentik-Name"),
+	})
 }
 
 // handleServerConfig tells the dashboard what optional features are available

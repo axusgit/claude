@@ -42,6 +42,7 @@ APP_CATALOG = [
     # `category` field groups them under an "Axus Tools" section in the launcher.
     {"key": "syslog", "name": "Syslog", "desc": "Network syslog collector & search", "group": "app-tools", "category": "Axus Tools", "icon": "📜", "internal": False, "url": "https://syslog.axustechnologies.com", "health": "https://syslog.axustechnologies.com/healthz"},
     {"key": "fileshare", "name": "File Share", "desc": "Secure two-way file transfer", "group": "app-tools", "category": "Axus Tools", "icon": "📁", "internal": False, "url": "https://sp.axustechnologies.com"},
+    {"key": "voiptest", "name": "VoIP Tester", "desc": "Network capacity testing — RTP load, MOS & per-call quality", "group": "app-tools", "category": "Axus Tools", "icon": "🎙️", "internal": False, "url": "https://voiptest.axustechnologies.com", "health": "https://voiptest.axustechnologies.com/healthz"},
 ]
 
 # Internal (Docker-network) URLs used to pull each app's KPI summary
