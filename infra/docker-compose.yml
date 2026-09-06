@@ -133,6 +133,7 @@ services:
       PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
       AUTHENTIK_URL: https://id.${PLATFORM_DOMAIN}
       GEO_POLICY_PATH: /data/geo_policy.json
+      GEO_FLEET_TOKEN: ${GEO_FLEET_TOKEN:-}
     volumes:
       - hub_data:/data
     depends_on: [authentik-server]
@@ -143,6 +144,13 @@ services:
       traefik.http.routers.hub.tls.certresolver: letsencrypt
       traefik.http.routers.hub.middlewares: geogate@file,authentik@file
       traefik.http.services.hub.loadbalancer.server.port: "8000"
+      # Fleet firewall sync: token-authed, no Authentik login and no geo-gate, so
+      # the box firewalls can poll the allowlist / post heartbeats headlessly.
+      traefik.http.routers.hubgeo.rule: Host(`${PLATFORM_DOMAIN}`) && (PathPrefix(`/api/geo/allowlist`) || PathPrefix(`/api/geo/heartbeat`))
+      traefik.http.routers.hubgeo.entrypoints: websecure
+      traefik.http.routers.hubgeo.tls.certresolver: letsencrypt
+      traefik.http.routers.hubgeo.priority: "100"
+      traefik.http.routers.hubgeo.service: hub
     networks: [axus]
 
   support:

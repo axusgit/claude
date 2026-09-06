@@ -170,6 +170,61 @@ def put_geo_policy(data: GeoPolicyIn, request: Request):
     return geo.save_policy({"mode": data.mode, "countries": data.countries})
 
 
+# ----- Fleet firewall sync (Hub policy -> every box's OS-level geo-firewall) ---
+# Boxes poll the allowlist and report back; authenticated by a shared token so no
+# admin session is needed and no inbound port is opened on the boxes.
+GEO_FLEET_TOKEN = os.getenv("GEO_FLEET_TOKEN", "")
+
+
+def _require_fleet_token(request: Request):
+    if not GEO_FLEET_TOKEN:
+        raise HTTPException(status_code=404, detail="fleet sync not enabled")
+    tok = request.headers.get("Authorization", "").removeprefix("Bearer ").strip() \
+        or request.query_params.get("token", "")
+    if tok != GEO_FLEET_TOKEN:
+        raise HTTPException(status_code=401, detail="invalid fleet token")
+
+
+@app.get("/api/geo/allowlist")
+def geo_allowlist(request: Request):
+    """Machine-readable policy for the box firewalls to follow."""
+    _require_fleet_token(request)
+    p = geo.load_policy()
+    return {
+        "mode": p.get("mode", "off"),
+        "countries": [str(c).upper() for c in p.get("countries", [])],
+        "version": geo.policy_version(),
+    }
+
+
+class GeoHeartbeat(BaseModel):
+    box: str
+    mode: str = ""
+    countries: List[str] = []
+    entries: int = 0
+    version: str = ""
+    enforcement: str = ""  # e.g. "ufw" / "docker" / "off"
+
+
+@app.post("/api/geo/heartbeat")
+def geo_heartbeat(hb: GeoHeartbeat, request: Request):
+    """A box reports its applied firewall state after syncing."""
+    _require_fleet_token(request)
+    import time
+    geo.record_heartbeat(hb.box, {
+        "mode": hb.mode, "countries": hb.countries, "entries": hb.entries,
+        "version": hb.version, "enforcement": hb.enforcement, "ts": int(time.time()),
+    })
+    return {"ok": True}
+
+
+@app.get("/api/geo/fleet")
+def geo_fleet(request: Request):
+    """Admin: current firewall status reported by each box."""
+    _require_admin(request)
+    return {"policy_version": geo.policy_version(), "boxes": geo.load_fleet()}
+
+
 @app.get("/api/apps/health")
 async def apps_health(request: Request):
     """Best-effort live status of each app the user can access (for the dashboard)."""

@@ -230,6 +230,27 @@
       if (c && !geoPolicy.countries.includes(c)) { geoPolicy.countries.push(c); renderGeo(); }
     };
     $("geo-save").onclick = saveGeo;
+    loadFleet();
+  }
+  async function loadFleet() {
+    let data;
+    try { data = await api("/api/geo/fleet"); } catch (e) { $("geo-fleet-wrap").style.display = "none"; return; }
+    const boxes = data.boxes || {};
+    const names = Object.keys(boxes).sort();
+    if (!names.length) { $("geo-fleet").innerHTML = `<span class="muted">No servers have reported yet.</span>`; return; }
+    const now = Math.floor(Date.now() / 1000);
+    $("geo-fleet").innerHTML = names.map(n => {
+      const b = boxes[n], age = now - (b.ts || 0);
+      const fresh = age < 900; // ≤15 min = in sync
+      const inSync = String(b.version || "") === String(data.policy_version || "");
+      const dot = fresh && inSync ? "#2ea043" : (fresh ? "#d29922" : "#f85149");
+      const when = age < 90 ? "just now" : age < 3600 ? Math.floor(age/60)+"m ago" : Math.floor(age/3600)+"h ago";
+      const cc = (b.countries || []).join(", ") || (b.mode === "off" ? "all (off)" : "—");
+      return `<div class="geo-fleet-row" style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px">
+        <span><b style="color:${dot}">●</b> ${esc(n)} <span class="muted">(${esc(b.enforcement||"?")})</span></span>
+        <span class="muted">${esc(b.mode||"?")}: ${esc(cc)} · ${b.entries||0} nets · ${when}${inSync?"":" · out of sync"}</span>
+      </div>`;
+    }).join("");
   }
   function renderGeo() {
     const showList = geoPolicy.mode !== "off";
@@ -245,7 +266,8 @@
     $("geo-status").textContent = "Saving…";
     try {
       geoPolicy = await api("/api/geo/policy", { method: "PUT", body: { mode: geoPolicy.mode, countries: geoPolicy.countries } });
-      $("geo-status").textContent = "Saved ✓"; setTimeout(() => $("geo-status").textContent = "", 2500);
+      $("geo-status").textContent = "Saved ✓ — servers sync within 5 min"; setTimeout(() => $("geo-status").textContent = "", 4000);
+      setTimeout(loadFleet, 1500);
     } catch (e) { $("geo-status").textContent = "Save failed"; }
   }
 

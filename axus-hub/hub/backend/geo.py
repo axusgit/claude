@@ -17,6 +17,9 @@ except Exception:  # package or data missing -> lookups return "" (fail open)
     _geoip = None
 
 GEO_POLICY_PATH = os.getenv("GEO_POLICY_PATH", "geo_policy.json")
+# Fleet status file: each box POSTs a heartbeat after it syncs the policy, so the
+# Hub admin page can show that the OS-level firewalls actually followed the list.
+FLEET_PATH = os.getenv("GEO_FLEET_PATH", os.path.join(os.path.dirname(GEO_POLICY_PATH) or ".", "geo_fleet.json"))
 DEFAULT_POLICY = {"mode": "off", "countries": []}  # mode: off | allow | deny
 
 _cache = {"mtime": None, "policy": None}
@@ -48,6 +51,38 @@ def save_policy(policy: dict) -> dict:
             json.dump(clean, f)
         _cache["mtime"] = None  # force reload on next read
     return clean
+
+
+def policy_version() -> str:
+    """A change-token boxes compare against to know when to re-sync."""
+    try:
+        return str(int(os.path.getmtime(GEO_POLICY_PATH)))
+    except OSError:
+        return "0"
+
+
+def record_heartbeat(box: str, data: dict) -> None:
+    """Store one box's last-sync status (keyed by box name)."""
+    with _lock:
+        fleet = {}
+        try:
+            with open(FLEET_PATH, encoding="utf-8") as f:
+                fleet = json.load(f)
+        except Exception:
+            fleet = {}
+        fleet[str(box)] = data
+        tmp = FLEET_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(fleet, f)
+        os.replace(tmp, FLEET_PATH)
+
+
+def load_fleet() -> dict:
+    try:
+        with open(FLEET_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def country_of(ip: str) -> str:

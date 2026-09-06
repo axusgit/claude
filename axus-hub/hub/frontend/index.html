@@ -106,7 +106,7 @@
 
           <div class="card" id="geo-card" style="margin-top:20px; display:none">
             <h3 class="card-title">Country access control</h3>
-            <p class="muted" style="margin:-6px 0 16px">Restrict platform access by visitor country. Enforced at the edge on all public traffic; private/internal addresses are always allowed.</p>
+            <p class="muted" style="margin:-6px 0 16px">Restrict access by visitor country. Enforced at the platform edge <b>and</b> pushed to the OS-level firewall on every Axus server (allowlist mode). Private/internal and Axus infrastructure addresses are always allowed.</p>
             <label class="geo-field">Mode
               <select id="geo-mode">
                 <option value="off">Off — allow every country</option>
@@ -124,6 +124,13 @@
             <div class="geo-actions">
               <span id="geo-status" class="muted"></span>
               <button class="btn btn-primary" id="geo-save">Save policy</button>
+            </div>
+            <div id="geo-fleet-wrap" style="margin-top:18px; border-top:1px solid var(--border,#2a323d); padding-top:14px">
+              <div style="display:flex; justify-content:space-between; align-items:center">
+                <h4 style="margin:0; font-size:13px">Server firewalls</h4>
+                <span class="muted" style="font-size:12px">follow this policy · sync ≤5 min</span>
+              </div>
+              <div id="geo-fleet" class="geo-fleet" style="margin-top:10px"></div>
             </div>
           </div>
         </section>
