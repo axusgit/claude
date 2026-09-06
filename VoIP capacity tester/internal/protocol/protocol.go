@@ -15,8 +15,10 @@ import (
 type Codec string
 
 const (
-	CodecG711 Codec = "g711" // ITU-T G.711 u-law, RTP payload type 0
-	CodecG729 Codec = "g729" // ITU-T G.729,       RTP payload type 18
+	CodecG711 Codec = "g711" // ITU-T G.711 u-law, RTP payload type 0 (64 kbps, narrowband)
+	CodecG729 Codec = "g729" // ITU-T G.729,       RTP payload type 18 (8 kbps, narrowband)
+	CodecG722 Codec = "g722" // ITU-T G.722,       RTP payload type 9  (64 kbps, wideband)
+	CodecOpus Codec = "opus" // Opus (RFC 6716),   dynamic PT 111      (configurable bitrate, wideband)
 )
 
 // Transport is chosen per test; every channel in the test uses it.
@@ -59,7 +61,9 @@ type TestConfig struct {
 	Channels    int        `json:"channels"`
 	Transport   Transport  `json:"transport"`
 	DurationSec int        `json:"duration_sec"`
-	PtimeMs     int        `json:"ptime_ms"` // 10, 20 or 30
+	PtimeMs     int        `json:"ptime_ms"`      // 10, 20 or 30
+	BitrateKbps int        `json:"bitrate_kbps"`  // Opus only: nominal bitrate (0 = codec default, 32); ignored by fixed-rate codecs
+	DSCP        int        `json:"dscp"`          // DiffServ code point 0..63 to mark RTP with (0 = best effort; e.g. 46 = EF). See QoS notes.
 	Thresholds  Thresholds `json:"thresholds"`
 }
 
@@ -98,7 +102,8 @@ type ClaimResponse struct {
 // struct is used for periodic live snapshots and for the final report, so the
 // dashboard and the report share one shape.
 type ChannelStats struct {
-	Channel int `json:"channel"`
+	Channel int    `json:"channel"`
+	SSRC    uint32 `json:"ssrc"` // RTP SSRC for this channel; lets the collector attribute forward-path packets to the channel
 
 	// Volume / throughput
 	PacketsExpected int64   `json:"packets_expected"`
@@ -138,6 +143,37 @@ type ChannelStats struct {
 	// Verdict
 	Pass        bool     `json:"pass"`
 	FailReasons []string `json:"fail_reasons,omitempty"`
+}
+
+// DirectionStats holds one-way (single-leg) measurements for a channel. The
+// collector measures the FORWARD leg (client -> collector) directly from the
+// RTP it receives; the RETURN leg (collector -> client) loss is derived by
+// combining that forward receive count with the client's round-trip receive
+// count. One-way jitter is a genuine single-leg RFC 3550 measurement on the
+// forward leg; there is no synced clock, so no one-way delay is claimed here.
+type DirectionStats struct {
+	Channel     int     `json:"channel"`
+	SSRC        uint32  `json:"ssrc"`
+	Direction   string  `json:"direction"` // "forward" (client->collector) or "return" (collector->client)
+	Recv        int64   `json:"recv"`      // packets received on this leg
+	Lost        int64   `json:"lost"`
+	LossPct     float64 `json:"loss_pct"`
+	Reordered   int64   `json:"reordered"`
+	Duplicates  int64   `json:"duplicates"`
+	JitterMs    float64 `json:"jitter_ms,omitempty"`     // forward leg only (measured); omitted for return
+	JitterMaxMs float64 `json:"jitter_max_ms,omitempty"` // forward leg only
+}
+
+// DirectionAggregate summarizes one leg across all channels.
+type DirectionAggregate struct {
+	Direction    string  `json:"direction"`
+	Recv         int64   `json:"recv"`
+	Lost         int64   `json:"lost"`
+	LossPct      float64 `json:"loss_pct"`
+	Reordered    int64   `json:"reordered"`
+	Duplicates   int64   `json:"duplicates"`
+	JitterMeanMs float64 `json:"jitter_mean_ms,omitempty"`
+	JitterMaxMs  float64 `json:"jitter_max_ms,omitempty"`
 }
 
 // StatsReport is one POST from the client to /api/tests/{code}/stats.

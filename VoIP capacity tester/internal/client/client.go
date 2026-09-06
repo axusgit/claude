@@ -23,11 +23,13 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"voiptest/internal/codec"
 	"voiptest/internal/metrics"
 	"voiptest/internal/protocol"
+	"voiptest/internal/qos"
 	"voiptest/internal/report"
 	"voiptest/internal/rtp"
 )
@@ -74,7 +76,7 @@ func Run(opts Options) error {
 	}
 	mediaAddr := net.JoinHostPort(mediaHost, fmt.Sprintf("%d", claim.Media.Port))
 
-	ci := codec.For(cfg.Codec)
+	ci := codec.ForConfig(cfg)
 	fmt.Printf("Claimed %s: %s %s, %d channels, ptime %dms, duration %ds\n",
 		opts.Code, ci.Name, strings.ToUpper(string(cfg.Transport)), cfg.Channels, cfg.PtimeMs, cfg.DurationSec)
 	fmt.Printf("Media far-end: %s (%s)\n", mediaAddr, strings.ToUpper(string(cfg.Transport)))
@@ -164,6 +166,14 @@ func Run(opts Options) error {
 		Aggregate:   metrics.Aggregate(finalStats),
 		Channels:    finalStats,
 	}
+	// Enrich with the collector's forward-leg measurement so the local report
+	// carries the same per-direction breakdown as the dashboard. Best effort:
+	// if the collector is unreachable the round-trip report still stands.
+	if fwd, ret, fAgg, rAgg, err := fetchDirections(base, opts.Code); err != nil {
+		fmt.Fprintf(os.Stderr, "note: per-direction stats unavailable: %v\n", err)
+	} else {
+		res.Forward, res.Return, res.ForwardAgg, res.ReturnAgg = fwd, ret, fAgg, rAgg
+	}
 	printSummary(res)
 	if err := writeReports(opts.OutDir, res); err != nil {
 		fmt.Fprintf(os.Stderr, "writing reports: %v\n", err)
@@ -178,7 +188,7 @@ func runChannel(ctx context.Context, cfg protocol.TestConfig, ci codec.Info, add
 	if payloadLen < rtp.SendTimeSize {
 		payloadLen = rtp.SendTimeSize
 	}
-	ssrc := rand.Uint32()
+	ssrc := m.SSRC()
 	seq := uint16(rand.Intn(1 << 16))
 	ts := rand.Uint32()
 	tsInc := ci.TimestampIncrement(cfg.PtimeMs)
@@ -191,6 +201,7 @@ func runChannel(ctx context.Context, cfg protocol.TestConfig, ci codec.Info, add
 			return nil, fmt.Errorf("dial: %w", err)
 		}
 		tc := conn.(*net.TCPConn)
+		markDSCP(tc, cfg.DSCP)
 		go recvTCP(tc, m)
 		sendLoop(ctx, start, ptime, func(pkt []byte) error {
 			return rtp.WriteFramed(tc, pkt)
@@ -206,6 +217,7 @@ func runChannel(ctx context.Context, cfg protocol.TestConfig, ci codec.Info, add
 		if err != nil {
 			return nil, fmt.Errorf("dial: %w", err)
 		}
+		markDSCP(conn, cfg.DSCP)
 		go recvUDP(conn, m)
 		sendLoop(ctx, start, ptime, func(pkt []byte) error {
 			_, err := conn.Write(pkt)
@@ -261,6 +273,20 @@ func sendLoop(ctx context.Context, start time.Time, ptime time.Duration, write f
 		m.IncSent()
 		*seq++
 		*ts += tsInc
+	}
+}
+
+// markDSCP applies the test's DSCP to a media socket, best effort. A failure to
+// set it (or a platform that ignores it — notably Windows) is not fatal: the
+// call is logged once by the OS layer and the test proceeds best-effort.
+func markDSCP(c interface {
+	SyscallConn() (syscall.RawConn, error)
+}, dscp int) {
+	if dscp <= 0 {
+		return
+	}
+	if rc, err := c.SyscallConn(); err == nil {
+		_ = qos.SetDSCP(rc, dscp)
 	}
 }
 
@@ -334,6 +360,28 @@ func doClaim(base, code, clientID string) (*protocol.ClaimResponse, error) {
 		return nil, err
 	}
 	return &cr, nil
+}
+
+// fetchDirections pulls the collector's per-direction breakdown for the test.
+func fetchDirections(base, code string) (fwd, ret []protocol.DirectionStats, fAgg, rAgg protocol.DirectionAggregate, err error) {
+	resp, err := httpClient.Get(base + "/api/tests/" + code)
+	if err != nil {
+		return nil, nil, fAgg, rAgg, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fAgg, rAgg, fmt.Errorf("detail fetch returned %d", resp.StatusCode)
+	}
+	var d struct {
+		Forward    []protocol.DirectionStats   `json:"forward"`
+		Return     []protocol.DirectionStats   `json:"return"`
+		ForwardAgg protocol.DirectionAggregate `json:"forward_agg"`
+		ReturnAgg  protocol.DirectionAggregate `json:"return_agg"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+		return nil, nil, fAgg, rAgg, err
+	}
+	return d.Forward, d.Return, d.ForwardAgg, d.ReturnAgg, nil
 }
 
 func postStats(base, code, clientID string, elapsed float64, final bool, chans []protocol.ChannelStats) {

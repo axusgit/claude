@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"math"
+	"math/rand"
 	"sort"
 	"sync"
 
@@ -37,6 +38,7 @@ type Channel struct {
 	mu sync.Mutex
 
 	index      int
+	ssrc       uint32
 	ci         codec.Info
 	cfg        protocol.TestConfig
 	ipBytesPkt int // on-wire bytes per packet at IP layer
@@ -80,14 +82,49 @@ type Channel struct {
 
 // NewChannel creates an accumulator for one channel.
 func NewChannel(index int, cfg protocol.TestConfig) *Channel {
-	ci := codec.For(cfg.Codec)
+	ci := codec.ForConfig(cfg)
 	payload := ci.PayloadBytes(cfg.PtimeMs)
 	return &Channel{
 		index:      index,
+		ssrc:       rand.Uint32(),
 		ci:         ci,
 		cfg:        cfg,
 		ipBytesPkt: codec.IPBytesPerPacket(payload, cfg.Transport),
 		seen:       make(map[uint64]struct{}, 4096),
+	}
+}
+
+// SSRC returns the RTP SSRC assigned to this channel.
+func (c *Channel) SSRC() uint32 { return c.ssrc }
+
+// RecvSummary is a receive-only view of a channel, used by the collector to
+// report the forward leg (client -> collector) it measures on the echo path.
+type RecvSummary struct {
+	Recv        int64
+	Lost        int64 // from RTP sequence gaps, net of late (reordered) recoveries
+	Reordered   int64
+	Duplicates  int64
+	JitterMs    float64
+	JitterMaxMs float64
+}
+
+// RecvSummary returns the receive-side measurements accumulated so far. Loss is
+// computed purely from RTP sequence numbers (gap-based), so it is valid for a
+// one-directional receiver that has no send-count to compare against.
+func (c *Channel) RecvSummary() RecvSummary {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	lost := c.sumRunLen - c.reordered
+	if lost < 0 {
+		lost = 0
+	}
+	return RecvSummary{
+		Recv:        c.recv,
+		Lost:        lost,
+		Reordered:   c.reordered,
+		Duplicates:  c.dupes,
+		JitterMs:    round3(c.jitter / float64(c.ci.ClockRate) * 1000.0),
+		JitterMaxMs: round3(c.jitterMaxMs),
 	}
 }
 
@@ -305,6 +342,7 @@ func (c *Channel) Snapshot(elapsedSec float64) protocol.ChannelStats {
 
 	st := protocol.ChannelStats{
 		Channel:         c.index,
+		SSRC:            c.ssrc,
 		PacketsExpected: int64(math.Round(elapsedSec * pps)),
 		PacketsSent:     sent,
 		PacketsRecv:     c.recv,

@@ -11,6 +11,7 @@ const conn = $("#conn");
 
 let selected = null;      // currently open CODE
 let detailSrc = null;     // EventSource for the detail feed
+const compareSet = new Set(); // CODEs ticked for comparison
 
 // ---- Test list --------------------------------------------------------------
 
@@ -25,14 +26,21 @@ function renderList(tests) {
   const body = $("#tests-body");
   $("#test-count").textContent = tests.length ? `${tests.length} total` : "";
   if (!tests.length) {
-    body.innerHTML = `<tr><td colspan="12" class="empty">No tests yet. Create one via the control API.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="13" class="empty">No tests yet. Create one via the control API.</td></tr>`;
     return;
   }
+  // Drop selections for tests that no longer exist.
+  const codes = new Set(tests.map((t) => t.code));
+  for (const c of [...compareSet]) if (!codes.has(c)) compareSet.delete(c);
+
   body.innerHTML = "";
   for (const t of tests) {
     const tr = document.createElement("tr");
     if (t.code === selected) tr.className = "active";
+    const pickable = hasStats(t);
+    const checked = compareSet.has(t.code) ? "checked" : "";
     tr.innerHTML = `
+      <td class="pick">${pickable ? `<input type="checkbox" class="cmp" ${checked} aria-label="compare ${t.code}">` : ""}</td>
       <td class="code">${t.code}</td>
       <td><span class="state ${t.state}">${t.state}</span></td>
       <td>${codecName(t.codec)}</td>
@@ -45,9 +53,24 @@ function renderList(tests) {
       <td class="num">${hasStats(t) ? fmt(t.loss_pct, 2) : "—"}</td>
       <td class="num">${hasStats(t) ? fmt(t.mos, 2) : "—"}</td>
       <td>${verdictCell(t)}</td>`;
-    tr.addEventListener("click", () => openDetail(t.code));
+    tr.addEventListener("click", (e) => {
+      if (e.target.classList.contains("cmp")) return; // let the checkbox handle it
+      openDetail(t.code);
+    });
+    const cb = tr.querySelector(".cmp");
+    if (cb) cb.addEventListener("change", () => {
+      if (cb.checked) compareSet.add(t.code); else compareSet.delete(t.code);
+      updateCompareBtn();
+    });
     body.appendChild(tr);
   }
+  updateCompareBtn();
+}
+
+function updateCompareBtn() {
+  const btn = $("#compare-btn");
+  btn.textContent = `Compare (${compareSet.size})`;
+  btn.disabled = compareSet.size < 2;
 }
 
 function hasStats(t) { return t.state === "running" || t.state === "complete"; }
@@ -82,10 +105,71 @@ $("#d-close").addEventListener("click", () => {
   document.querySelectorAll("#tests-body tr").forEach((tr) => tr.classList.remove("active"));
 });
 
+// ---- Compare ----------------------------------------------------------------
+
+$("#compare-btn").addEventListener("click", openCompare);
+$("#compare-close").addEventListener("click", () => { $("#compare").hidden = true; });
+
+async function openCompare() {
+  const codes = [...compareSet];
+  if (codes.length < 2) return;
+  const results = [];
+  for (const code of codes) {
+    try {
+      const r = await fetch(`/api/tests/${code}/report?format=json`);
+      if (r.ok) results.push(await r.json());
+    } catch (e) { /* skip unreachable */ }
+  }
+  if (results.length < 2) return;
+  renderCompare(results);
+  $("#compare").hidden = false;
+  $("#compare").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderCompare(results) {
+  const col = (r) => {
+    const c = r.config || {}, a = r.aggregate || {}, f = r.forward_agg || {}, rt = r.return_agg || {};
+    return {
+      code: r.code,
+      cells: {
+        "Codec": codecName(c.codec) + (c.codec === "opus" ? ` ${c.bitrate_kbps || 32}k` : ""),
+        "Transport": (c.transport || "").toUpperCase(),
+        "Channels": c.channels,
+        "Ptime": (c.ptime_ms || "") + "ms",
+        "Duration": (c.duration_sec || "") + "s",
+        "DSCP": c.dscp || 0,
+        "Verdict": a.pass ? "PASS" : "FAIL",
+        "Loss % (round-trip)": fmt(a.loss_pct, 3),
+        "MOS mean": fmt(a.mos_mean, 2),
+        "MOS worst": fmt(a.mos_min, 2),
+        "Jitter mean (ms)": fmt(a.jitter_mean_ms, 2),
+        "RTT mean (ms)": fmt(a.rtt_mean_ms, 2),
+        "One-way (ms)": fmt(a.oneway_ms, 2),
+        "Fwd loss %": fmt(f.loss_pct, 3),
+        "Ret loss %": fmt(rt.loss_pct, 3),
+        "Bitrate (kbps)": fmt(a.bitrate_kbps, 0),
+      },
+    };
+  };
+  const cols = results.map(col);
+  const keys = Object.keys(cols[0].cells);
+  let html = `<tr><th>Metric</th>${cols.map((c) => `<th class="code">${c.code}</th>`).join("")}</tr>`;
+  for (const key of keys) {
+    html += `<tr><td class="muted">${key}</td>${cols.map((c) => {
+      const v = c.cells[key];
+      const cls = key === "Verdict" ? (v === "PASS" ? "verdict-pass" : "verdict-fail") : "num";
+      return `<td class="${cls}">${v}</td>`;
+    }).join("")}</tr>`;
+  }
+  $("#compare-body").innerHTML = html;
+}
+
 function renderDetail(d) {
   const c = d.config || {};
+  const rate = c.codec === "opus" ? ` ${c.bitrate_kbps || 32}k` : "";
+  const dscp = c.dscp ? ` · DSCP ${c.dscp}${c.dscp === 46 ? " (EF)" : ""}` : "";
   $("#d-config").textContent =
-    `${codecName(c.codec)} · ${(c.transport||"").toUpperCase()} · ${c.channels} ch · ${c.ptime_ms}ms · ${c.duration_sec}s · state ${d.state}`;
+    `${codecName(c.codec)}${rate} · ${(c.transport||"").toUpperCase()} · ${c.channels} ch · ${c.ptime_ms}ms · ${c.duration_sec}s${dscp} · state ${d.state}`;
   $("#d-tcpnote").hidden = c.transport !== "tcp";
 
   const v = $("#d-verdict");
@@ -100,8 +184,25 @@ function renderDetail(d) {
   }
 
   renderCards(d, a);
+  renderDirections(d.forward_agg || {}, d.return_agg || {});
   renderChannels(d.channels || []);
   drawCharts(d.history || [], c);
+}
+
+// One-way (forward / return) summary cards.
+function renderDirections(f, r) {
+  const el = $("#d-dir");
+  const measured = (f.recv || 0) + (f.lost || 0) > 0;
+  document.querySelector(".dir-head").hidden = !measured;
+  if (!measured) { el.innerHTML = ""; el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = [
+    kpi("Fwd loss", fmt(f.loss_pct, 3) + "%", (f.loss_pct || 0) > 0),
+    kpi("Fwd jitter", fmt(f.jitter_mean_ms, 2) + " ms"),
+    kpi("Fwd recv/lost", `${f.recv || 0} / ${f.lost || 0}`),
+    kpi("Ret loss", fmt(r.loss_pct, 3) + "%", (r.loss_pct || 0) > 0),
+    kpi("Ret recv/lost", `${r.recv || 0} / ${r.lost || 0}`),
+  ].join("");
 }
 
 function renderCards(d, a) {
@@ -226,7 +327,9 @@ function fmt(v, d) {
   if (v == null || isNaN(v)) return "0";
   return Number(v).toFixed(d);
 }
-function codecName(c) { return c === "g729" ? "G.729" : c === "g711" ? "G.711" : (c || "?"); }
+function codecName(c) {
+  return { g711: "G.711", g729: "G.729", g722: "G.722", opus: "Opus" }[c] || c || "?";
+}
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 }

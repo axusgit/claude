@@ -11,11 +11,14 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"voiptest/internal/codec"
 	"voiptest/internal/protocol"
 	"voiptest/internal/report"
 )
@@ -25,10 +28,11 @@ var webFS embed.FS
 
 // Options configures the server.
 type Options struct {
-	Addr      string // HTTP listen address, e.g. ":8080"
-	MediaBind string // interface to bind media listeners on ("" = all)
-	Advertise string // media host advertised to clients ("" = derive from request Host)
+	Addr      string  // HTTP listen address, e.g. ":8080"
+	MediaBind string  // interface to bind media listeners on ("" = all)
+	Advertise string  // media host advertised to clients ("" = derive from request Host)
 	SSEHz     float64 // dashboard refresh rate hint (informational; pushes are event-driven)
+	DataDir   string  // if set, completed test reports are persisted here and reloaded on startup (history)
 }
 
 // Server is the collector.
@@ -36,6 +40,12 @@ type Server struct {
 	opts  Options
 	mu    sync.RWMutex
 	tests map[string]*Test
+
+	// Completed-test history: survives across restarts when DataDir is set, and
+	// lets finished tests be listed, reported and compared after their live Test
+	// object is gone. Keyed by CODE.
+	histMu  sync.Mutex
+	history map[string]report.Result
 
 	listMu   sync.Mutex
 	listSubs map[chan []byte]struct{}
@@ -46,11 +56,20 @@ func New(opts Options) *Server {
 	if opts.SSEHz <= 0 {
 		opts.SSEHz = 1
 	}
-	return &Server{
+	s := &Server{
 		opts:     opts,
 		tests:    make(map[string]*Test),
+		history:  make(map[string]report.Result),
 		listSubs: make(map[chan []byte]struct{}),
 	}
+	if opts.DataDir != "" {
+		if err := s.loadHistory(); err != nil {
+			log.Printf("history: could not load from %s: %v", opts.DataDir, err)
+		} else if n := len(s.history); n > 0 {
+			log.Printf("history: loaded %d past test(s) from %s", n, opts.DataDir)
+		}
+	}
+	return s
 }
 
 // Handler builds the HTTP routing tree (Go 1.22 pattern mux).
@@ -175,9 +194,97 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	detail := t.applyStats(rep)
+	if rep.Final {
+		s.recordHistory(t.result())
+	}
 	t.broadcast(detail)
 	s.broadcastList()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---- History (completed tests) ----------------------------------------------
+
+// recordHistory stores a completed test's report in memory and, when a data dir
+// is configured, on disk so it survives a restart.
+func (s *Server) recordHistory(res report.Result) {
+	if res.Code == "" {
+		return
+	}
+	s.histMu.Lock()
+	s.history[res.Code] = res
+	s.histMu.Unlock()
+	if s.opts.DataDir == "" {
+		return
+	}
+	if err := os.MkdirAll(s.opts.DataDir, 0o755); err != nil {
+		log.Printf("history: mkdir %s: %v", s.opts.DataDir, err)
+		return
+	}
+	b, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(filepath.Join(s.opts.DataDir, res.Code+".json"), b, 0o644); err != nil {
+		log.Printf("history: write %s: %v", res.Code, err)
+	}
+}
+
+// loadHistory reads any persisted reports from the data dir into memory.
+func (s *Server) loadHistory() error {
+	entries, err := os.ReadDir(s.opts.DataDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(s.opts.DataDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var res report.Result
+		if err := json.Unmarshal(b, &res); err != nil {
+			continue
+		}
+		if res.Code != "" {
+			s.history[res.Code] = res
+		}
+	}
+	return nil
+}
+
+func (s *Server) historyGet(code string) (report.Result, bool) {
+	s.histMu.Lock()
+	defer s.histMu.Unlock()
+	r, ok := s.history[code]
+	return r, ok
+}
+
+// detailFromResult renders a stored report into the same JSON shape the live
+// detail feed uses, so the dashboard can open a completed test after restart.
+func detailFromResult(res report.Result) []byte {
+	b, _ := json.Marshal(map[string]any{
+		"code":        res.Code,
+		"state":       protocol.StateComplete,
+		"config":      res.Config,
+		"client_id":   res.ClientID,
+		"client_ip":   res.ClientIP,
+		"media_port":  0,
+		"elapsed_sec": res.Config.DurationSec,
+		"remain_sec":  0,
+		"aggregate":   res.Aggregate,
+		"channels":    res.Channels,
+		"forward":     res.Forward,
+		"return":      res.Return,
+		"forward_agg": res.ForwardAgg,
+		"return_agg":  res.ReturnAgg,
+		"history":     []any{},
+	})
+	return b
 }
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +295,11 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 	code := strings.ToUpper(r.PathValue("code"))
 	t := s.get(code)
 	if t == nil {
+		if res, ok := s.historyGet(code); ok {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(detailFromResult(res))
+			return
+		}
 		httpErr(w, http.StatusNotFound, "no such test code %q", code)
 		return
 	}
@@ -198,11 +310,15 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	code := strings.ToUpper(r.PathValue("code"))
 	t := s.get(code)
-	if t == nil {
+	var res report.Result
+	if t != nil {
+		res = t.result()
+	} else if h, ok := s.historyGet(code); ok {
+		res = h
+	} else {
 		httpErr(w, http.StatusNotFound, "no such test code %q", code)
 		return
 	}
-	res := t.result()
 	switch r.URL.Query().Get("format") {
 	case "json":
 		w.Header().Set("Content-Type", "application/json")
@@ -222,13 +338,20 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTestStream(w http.ResponseWriter, r *http.Request) {
 	code := strings.ToUpper(r.PathValue("code"))
 	t := s.get(code)
-	if t == nil {
-		httpErr(w, http.StatusNotFound, "no such test code %q", code)
-		return
-	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		httpErr(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	if t == nil {
+		// Not live: if we have it in history, send a single snapshot and close.
+		if res, ok := s.historyGet(code); ok {
+			sseHeaders(w)
+			writeSSE(w, detailFromResult(res))
+			flusher.Flush()
+			return
+		}
+		httpErr(w, http.StatusNotFound, "no such test code %q", code)
 		return
 	}
 	sseHeaders(w)
@@ -314,12 +437,41 @@ func (s *Server) listJSON() []byte {
 func (s *Server) summaries() []protocol.TestSummary {
 	s.mu.RLock()
 	out := make([]protocol.TestSummary, 0, len(s.tests))
+	live := make(map[string]struct{}, len(s.tests))
 	for _, t := range s.tests {
 		out = append(out, t.summary())
+		live[t.Code] = struct{}{}
 	}
 	s.mu.RUnlock()
+	// Include persisted history not currently live (e.g. reloaded after restart).
+	s.histMu.Lock()
+	for code, res := range s.history {
+		if _, ok := live[code]; ok {
+			continue
+		}
+		out = append(out, resultSummary(res))
+	}
+	s.histMu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
 	return out
+}
+
+// resultSummary builds a list row from a stored (completed) report.
+func resultSummary(res report.Result) protocol.TestSummary {
+	return protocol.TestSummary{
+		Code:       res.Code,
+		State:      protocol.StateComplete,
+		Codec:      res.Config.Codec,
+		Transport:  res.Config.Transport,
+		Channels:   res.Config.Channels,
+		PtimeMs:    res.Config.PtimeMs,
+		ClientID:   res.ClientID,
+		ClientIP:   res.ClientIP,
+		ElapsedSec: float64(res.Config.DurationSec),
+		MOS:        res.Aggregate.MOSMean,
+		LossPct:    res.Aggregate.LossPct,
+		Pass:       res.Aggregate.Pass,
+	}
 }
 
 // ---- helpers ----------------------------------------------------------------
@@ -394,11 +546,24 @@ func (s *Server) janitor() {
 
 func normalizeConfig(c *protocol.TestConfig) error {
 	switch c.Codec {
-	case protocol.CodecG711, protocol.CodecG729:
+	case protocol.CodecG711, protocol.CodecG729, protocol.CodecG722, protocol.CodecOpus:
 	case "":
 		c.Codec = protocol.CodecG711
 	default:
-		return fmt.Errorf("unknown codec %q (want g711 or g729)", c.Codec)
+		return fmt.Errorf("unknown codec %q (want g711, g729, g722 or opus)", c.Codec)
+	}
+	if c.Codec == protocol.CodecOpus {
+		switch {
+		case c.BitrateKbps == 0:
+			c.BitrateKbps = codec.DefaultOpusKbps
+		case c.BitrateKbps < 6 || c.BitrateKbps > 510:
+			return fmt.Errorf("bitrate_kbps for opus must be 6..510 (got %d)", c.BitrateKbps)
+		}
+	} else {
+		c.BitrateKbps = 0 // fixed-rate codecs ignore any supplied bitrate
+	}
+	if c.DSCP < 0 || c.DSCP > 63 {
+		return fmt.Errorf("dscp must be 0..63 (got %d)", c.DSCP)
 	}
 	switch c.Transport {
 	case protocol.TransportUDP, protocol.TransportTCP:

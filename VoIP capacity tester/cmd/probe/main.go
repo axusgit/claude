@@ -32,11 +32,13 @@ func main() {
 	out := flag.String("out", ".", "directory for the written report files")
 
 	// Used only when -code is empty (create-then-run convenience).
-	codec := flag.String("codec", "g711", "codec: g711 or g729 (create mode)")
+	codec := flag.String("codec", "g711", "codec: g711, g729, g722 or opus (create mode)")
 	channels := flag.Int("channels", 10, "number of concurrent channels (create mode)")
 	transport := flag.String("transport", "udp", "transport: udp or tcp (create mode)")
 	duration := flag.Int("duration", 30, "test duration in seconds (create mode)")
 	ptime := flag.Int("ptime", 20, "packetization time ms: 10, 20 or 30 (create mode)")
+	bitrate := flag.Int("bitrate", 0, "opus nominal bitrate kbps (create mode; 0 = default 32; ignored for other codecs)")
+	dscp := flag.Int("dscp", 0, "DSCP value 0..63 to mark RTP with (create mode; 0 = best effort, 46 = EF). See README QoS notes.")
 	flag.Parse()
 
 	base := strings.TrimRight(*server, "/")
@@ -49,6 +51,8 @@ func main() {
 			Transport:   protocol.Transport(*transport),
 			DurationSec: *duration,
 			PtimeMs:     *ptime,
+			BitrateKbps: *bitrate,
+			DSCP:        *dscp,
 		})
 		if err != nil {
 			fatal("create test: %v", err)

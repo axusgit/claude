@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	"voiptest/internal/metrics"
 	"voiptest/internal/protocol"
+	"voiptest/internal/qos"
 	"voiptest/internal/report"
 	"voiptest/internal/rtp"
 )
@@ -56,6 +58,12 @@ type Test struct {
 	history    []point
 	elapsedSec float64
 
+	// Forward-path (client -> collector) measurement, one accumulator per SSRC,
+	// fed on the echo path. Combined with the client's posted round-trip stats it
+	// yields genuine per-direction loss/jitter. Guarded by fwdMu.
+	fwdMu sync.Mutex
+	fwd   map[uint32]*metrics.Channel
+
 	// SSE detail subscribers.
 	subs map[chan []byte]struct{}
 }
@@ -66,8 +74,34 @@ func newTest(code string, cfg protocol.TestConfig) *Test {
 		Config:    cfg,
 		State:     protocol.StateCreated,
 		CreatedAt: time.Now(),
+		fwd:       make(map[uint32]*metrics.Channel),
 		subs:      make(map[chan []byte]struct{}),
 	}
+}
+
+// forwardChannel returns (creating on first use) the forward-path accumulator
+// for an SSRC. The index is filled in later from the client's channel<->SSRC
+// mapping; it is irrelevant to the receive-only measurement.
+func (t *Test) forwardChannel(ssrc uint32) *metrics.Channel {
+	t.fwdMu.Lock()
+	defer t.fwdMu.Unlock()
+	c := t.fwd[ssrc]
+	if c == nil {
+		c = metrics.NewChannel(0, t.Config)
+		t.fwd[ssrc] = c
+	}
+	return c
+}
+
+// observeForward feeds one received media packet into the forward-path
+// accumulator for its SSRC. sendTime is passed as 0 so no (meaningless,
+// unsynced) RTT is accumulated on the collector — only loss/jitter/ordering.
+func (t *Test) observeForward(pkt []byte, now int64) {
+	hdr, ok := rtp.ParseHeader(pkt)
+	if !ok {
+		return
+	}
+	t.forwardChannel(hdr.SSRC).OnReceive(hdr.Sequence, hdr.Timestamp, 0, now)
 }
 
 // startMedia allocates and starts the echo listener for this test. bind is the
@@ -95,13 +129,15 @@ func (t *Test) startMedia(bind string) error {
 		}
 		t.udpConn = conn
 		t.mediaPort = conn.LocalAddr().(*net.UDPAddr).Port
+		markSockDSCP(conn, t.Config.DSCP) // mark the echoes we send back
 		go t.echoUDP(conn)
 	}
 	return nil
 }
 
 // echoUDP reflects every datagram back to its sender unchanged, acting as the
-// far-end RTP peer so the client can measure the round trip.
+// far-end RTP peer so the client can measure the round trip. Before echoing it
+// records the packet on the forward (client -> collector) leg.
 func (t *Test) echoUDP(conn *net.UDPConn) {
 	buf := make([]byte, 2048)
 	for {
@@ -109,6 +145,7 @@ func (t *Test) echoUDP(conn *net.UDPConn) {
 		if err != nil {
 			return
 		}
+		t.observeForward(buf[:n], time.Now().UnixNano())
 		_, _ = conn.WriteToUDP(buf[:n], src)
 	}
 }
@@ -119,13 +156,14 @@ func (t *Test) acceptTCP(ln net.Listener) {
 		if err != nil {
 			return
 		}
-		go echoTCPConn(c)
+		markSockDSCP(c, t.Config.DSCP)
+		go t.echoTCPConn(c)
 	}
 }
 
-// echoTCPConn deframes RTP packets (RFC 4571) and writes them straight back,
-// preserving packet boundaries.
-func echoTCPConn(c net.Conn) {
+// echoTCPConn deframes RTP packets (RFC 4571), records each on the forward leg,
+// and writes them straight back, preserving packet boundaries.
+func (t *Test) echoTCPConn(c net.Conn) {
 	defer c.Close()
 	br := bufio.NewReader(c)
 	bw := bufio.NewWriter(c)
@@ -135,12 +173,29 @@ func echoTCPConn(c net.Conn) {
 		if err != nil {
 			return
 		}
+		t.observeForward(buf[:n], time.Now().UnixNano())
 		if err := rtp.WriteFramed(bw, buf[:n]); err != nil {
 			return
 		}
 		if err := bw.Flush(); err != nil {
 			return
 		}
+	}
+}
+
+// markSockDSCP applies a DSCP to a media socket's outgoing packets, best effort.
+func markSockDSCP(c any, dscp int) {
+	if dscp <= 0 {
+		return
+	}
+	sc, ok := c.(interface {
+		SyscallConn() (syscall.RawConn, error)
+	})
+	if !ok {
+		return
+	}
+	if rc, err := sc.SyscallConn(); err == nil {
+		_ = qos.SetDSCP(rc, dscp)
 	}
 }
 
@@ -190,6 +245,90 @@ func (t *Test) applyStats(rep protocol.StatsReport) []byte {
 	return t.detailJSONLocked()
 }
 
+// forwardSummary returns the collector-measured forward-leg summary for an
+// SSRC, or a zero value if nothing has been received for it yet.
+func (t *Test) forwardSummary(ssrc uint32) metrics.RecvSummary {
+	t.fwdMu.Lock()
+	c := t.fwd[ssrc]
+	t.fwdMu.Unlock()
+	if c == nil {
+		return metrics.RecvSummary{}
+	}
+	return c.RecvSummary()
+}
+
+// directionStatsLocked builds per-channel and aggregate one-way stats for both
+// legs by combining the collector's forward measurement with the client's
+// posted round-trip stats. Caller holds t.mu (t.channels is read); fwdMu is
+// taken internally. Loss is count-based: forward = sent−(collector recv),
+// return = (collector recv)−(client round-trip recv).
+func (t *Test) directionStatsLocked() (fwd, ret []protocol.DirectionStats, fAgg, rAgg protocol.DirectionAggregate) {
+	fAgg.Direction = "forward"
+	rAgg.Direction = "return"
+	var fJitSum float64
+	var fJitN int
+	for _, cs := range t.channels {
+		sum := t.forwardSummary(cs.SSRC)
+
+		// Forward leg: client -> collector.
+		fRecv := sum.Recv
+		fLost := cs.PacketsSent - fRecv
+		if fLost < 0 {
+			fLost = 0
+		}
+		var fPct float64
+		if cs.PacketsSent > 0 {
+			fPct = 100 * float64(fLost) / float64(cs.PacketsSent)
+		}
+		fwd = append(fwd, protocol.DirectionStats{
+			Channel: cs.Channel, SSRC: cs.SSRC, Direction: "forward",
+			Recv: fRecv, Lost: fLost, LossPct: round3(fPct),
+			Reordered: sum.Reordered, Duplicates: sum.Duplicates,
+			JitterMs: sum.JitterMs, JitterMaxMs: sum.JitterMaxMs,
+		})
+
+		// Return leg: collector -> client. Of the fRecv packets the collector
+		// echoed, the client uniquely received cs.PacketsRecv.
+		rRecv := cs.PacketsRecv
+		rLost := fRecv - rRecv
+		if rLost < 0 {
+			rLost = 0
+		}
+		var rPct float64
+		if fRecv > 0 {
+			rPct = 100 * float64(rLost) / float64(fRecv)
+		}
+		ret = append(ret, protocol.DirectionStats{
+			Channel: cs.Channel, SSRC: cs.SSRC, Direction: "return",
+			Recv: rRecv, Lost: rLost, LossPct: round3(rPct),
+		})
+
+		fAgg.Recv += fRecv
+		fAgg.Lost += fLost
+		fAgg.Reordered += sum.Reordered
+		fAgg.Duplicates += sum.Duplicates
+		if sum.JitterMs > 0 {
+			fJitSum += sum.JitterMs
+			fJitN++
+		}
+		if sum.JitterMaxMs > fAgg.JitterMaxMs {
+			fAgg.JitterMaxMs = sum.JitterMaxMs
+		}
+		rAgg.Recv += rRecv
+		rAgg.Lost += rLost
+	}
+	if d := fAgg.Recv + fAgg.Lost; d > 0 {
+		fAgg.LossPct = round3(100 * float64(fAgg.Lost) / float64(d))
+	}
+	if d := rAgg.Recv + rAgg.Lost; d > 0 {
+		rAgg.LossPct = round3(100 * float64(rAgg.Lost) / float64(d))
+	}
+	if fJitN > 0 {
+		fAgg.JitterMeanMs = round3(fJitSum / float64(fJitN))
+	}
+	return fwd, ret, fAgg, rAgg
+}
+
 // detailJSON returns the live-detail payload (must not hold the lock).
 func (t *Test) detailJSON() []byte {
 	t.mu.Lock()
@@ -198,30 +337,39 @@ func (t *Test) detailJSON() []byte {
 }
 
 func (t *Test) detailJSONLocked() []byte {
+	fwd, ret, fAgg, rAgg := t.directionStatsLocked()
 	payload := struct {
-		Code      string                  `json:"code"`
-		State     protocol.TestState      `json:"state"`
-		Config    protocol.TestConfig     `json:"config"`
-		ClientID  string                  `json:"client_id"`
-		ClientIP  string                  `json:"client_ip"`
-		MediaPort int                     `json:"media_port"`
-		Elapsed   float64                 `json:"elapsed_sec"`
-		Remain    float64                 `json:"remain_sec"`
-		Aggregate protocol.Aggregate      `json:"aggregate"`
-		Channels  []protocol.ChannelStats `json:"channels"`
-		History   []point                 `json:"history"`
+		Code       string                     `json:"code"`
+		State      protocol.TestState         `json:"state"`
+		Config     protocol.TestConfig        `json:"config"`
+		ClientID   string                     `json:"client_id"`
+		ClientIP   string                     `json:"client_ip"`
+		MediaPort  int                        `json:"media_port"`
+		Elapsed    float64                    `json:"elapsed_sec"`
+		Remain     float64                    `json:"remain_sec"`
+		Aggregate  protocol.Aggregate         `json:"aggregate"`
+		Channels   []protocol.ChannelStats    `json:"channels"`
+		Forward    []protocol.DirectionStats  `json:"forward"`
+		Return     []protocol.DirectionStats  `json:"return"`
+		ForwardAgg protocol.DirectionAggregate `json:"forward_agg"`
+		ReturnAgg  protocol.DirectionAggregate `json:"return_agg"`
+		History    []point                    `json:"history"`
 	}{
-		Code:      t.Code,
-		State:     t.State,
-		Config:    t.Config,
-		ClientID:  t.ClientID,
-		ClientIP:  t.ClientIP,
-		MediaPort: t.mediaPort,
-		Elapsed:   round1(t.elapsedSec),
-		Remain:    t.remainLocked(),
-		Aggregate: t.agg,
-		Channels:  t.channels,
-		History:   t.history,
+		Code:       t.Code,
+		State:      t.State,
+		Config:     t.Config,
+		ClientID:   t.ClientID,
+		ClientIP:   t.ClientIP,
+		MediaPort:  t.mediaPort,
+		Elapsed:    round1(t.elapsedSec),
+		Remain:     t.remainLocked(),
+		Aggregate:  t.agg,
+		Channels:   t.channels,
+		Forward:    fwd,
+		Return:     ret,
+		ForwardAgg: fAgg,
+		ReturnAgg:  rAgg,
+		History:    t.history,
 	}
 	b, _ := json.Marshal(payload)
 	return b
@@ -268,6 +416,7 @@ func (t *Test) result() report.Result {
 	if gen.IsZero() {
 		gen = time.Now()
 	}
+	fwd, ret, fAgg, rAgg := t.directionStatsLocked()
 	return report.Result{
 		Code:        t.Code,
 		GeneratedAt: gen,
@@ -276,6 +425,10 @@ func (t *Test) result() report.Result {
 		Config:      t.Config,
 		Aggregate:   t.agg,
 		Channels:    t.channels,
+		Forward:     fwd,
+		Return:      ret,
+		ForwardAgg:  fAgg,
+		ReturnAgg:   rAgg,
 	}
 }
 
@@ -308,4 +461,8 @@ func (t *Test) broadcast(msg []byte) {
 
 func round1(v float64) float64 {
 	return float64(int64(v*10+0.5)) / 10
+}
+
+func round3(v float64) float64 {
+	return float64(int64(v*1000+0.5)) / 1000
 }

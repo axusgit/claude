@@ -19,16 +19,51 @@ type Info struct {
 	Bpl float64 // packet-loss robustness factor
 }
 
+// DefaultOpusKbps is the nominal Opus bitrate used when none is configured.
+const DefaultOpusKbps = 32
+
 // For returns the Info for a codec, defaulting to G.711 for unknown values.
+//
+// Ie/Bpl are ITU-T G.113 narrowband-scale impairment values. NOTE on the two
+// wideband codecs (G.722, Opus): this tool uses the single narrowband G.107
+// R-scale for every codec so all results are directly comparable, and that
+// scale cannot represent wideband's perceptual advantage. We therefore model
+// the wideband codecs as transmission-transparent (Ie ~ 0, i.e. their MOS
+// ceiling equals G.711's) and differentiate them only by loss robustness (Bpl)
+// and by the real bitrate/packet load they place on the network — which is what
+// a capacity test is actually measuring. Their true wideband MOS would be
+// higher; see README "Codecs".
 func For(c protocol.Codec) Info {
 	switch c {
 	case protocol.CodecG729:
 		// G.729: 10 bytes per 10 ms frame -> 1 byte/ms; PT 18; 8 kHz clock.
 		return Info{Name: "G.729", PayloadType: 18, BytesPerMs: 1.0, ClockRate: 8000, Ie: 11, Bpl: 19.0}
+	case protocol.CodecG722:
+		// G.722: 64 kbps -> 8 bytes/ms; PT 9. RTP timestamp clock is 8 kHz by
+		// historical convention (RFC 3551 §4.5.2) even though audio is 16 kHz.
+		return Info{Name: "G.722", PayloadType: 9, BytesPerMs: 8.0, ClockRate: 8000, Ie: 0, Bpl: 23.0}
+	case protocol.CodecOpus:
+		// Opus: dynamic PT (111 by common convention); RTP clock always 48 kHz
+		// (RFC 7587) regardless of internal sample rate. BytesPerMs defaults to
+		// the 32 kbps nominal rate and is overridden by ForConfig from the test's
+		// bitrate. Bpl is high: Opus has strong packet-loss concealment.
+		return Info{Name: "Opus", PayloadType: 111, BytesPerMs: DefaultOpusKbps / 8.0, ClockRate: 48000, Ie: 1, Bpl: 20.0}
 	default:
 		// G.711 u-law: 8 kHz * 1 byte/sample -> 8 bytes/ms; PT 0; 8 kHz clock.
 		return Info{Name: "G.711 u-law", PayloadType: 0, BytesPerMs: 8.0, ClockRate: 8000, Ie: 0, Bpl: 25.1}
 	}
+}
+
+// ForConfig returns the Info for a test config, applying the Opus bitrate
+// override (cfg.BitrateKbps) to the payload sizing. Fixed-rate codecs ignore it.
+// Callers that size packets or compute expected bitrate should use this rather
+// than For so an Opus bitrate override takes effect.
+func ForConfig(cfg protocol.TestConfig) Info {
+	i := For(cfg.Codec)
+	if cfg.Codec == protocol.CodecOpus && cfg.BitrateKbps > 0 {
+		i.BytesPerMs = float64(cfg.BitrateKbps) / 8.0
+	}
+	return i
 }
 
 // PayloadBytes returns the media payload size for the given packetization time.

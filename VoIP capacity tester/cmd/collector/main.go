@@ -13,12 +13,14 @@ func main() {
 	addr := flag.String("addr", ":8080", "HTTP listen address for the control API + dashboard")
 	mediaBind := flag.String("media-bind", "", "interface to bind RTP echo listeners on (default all)")
 	advertise := flag.String("advertise", "", "media host to advertise to clients (default: the host the client used to reach the API)")
+	dataDir := flag.String("data-dir", "", "directory to persist completed test reports for history/compare across restarts (default: in-memory only)")
 	flag.Parse()
 
 	s := server.New(server.Options{
 		Addr:      *addr,
 		MediaBind: *mediaBind,
 		Advertise: *advertise,
+		DataDir:   *dataDir,
 	})
 	log.Fatal(s.Run())
 }

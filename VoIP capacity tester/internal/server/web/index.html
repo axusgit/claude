@@ -20,12 +20,17 @@
     <section class="panel">
       <div class="panel-head">
         <h2>Tests</h2>
-        <span class="muted" id="test-count"></span>
+        <div class="detail-meta">
+          <span class="muted" id="compare-hint">Tick two or more finished tests to compare.</span>
+          <button id="compare-btn" class="btn-ghost" disabled>Compare (0)</button>
+          <span class="muted" id="test-count"></span>
+        </div>
       </div>
       <div class="table-wrap">
         <table id="tests">
           <thead>
             <tr>
+              <th class="pick"></th>
               <th>CODE</th><th>State</th><th>Codec</th><th>Transport</th>
               <th class="num">Chans</th><th class="num">Ptime</th>
               <th>Client</th><th class="num">Elapsed</th><th class="num">Remain</th>
@@ -33,9 +38,20 @@
             </tr>
           </thead>
           <tbody id="tests-body">
-            <tr><td colspan="12" class="empty">No tests yet. Create one via the control API.</td></tr>
+            <tr><td colspan="13" class="empty">No tests yet. Create one via the control API.</td></tr>
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- COMPARE -->
+    <section class="panel" id="compare" hidden>
+      <div class="panel-head">
+        <h2>Compare</h2>
+        <button id="compare-close" class="btn-ghost">close</button>
+      </div>
+      <div class="table-wrap">
+        <table id="compare-table"><tbody id="compare-body"></tbody></table>
       </div>
     </section>
 
@@ -56,6 +72,9 @@
       </p>
 
       <div class="cards" id="d-cards"></div>
+
+      <h3 class="dir-head">Per-direction <span class="muted">(one-way, collector-measured)</span></h3>
+      <div class="cards" id="d-dir"></div>
 
       <div class="charts">
         <figure><figcaption>Packet loss %</figcaption><canvas id="chart-loss" height="150"></canvas></figure>
