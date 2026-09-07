@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh geo_allow ipset from country lists
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/geo-firewall-update.sh

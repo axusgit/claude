@@ -1,0 +1,7 @@
+[Unit]
+Description=Poll Axus Hub for geo-firewall policy every 5 min
+[Timer]
+OnBootSec=90
+OnUnitActiveSec=5min
+[Install]
+WantedBy=timers.target

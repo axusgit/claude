@@ -1,0 +1,12 @@
+[Unit]
+Description=Restore geo_allow ipset before ufw
+After=local-fs.target
+Before=ufw.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/geo-firewall-restore.sh
+
+[Install]
+WantedBy=multi-user.target

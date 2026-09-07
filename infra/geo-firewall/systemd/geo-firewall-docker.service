@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply US/CA geo-block to Docker-published 443 (DOCKER-USER)
+After=docker.service geo-firewall.service
+Requires=docker.service
+Wants=geo-firewall.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/geo-firewall-docker.sh
+[Install]
+WantedBy=multi-user.target

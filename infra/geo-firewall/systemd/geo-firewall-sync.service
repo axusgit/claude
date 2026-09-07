@@ -1,0 +1,7 @@
+[Unit]
+Description=Sync geo-firewall allowlist from Axus Hub
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/geo-firewall-sync.sh
