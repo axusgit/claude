@@ -24,3 +24,7 @@ This is the **Axus Technologies platform monorepo**. Axus Hub is the central pla
 - Python apps use a local `venv/` (gitignored) and their own `requirements.txt`; schema is managed by **Alembic** (`alembic upgrade head`), never `create_all`.
 - Apps trust **Axus Hub / Authentik** as the single identity & authorization authority — no per-app login systems (a local dev fallback exists for running without Authentik).
 - Secrets live in environment `.env` files (gitignored), never committed.
+- **Every new server is onboarded to the geo-firewall** as a standard deploy
+  step: run `infra/geo-firewall/install.sh` (US/CA allowlist, centrally managed
+  from Hub → Administration → Country access control). See "New server
+  provisioning" in `DEPLOY.md`. Only `axus-wp01` (public website) is exempt.

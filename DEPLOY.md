@@ -13,11 +13,12 @@ See `ARCHITECTURE.md` for the design. The legacy bare-metal Support
 
 1. **DNS at Hover** — add A records → `52.22.69.65`:
    `hub`, `support.hub`, `id.hub` (and `rmm.hub`, `accounting.hub`, … as apps land).
-2. **Lightsail firewall** — open inbound **80** and **443** from anywhere
-   (public apps + ACME), and **8443** **restricted to your office/VPN IPs only**
-   (internal apps: Hub, Accounting, Engineering, RMM). Country allow/deny is
-   handled in-app (Hub → Administration → Country access control), since
-   Lightsail has no geo rules.
+2. **Cloud firewall (Lightsail/EC2 SG)** — open inbound **80** and **443** from
+   anywhere (public apps + ACME), and **8443** **restricted to your office/VPN
+   IPs only** (internal apps: Hub, Accounting, Engineering, RMM). Country
+   allow/deny is enforced by the **OS-level geo-firewall** on every box
+   (`infra/geo-firewall/`), centrally managed from **Hub → Administration →
+   Country access control** — see "New server provisioning" below.
 3. **Server** — install Docker Engine + Compose plugin:
    ```bash
    curl -fsSL https://get.docker.com | sh
@@ -25,6 +26,34 @@ See `ARCHITECTURE.md` for the design. The legacy bare-metal Support
    ```
 4. **Secrets** — `cp infra/.env.example infra/.env` and fill every `CHANGE_ME`
    (`openssl rand -base64 48` for keys/passwords).
+
+## New server provisioning (REQUIRED on every Axus box)
+
+Every new Axus server — a Hub-stack host **or** a standalone app/tool box
+(Insights, Syslog, On-Call, a new tool, …) — must be onboarded to the US/Canada
+**geo-firewall** and connected to the Hub, so it enforces the same country policy
+as the rest of the fleet and shows up in *Hub → Administration → Country access
+control → Server firewalls*. This is a standard deploy step, not optional.
+
+```bash
+# from a machine with the repo + SSH to the new box:
+scp -r infra/geo-firewall <box>:/tmp/geo-firewall
+ssh <box> "cd /tmp/geo-firewall && sudo ./install.sh \
+    --name axus-<box> --token <GEO_FLEET_TOKEN>"
+```
+
+- `GEO_FLEET_TOKEN` is in the Hub's `infra/.env`.
+- Enforcement auto-detects **ufw** vs **Docker** (`DOCKER-USER`); override with
+  `--enforcement`. Add `--gated-tcp "443 8443"` / `--gated-udp "40000:40031"` for
+  extra ports (e.g. a box exposing RTP media).
+- SSH (22) and ACME (80) stay open; established connections are never dropped;
+  Axus infra IPs are always allowed. Details: `infra/geo-firewall/README.md`.
+
+**Exception:** `axus-wp01` (public WordPress site) is deliberately **not**
+geo-restricted — do not onboard it.
+
+Other standard hardening for a new box (see the app's own deploy README): 2 GB
+swap, `ufw` enabled, `fail2ban`, and the weekly auto-update+reboot cron.
 
 ## 1. First-time bring-up
 

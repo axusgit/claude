@@ -7,6 +7,11 @@ updates are just `bash deploy/deploy.sh` from the repo root.
 > You must be on a network the box's firewall allows (the office IP allowlist),
 > or SSH to port 22 will time out.
 
+> **New box?** Also onboard it to the geo-firewall + Hub —
+> `sudo infra/geo-firewall/install.sh --name axus-<box> --token <GEO_FLEET_TOKEN>`
+> (see "New server provisioning" in the root `DEPLOY.md`). axus-server01 is
+> already onboarded.
+
 ## 0. DNS (optional but recommended)
 
 Point `syslog.axustechnologies.com` → `98.88.111.130` (A record). The web UI
