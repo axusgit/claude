@@ -8,8 +8,19 @@ while iptables -L DOCKER-USER --line-numbers -n 2>/dev/null | grep -q 'geofw'; d
   n=$(iptables -L DOCKER-USER --line-numbers -n | awk '/geofw/{print $1; exit}')
   [ -n "$n" ] && iptables -D DOCKER-USER "$n" || break
 done
-# Insert (reverse order -> final: established RETURN, geo RETURN, 443 DROP).
+# DOCKER-USER is in the FORWARD chain, so it sees BOTH inbound-to-container traffic
+# AND container-originated OUTBOUND traffic. The geo DROP below matches dport 443, which
+# would also drop containers' own outbound HTTPS (their source is a private 172.x/10.x
+# address, never in geo_allow) — breaking every container's egress (Hub health probes,
+# external API calls, etc.). So exempt RFC1918-source (container-originated) traffic first.
+# This does NOT weaken the country block: inbound client packets keep their real public
+# source IP after DNAT, so they never match these private ranges.
+#
+# Insert (reverse order -> final: established RETURN, geo RETURN, RFC1918-src RETURNs, 443 DROP).
 iptables -I DOCKER-USER 1 -p tcp --dport 443 -m comment --comment geofw -j DROP
+for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+  iptables -I DOCKER-USER 1 -s "$net" -m comment --comment geofw -j RETURN
+done
 iptables -I DOCKER-USER 1 -p tcp --dport 443 -m set --match-set geo_allow src -m comment --comment geofw -j RETURN
 iptables -I DOCKER-USER 1 -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment geofw -j RETURN
 echo "DOCKER-USER geo rules applied"
