@@ -41,7 +41,7 @@ APP_CATALOG = [
     # (like On-Call). app-tools gates TILE visibility only; no forward-auth. The
     # `category` field groups them under an "Axus Tools" section in the launcher.
     {"key": "syslog", "name": "Syslog", "desc": "Network syslog collector & search", "group": "app-tools", "category": "Axus Tools", "icon": "📜", "internal": False, "url": "https://syslog.axustechnologies.com", "health": "https://syslog.axustechnologies.com/healthz"},
-    {"key": "fileshare", "name": "File Share", "desc": "Secure two-way file transfer", "group": "app-tools", "category": "Axus Tools", "icon": "📁", "internal": False, "url": "https://sp.axustechnologies.com"},
+    {"key": "fileshare", "name": "File Share", "desc": "Secure two-way file transfer", "group": "app-tools", "category": "Axus Tools", "icon": "📁", "internal": False, "url": "https://sp.axustechnologies.com", "health": "https://sp.axustechnologies.com/"},
     {"key": "voiptest", "name": "VoIP Tester", "desc": "Network capacity testing — RTP load, MOS & per-call quality", "group": "app-tools", "category": "Axus Tools", "icon": "🎙️", "internal": False, "url": "https://voiptest.axustechnologies.com", "health": "https://voiptest.axustechnologies.com/healthz"},
 ]
 
@@ -240,7 +240,10 @@ async def apps_health(request: Request):
             health_url = a.get("health") or f"{INTERNAL_URLS.get(a['key'], a['url'])}/api/health"
             try:
                 r = await client.get(health_url)
-                results[a["key"]] = "up" if r.status_code == 200 else "degraded"
+                # 2xx or a redirect both mean the app is alive: an SSO app answers
+                # its root with a 3xx to the login flow (a down app would 5xx). Only
+                # 4xx/5xx is degraded.
+                results[a["key"]] = "up" if r.status_code < 400 else "degraded"
             except Exception:
                 # Externally-hosted apps (separate, firewalled boxes) can't be
                 # reached from the Hub by design — don't flag them red for that.
