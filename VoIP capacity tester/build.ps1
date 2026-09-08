@@ -5,12 +5,54 @@
 # CODE (no -server flag / no editing the field):
 #
 #   powershell -ExecutionPolicy Bypass -File .\build.ps1 -Server https://voiptest.axustechnologies.com
+#
+# Optionally Authenticode-SIGN the two probe .exes to clear the Windows
+# SmartScreen warning (needs a code-signing cert — see SIGNING.md). Either pass a
+# PFX file, or a cert thumbprint already installed in the Windows cert store
+# (typical for an EV cert on a token):
+#
+#   ... -Pfx C:\path\axus-cs.pfx -PfxPassword 'secret'
+#   ... -CertThumbprint 1A2B3C...   (EV token / installed cert)
+#
+# Signing happens AFTER the build so the collector serves already-signed probes
+# (it then auto-detects the signature and won't corrupt it with a config trailer).
 
 param(
-    [string]$Server = ""
+    [string]$Server = "",
+    [string]$Pfx = "",
+    [string]$PfxPassword = "",
+    [string]$CertThumbprint = "",
+    [string]$TimestampUrl = "http://timestamp.digicert.com"
 )
 
 $ErrorActionPreference = "Stop"
+
+# Locate signtool.exe (Windows SDK). Returns $null if not installed.
+function Find-SignTool {
+    $cmd = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $hits = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match "x64" } | Sort-Object FullName -Descending
+    if ($hits) { return $hits[0].FullName }
+    return $null
+}
+
+function Sign-File($path) {
+    if ($Pfx -eq "" -and $CertThumbprint -eq "") { return }  # signing not requested
+    $st = Find-SignTool
+    if (-not $st) { throw "signing requested but signtool.exe not found (install the Windows SDK)" }
+    $args = @("sign", "/fd", "SHA256", "/tr", $TimestampUrl, "/td", "SHA256")
+    if ($Pfx -ne "") {
+        $args += @("/f", $Pfx)
+        if ($PfxPassword -ne "") { $args += @("/p", $PfxPassword) }
+    } else {
+        $args += @("/sha1", $CertThumbprint)
+    }
+    $args += $path
+    Write-Host "Signing $path ..." -ForegroundColor Magenta
+    & $st @args
+    if ($LASTEXITCODE -ne 0) { throw "signtool failed on $path" }
+}
 
 $go = "go"
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
@@ -50,6 +92,12 @@ $guiLd = "-H windowsgui"
 if ($serverX -ne "") { $guiLd = "$guiLd $serverX" }
 & $go build -ldflags $guiLd -o .\bin\voiptesterprobe.exe .\cmd\probegui
 if ($LASTEXITCODE -ne 0) { throw "voiptesterprobe build failed" }
+
+# Sign the Windows probes (no-op unless a cert was passed). The collector on Linux
+# is never signed. Signed probes -> the collector serves them byte-for-byte and
+# the CODE travels in the download filename.
+Sign-File ".\bin\voiptesterprobe.exe"
+Sign-File ".\bin\voiptesterprobe-cli.exe"
 
 Write-Host "Done. Binaries in .\bin" -ForegroundColor Green
 Get-ChildItem .\bin\*.exe | Select-Object Name, @{n="MB";e={[math]::Round($_.Length/1MB,1)}}

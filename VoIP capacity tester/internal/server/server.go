@@ -476,13 +476,23 @@ func (s *Server) handleProbeGUIDownload(w http.ResponseWriter, r *http.Request) 
 	}
 	code := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("code")))
 
-	out, err := probecfg.Append(s.probeGUIBytes, probecfg.Config{
-		Server: requestBaseURL(r),
-		Code:   code,
-	})
-	if err != nil {
-		httpErr(w, http.StatusInternalServerError, "building probe: %v", err)
-		return
+	// A signed probe must be served byte-for-byte or its Authenticode signature
+	// breaks — so we do NOT append the config trailer; the CODE rides in the
+	// filename instead (the probe reads it from its own name). An unsigned probe
+	// gets the richer trailer (server URL + CODE, survives a rename).
+	var out []byte
+	if probecfg.IsSigned(s.probeGUIBytes) {
+		out = s.probeGUIBytes
+	} else {
+		b, err := probecfg.Append(s.probeGUIBytes, probecfg.Config{
+			Server: requestBaseURL(r),
+			Code:   code,
+		})
+		if err != nil {
+			httpErr(w, http.StatusInternalServerError, "building probe: %v", err)
+			return
+		}
+		out = b
 	}
 
 	name := "voiptesterprobe.exe"

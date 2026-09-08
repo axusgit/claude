@@ -18,6 +18,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"os"
+	"regexp"
+	"strings"
 )
 
 // Config is what a downloaded probe is pre-loaded with.
@@ -65,6 +67,55 @@ func Parse(b []byte) (cfg Config, ok bool) {
 		return Config{}, false
 	}
 	return cfg, true
+}
+
+// codeInName matches the CODE embedded in a downloaded filename, e.g.
+// "voiptesterprobe-AB12CD.exe" (and tolerates a browser's " (1)" suffix).
+var codeInName = regexp.MustCompile(`(?i)voiptesterprobe-([A-Z0-9]{4,16})`)
+
+// CodeFromName extracts the test CODE from a probe's filename, or "" if absent.
+// This is the signature-SAFE way to bind a CODE to a signed download: the bytes
+// are untouched (so an Authenticode signature stays valid) and the CODE rides in
+// the filename the collector sets via Content-Disposition.
+func CodeFromName(name string) string {
+	m := codeInName.FindStringSubmatch(name)
+	if m == nil {
+		return ""
+	}
+	return strings.ToUpper(m[1])
+}
+
+// IsSigned reports whether a PE image carries an Authenticode signature (a
+// non-empty Certificate Table in data directory entry 4). The collector uses
+// this to decide NOT to append a config trailer to a signed probe (which would
+// invalidate the signature) and to rely on the filename CODE instead.
+func IsSigned(b []byte) bool {
+	if len(b) < 0x40 || b[0] != 'M' || b[1] != 'Z' {
+		return false
+	}
+	pe := int(binary.LittleEndian.Uint32(b[0x3C:0x40]))
+	if pe < 0 || pe+24 > len(b) || string(b[pe:pe+4]) != "PE\x00\x00" {
+		return false
+	}
+	opt := pe + 24 // optional header follows the 4-byte sig + 20-byte COFF header
+	if opt+2 > len(b) {
+		return false
+	}
+	var ddStart int
+	switch binary.LittleEndian.Uint16(b[opt : opt+2]) {
+	case 0x20b: // PE32+
+		ddStart = opt + 112
+	case 0x10b: // PE32
+		ddStart = opt + 96
+	default:
+		return false
+	}
+	secEntry := ddStart + 4*8 // data directory index 4 = Certificate Table
+	if secEntry+8 > len(b) {
+		return false
+	}
+	size := binary.LittleEndian.Uint32(b[secEntry+4 : secEntry+8])
+	return size > 0
 }
 
 // FromSelf reads the running executable and parses any embedded trailer.

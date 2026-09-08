@@ -194,12 +194,23 @@ func (a *app) wndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr
 // downloaded .exe and, when a CODE is present, auto-starts the test after a short
 // grace so the window is visible first.
 func (a *app) applyEmbeddedConfig() {
+	// Two sources, in order of authority:
+	//  1. The filename (voiptesterprobe-<CODE>.exe) — used for SIGNED downloads,
+	//     whose bytes must stay untouched, so the CODE can only ride in the name.
+	//  2. An appended config trailer — used for UNSIGNED downloads; also carries
+	//     the collector URL and survives a browser rename.
 	cfg, ok := probecfg.FromSelf()
+	if exe, err := os.Executable(); err == nil {
+		if code := probecfg.CodeFromName(filepath.Base(exe)); code != "" {
+			cfg.Code = code
+			ok = true
+		}
+	}
 	if !ok {
 		return
 	}
 	if cfg.Server != "" {
-		_ = a.server.SetText(cfg.Server)
+		_ = a.server.SetText(cfg.Server) // else the baked default stays in the field
 	}
 	if cfg.Code != "" {
 		_ = a.code.SetText(strings.ToUpper(strings.TrimSpace(cfg.Code)))
