@@ -5,12 +5,13 @@ can sustain _N_ concurrent calls on **G.711, G.729, G.722 or Opus**, and reports
 call quality under that load (loss, jitter, delay, R-factor/MOS) with a
 pass/fail verdict.
 
-Two Go binaries, one module:
+Three Go binaries, one module:
 
 | Binary | Role |
 | --- | --- |
 | `collector` | Server: HTTP/JSON control API, per-test RTP echo endpoint, live aggregation, **web dashboard** (SSE), and report generation — all one binary, one port. |
-| `probe` | Client: single Windows `.exe`. Claims a CODE, pulls config, runs the calls, measures the round trip, streams stats back, writes the report. Headless. |
+| `voiptesterprobe` | **GUI** client (recommended for technicians): a resident Windows app. Downloaded pre-bound to a test, it auto-connects and runs, then stays in the system tray until reboot. Single self-contained `.exe`. |
+| `voiptesterprobe-cli` | **Console** client: single headless Windows `.exe`. Claims a CODE, pulls config, runs the calls, measures the round trip, streams stats back, writes the report. |
 
 ## Build
 
@@ -26,13 +27,13 @@ or manually:
 
 ```bash
 go build -o bin/collector.exe ./cmd/collector
-go build -o bin/probe.exe     ./cmd/probe   # single self-contained .exe
+go build -o bin/voiptesterprobe-cli.exe     ./cmd/probe   # single self-contained .exe
 ```
 
 Cross-compile the probe for Windows from any OS:
 
 ```bash
-GOOS=windows GOARCH=amd64 go build -o probe.exe ./cmd/probe
+GOOS=windows GOARCH=amd64 go build -o voiptesterprobe-cli.exe ./cmd/probe
 ```
 
 ## Run
@@ -56,13 +57,19 @@ Flags:
 - `-media-port-min` / `-media-port-max` — pin the per-test RTP echo ports to a
   fixed range so a cloud firewall can allow just those (default: ephemeral). One
   port per concurrent test is used from the range.
-- `-probe-exe` — path to a `probe.exe` to serve at `/download/probe.exe`, so the
+- `-voiptesterprobe-cli-exe` — path to a `voiptesterprobe-cli.exe` to serve at `/download/voiptesterprobe-cli.exe`, so the
   dashboard's create screen can offer it as a download.
+- `-voiptesterprobe-exe` — path to a `voiptesterprobe.exe` to serve at `/download/voiptesterprobe.exe`.
+  The dashboard's create screen then offers a **pre-bound** GUI probe download: a
+  small config trailer carrying this collector's URL and the test's CODE is
+  appended to the .exe at download time, so the technician just runs it and it
+  connects and starts on its own (see below). Example:
+  `collector.exe -voiptesterprobe-cli-exe .\bin\voiptesterprobe-cli.exe -voiptesterprobe-exe .\bin\voiptesterprobe.exe`.
 
 **Technician run:** with a probe built with the server URL baked in
 (`-ldflags "-X main.defaultServer=https://voiptest.axustechnologies.com"`), the
-technician only needs the CODE: `probe.exe -code AB12CD`, or just **double-click
-`probe.exe`** and paste the CODE when prompted.
+technician only needs the CODE: `voiptesterprobe-cli.exe -code AB12CD`, or just **double-click
+`voiptesterprobe-cli.exe`** and paste the CODE when prompted.
 
 **2. Create a test** (operator), e.g. 50 concurrent G.711 calls over UDP:
 
@@ -98,26 +105,68 @@ single-profile test may also use the flat shorthand
 ### Easiest: create it in the dashboard
 
 Click **+ New test** on the dashboard to fill in transport/duration/DSCP,
-add one or more profiles, and create the test — no curl. You get the CODE plus
-a ready-to-copy run command (and a **Download probe.exe** link when the collector
-was started with `-probe-exe`). Hand the technician the `.exe` and the CODE.
+add one or more profiles, and create the test — no curl. You get the CODE and,
+when the collector was started with `-voiptesterprobe-exe`, a big **Download
+voiptesterprobe.exe (ready to connect)** button. That download is **pre-bound to this
+test**: the collector's URL and the CODE are baked into the .exe, so you just
+send it to the technician and they run it — it connects and starts the test on
+its own, then stays in the tray until reboot. No CODE to read out, nothing to
+type. (A collapsed section still offers the console `voiptesterprobe-cli.exe` + copy-paste
+command for anyone who prefers it.)
 
 **3. Run the probe** inside the network under test:
 
 ```powershell
-.\probe.exe -server http://collector:8080 -code AB12CD
+.\voiptesterprobe-cli.exe -server http://collector:8080 -code AB12CD
 ```
 
 The probe prints the tiered report and writes `AB12CD-<timestamp>.{txt,json,csv}`.
+
+### Resident GUI probe (`voiptesterprobe.exe`) — recommended for technicians
+
+`voiptesterprobe.exe` is a single self-contained Windows app (same RTP engine as the
+console probe, wrapped in a native GUI) meant to be **left running at a site**:
+
+- **Zero-typing when downloaded from the dashboard** — if it was downloaded via
+  the create screen's **Download voiptesterprobe.exe** button, the collector URL and the
+  test CODE are baked into the download (a config trailer appended after the PE
+  image, which also survives the browser renaming the file). On launch the probe
+  fills both fields and **auto-connects** — the tech just runs it.
+- **Simple GUI** — a Collector field (prefilled with the baked-in URL) and a
+  **Test CODE** box. Absent an embedded CODE, the tech pastes the CODE the admin
+  gives them and clicks **Run test** (or presses Enter). A marquee bar shows it's
+  working; the probe's progress and the full report stream into the log pane.
+  When it finishes it goes back to idle, **ready for the next CODE** — no relaunch
+  between tests.
+- **Stays running until reboot** — clicking the window's **X hides it to the
+  system tray**, it does not quit. It keeps running there indefinitely.
+- **Warn before it's closed** — the only way to actually exit is the tray icon's
+  **Exit**, which asks for confirmation first (and warns harder if a test is
+  mid-run).
+- **Warn before a reboot** — the app registers a Windows *shutdown block*, so if
+  someone tries to shut down or restart the PC, Windows shows its "this app is
+  preventing shutdown" screen naming the probe and the reason. A standing or
+  in-progress test is never killed silently by a reboot.
+- Reports are written to a **`reports\` folder next to the .exe**; the
+  **Open reports folder** button opens it.
+
+Build it with the collector URL baked in so the tech never types a URL:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Server https://voiptest.axustechnologies.com
+# -> bin\voiptesterprobe.exe  (plus collector.exe and the console voiptesterprobe-cli.exe)
+```
+
+Hand the tech `voiptesterprobe.exe` and the CODE. That's it.
 
 ### One-shot convenience
 
 The probe can create the test and run it in one go (handy for a single machine):
 
 ```powershell
-.\probe.exe -server http://collector:8080 -codec g729 -channels 20 -transport tcp -duration 30 -ptime 20
+.\voiptesterprobe-cli.exe -server http://collector:8080 -codec g729 -channels 20 -transport tcp -duration 30 -ptime 20
 # create-mode flags also include -bitrate (Opus kbps) and -dscp (0–63), e.g.:
-.\probe.exe -server http://collector:8080 -codec opus -bitrate 48 -channels 20 -dscp 46
+.\voiptesterprobe-cli.exe -server http://collector:8080 -codec opus -bitrate 48 -channels 20 -dscp 46
 ```
 
 ## Media & transport
@@ -234,6 +283,7 @@ Served from the same binary/port (`go:embed`, no external JS). Live via SSE:
 | `POST /api/tests` | Create a test; returns CODE + media endpoint. |
 | `GET /api/tests` | List all tests (summaries). |
 | `GET /api/tests/{code}` | Test detail (JSON). |
+| `DELETE /api/admin/tests/{code}` | Delete a test (any state): removes the live object + frees its media port, the in-memory history, and the persisted `<CODE>.json`. The dashboard's ✕ button on each list row calls this. Under `/api/admin/` so it stays SSO-protected (not on the open technician surface). |
 | `POST /api/tests/{code}/claim` | Client claims a CODE (409 if already active). |
 | `POST /api/tests/{code}/stats` | Client streams stats. |
 | `GET /api/tests/{code}/stream` | SSE: live detail for one test. |

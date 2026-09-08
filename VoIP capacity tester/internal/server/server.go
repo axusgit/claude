@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"voiptest/internal/codec"
+	"voiptest/internal/probecfg"
 	"voiptest/internal/protocol"
 	"voiptest/internal/report"
 )
@@ -36,7 +37,8 @@ type Options struct {
 
 	MediaPortMin int // if >0, per-test media echo ports are chosen from [MediaPortMin,MediaPortMax] (for cloud firewalls)
 	MediaPortMax int
-	ProbeExe     string // if set, this probe.exe is served at /download/probe.exe for technicians
+	ProbeExe     string // if set, the console voiptesterprobe-cli.exe is served at /download/voiptesterprobe-cli.exe for technicians
+	ProbeGUIExe  string // if set, this probegui.exe is served at /download/probegui.exe, pre-bound to a test CODE
 }
 
 // Server is the collector.
@@ -53,6 +55,9 @@ type Server struct {
 
 	listMu   sync.Mutex
 	listSubs map[chan []byte]struct{}
+
+	// Base probegui.exe bytes, loaded once, to append a per-CODE config trailer.
+	probeGUIBytes []byte
 }
 
 // New creates a Server.
@@ -73,6 +78,15 @@ func New(opts Options) *Server {
 			log.Printf("history: loaded %d past test(s) from %s", n, opts.DataDir)
 		}
 	}
+	if opts.ProbeGUIExe != "" {
+		if b, err := os.ReadFile(opts.ProbeGUIExe); err != nil {
+			log.Printf("voiptesterprobe: could not read %s: %v (GUI probe download disabled)", opts.ProbeGUIExe, err)
+			s.opts.ProbeGUIExe = ""
+		} else {
+			s.probeGUIBytes = b
+			log.Printf("voiptesterprobe: serving %s (%d bytes) at /download/voiptesterprobe.exe", opts.ProbeGUIExe, len(b))
+		}
+	}
 	return s
 }
 
@@ -83,6 +97,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tests", s.handleCreate)
 	mux.HandleFunc("GET /api/tests", s.handleList)
 	mux.HandleFunc("GET /api/tests/{code}", s.handleDetail)
+	// Delete lives under /api/admin/ (not /api/tests/{code}) so the reverse proxy's
+	// open technician surface (^/api/tests/[^/]+, no login) does not expose it —
+	// it stays behind SSO like the rest of the dashboard.
+	mux.HandleFunc("DELETE /api/admin/tests/{code}", s.handleDelete)
 	mux.HandleFunc("POST /api/tests/{code}/claim", s.handleClaim)
 	mux.HandleFunc("POST /api/tests/{code}/stats", s.handleStats)
 	mux.HandleFunc("GET /api/tests/{code}/stream", s.handleTestStream)
@@ -92,7 +110,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/whoami", s.handleWhoami)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	if s.opts.ProbeExe != "" {
-		mux.HandleFunc("GET /download/probe.exe", s.handleProbeDownload)
+		mux.HandleFunc("GET /download/voiptesterprobe-cli.exe", s.handleProbeDownload)
+	}
+	if s.opts.ProbeGUIExe != "" {
+		mux.HandleFunc("GET /download/voiptesterprobe.exe", s.handleProbeGUIDownload)
 	}
 
 	sub, err := fs.Sub(webFS, "web")
@@ -317,6 +338,67 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(t.detailJSON())
 }
 
+// handleDelete removes a test entirely: the live object (freeing its media
+// port), the in-memory history entry, and the persisted <CODE>.json on disk. It
+// works for a test in any state — an operator clearing out old runs. 404 only if
+// the code is unknown in both live and history.
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	code := strings.ToUpper(r.PathValue("code"))
+	if !validCode(code) {
+		httpErr(w, http.StatusBadRequest, "invalid test code")
+		return
+	}
+	found := false
+
+	// Live: remove it and free its media port.
+	s.mu.Lock()
+	if t, ok := s.tests[code]; ok {
+		t.mu.Lock()
+		t.closeMedia()
+		t.mu.Unlock()
+		delete(s.tests, code)
+		found = true
+	}
+	s.mu.Unlock()
+
+	// History: memory + disk.
+	s.histMu.Lock()
+	if _, ok := s.history[code]; ok {
+		delete(s.history, code)
+		found = true
+	}
+	s.histMu.Unlock()
+	if s.opts.DataDir != "" {
+		switch err := os.Remove(filepath.Join(s.opts.DataDir, code+".json")); {
+		case err == nil:
+			found = true
+		case !os.IsNotExist(err):
+			log.Printf("history: delete %s: %v", code, err)
+		}
+	}
+
+	if !found {
+		httpErr(w, http.StatusNotFound, "no such test code %q", code)
+		return
+	}
+	s.broadcastList()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// validCode reports whether code is a well-formed test CODE (the character set
+// GenerateCode uses). It also guards the history filename against path tricks.
+func validCode(code string) bool {
+	if len(code) == 0 || len(code) > 16 {
+		return false
+	}
+	for _, c := range code {
+		if !(c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	code := strings.ToUpper(r.PathValue("code"))
 	t := s.get(code)
@@ -362,23 +444,73 @@ func (s *Server) handleWhoami(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleServerConfig tells the dashboard what optional features are available
-// (currently: whether a probe.exe can be downloaded from this collector).
+// (currently: whether the GUI / console probe binaries can be downloaded here).
 func (s *Server) handleServerConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"probe_download": s.opts.ProbeExe != "",
+		"voiptesterprobe_cli_download": s.opts.ProbeExe != "",
+		"voiptesterprobe_download":     s.opts.ProbeGUIExe != "",
 	})
 }
 
-// handleProbeDownload serves the configured probe.exe so an admin can hand it to
-// a technician straight from the dashboard.
+// handleProbeDownload serves the configured console voiptesterprobe-cli.exe so an
+// admin can hand it to a technician straight from the dashboard.
 func (s *Server) handleProbeDownload(w http.ResponseWriter, r *http.Request) {
 	if s.opts.ProbeExe == "" {
 		httpErr(w, http.StatusNotFound, "no probe binary configured")
 		return
 	}
-	w.Header().Set("Content-Disposition", "attachment; filename=probe.exe")
+	w.Header().Set("Content-Disposition", "attachment; filename=voiptesterprobe-cli.exe")
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, s.opts.ProbeExe)
+}
+
+// handleProbeGUIDownload serves voiptesterprobe.exe with a config trailer
+// appended so the downloaded probe is pre-bound to a test: it knows this
+// collector's URL and the CODE (from ?code=), and connects on its own once run —
+// the technician never types anything. With no ?code it serves the plain
+// resident GUI probe.
+func (s *Server) handleProbeGUIDownload(w http.ResponseWriter, r *http.Request) {
+	if len(s.probeGUIBytes) == 0 {
+		httpErr(w, http.StatusNotFound, "no GUI probe binary configured")
+		return
+	}
+	code := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("code")))
+
+	out, err := probecfg.Append(s.probeGUIBytes, probecfg.Config{
+		Server: requestBaseURL(r),
+		Code:   code,
+	})
+	if err != nil {
+		httpErr(w, http.StatusInternalServerError, "building probe: %v", err)
+		return
+	}
+
+	name := "voiptesterprobe.exe"
+	if code != "" {
+		name = "voiptesterprobe-" + code + ".exe"
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename="+name)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(out)))
+	_, _ = w.Write(out)
+}
+
+// requestBaseURL reconstructs the externally-visible base URL of this collector
+// from the request, honoring the reverse proxy's forwarded headers, so a
+// downloaded probe points back at the same host the dashboard was reached on.
+func requestBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
+		scheme = p
+	}
+	host := r.Host
+	if h := r.Header.Get("X-Forwarded-Host"); h != "" {
+		host = h
+	}
+	return scheme + "://" + host
 }
 
 // ---- SSE --------------------------------------------------------------------

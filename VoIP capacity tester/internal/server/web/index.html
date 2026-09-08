@@ -36,7 +36,12 @@
             <option value="tcp">TCP</option>
           </select>
         </label>
-        <label>Duration (s)<input id="f-duration" type="number" value="30" min="1" max="86400"></label>
+        <label>Duration<span class="dur-field"><input id="f-duration" type="number" value="30" min="1"><select id="f-duration-unit">
+          <option value="1" selected>seconds</option>
+          <option value="60">minutes</option>
+          <option value="3600">hours</option>
+          <option value="86400">days</option>
+        </select></span></label>
         <label>DSCP (0–63)<input id="f-dscp" type="number" value="0" min="0" max="63"></label>
       </div>
 
@@ -89,10 +94,11 @@
               <th class="num">Chans</th><th class="num">Ptime</th>
               <th>Client</th><th class="num">Elapsed</th><th class="num">Remain</th>
               <th class="num">Loss%</th><th class="num">MOS</th><th>Verdict</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="tests-body">
-            <tr><td colspan="13" class="empty">No tests yet. Create one via the control API.</td></tr>
+            <tr><td colspan="14" class="empty">No tests yet. Create one via the control API.</td></tr>
           </tbody>
         </table>
       </div>

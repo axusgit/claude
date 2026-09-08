@@ -26,7 +26,7 @@ function renderList(tests) {
   const body = $("#tests-body");
   $("#test-count").textContent = tests.length ? `${tests.length} total` : "";
   if (!tests.length) {
-    body.innerHTML = `<tr><td colspan="13" class="empty">No tests yet. Create one via the control API.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="14" class="empty">No tests yet. Create one via the control API.</td></tr>`;
     return;
   }
   // Drop selections for tests that no longer exist.
@@ -52,15 +52,21 @@ function renderList(tests) {
       <td class="num">${t.state === "running" ? fmt(t.remain_sec, 0) + "s" : "—"}</td>
       <td class="num">${hasStats(t) ? fmt(t.loss_pct, 2) : "—"}</td>
       <td class="num">${hasStats(t) ? fmt(t.mos, 2) : "—"}</td>
-      <td>${verdictCell(t)}</td>`;
+      <td>${verdictCell(t)}</td>
+      <td class="del"><button class="del-btn" title="Delete test ${t.code}" aria-label="delete ${t.code}">✕</button></td>`;
     tr.addEventListener("click", (e) => {
-      if (e.target.classList.contains("cmp")) return; // let the checkbox handle it
+      if (e.target.classList.contains("cmp")) return;     // let the checkbox handle it
+      if (e.target.classList.contains("del-btn")) return; // let the delete button handle it
       openDetail(t.code);
     });
     const cb = tr.querySelector(".cmp");
     if (cb) cb.addEventListener("change", () => {
       if (cb.checked) compareSet.add(t.code); else compareSet.delete(t.code);
       updateCompareBtn();
+    });
+    tr.querySelector(".del-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteTest(t.code);
     });
     body.appendChild(tr);
   }
@@ -98,12 +104,27 @@ function openDetail(code) {
   $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-$("#d-close").addEventListener("click", () => {
+function closeDetail() {
   if (detailSrc) { detailSrc.close(); detailSrc = null; }
   selected = null;
   $("#detail").hidden = true;
   document.querySelectorAll("#tests-body tr").forEach((tr) => tr.classList.remove("active"));
-});
+}
+$("#d-close").addEventListener("click", closeDetail);
+
+// Delete a test (any state): removes its record + report from the collector. The
+// list SSE re-renders without the row once the server confirms.
+function deleteTest(code) {
+  if (!confirm(`Delete test ${code}?\n\nThis permanently removes its record and saved report from the collector. This cannot be undone.`)) return;
+  fetch(`/api/admin/tests/${encodeURIComponent(code)}`, { method: "DELETE" })
+    .then((r) => {
+      if (!r.ok && r.status !== 204) throw new Error(`server returned ${r.status}`);
+      compareSet.delete(code);
+      updateCompareBtn();
+      if (selected === code) closeDetail();
+    })
+    .catch((e) => alert(`Could not delete ${code}: ${e.message}`));
+}
 
 // ---- Compare ----------------------------------------------------------------
 
@@ -136,7 +157,7 @@ function renderCompare(results) {
         "Transport": (c.transport || "").toUpperCase(),
         "Channels": c.channels,
         "Ptime": (c.ptime_ms || "") + "ms",
-        "Duration": (c.duration_sec || "") + "s",
+        "Duration": fmtDuration(c.duration_sec),
         "DSCP": c.dscp || 0,
         "Verdict": a.pass ? "PASS" : "FAIL",
         "Loss % (round-trip)": fmt(a.loss_pct, 3),
@@ -172,7 +193,7 @@ function renderDetail(d) {
   }).join(" + ");
   const dscp = c.dscp ? ` · DSCP ${c.dscp}${c.dscp === 46 ? " (EF)" : ""}` : "";
   $("#d-config").textContent =
-    `${profs} · ${(c.transport||"").toUpperCase()} · ${c.duration_sec}s${dscp} · state ${d.state}`;
+    `${profs} · ${(c.transport||"").toUpperCase()} · ${fmtDuration(c.duration_sec)}${dscp} · state ${d.state}`;
   $("#d-tcpnote").hidden = c.transport !== "tcp";
 
   const v = $("#d-verdict");
@@ -260,7 +281,11 @@ function renderChannels(chans) {
 // ---- Create test ------------------------------------------------------------
 
 let probeDownload = false;
-fetch("/api/config").then((r) => r.json()).then((c) => { probeDownload = !!c.probe_download; }).catch(() => {});
+let probeguiDownload = false;
+fetch("/api/config").then((r) => r.json()).then((c) => {
+  probeDownload = !!c.voiptesterprobe_cli_download;
+  probeguiDownload = !!c.voiptesterprobe_download;
+}).catch(() => {});
 
 const CODECS = [["g711", "G.711"], ["g729", "G.729"], ["g722", "G.722"], ["opus", "Opus"]];
 
@@ -317,7 +342,7 @@ function submitCreate() {
 
   const body = {
     transport: $("#f-transport").value,
-    duration_sec: parseInt($("#f-duration").value, 10) || 30,
+    duration_sec: (parseInt($("#f-duration").value, 10) || 30) * (parseInt($("#f-duration-unit").value, 10) || 1),
     dscp: parseInt($("#f-dscp").value, 10) || 0,
     thresholds: {
       loss_pct: parseFloat($("#t-loss").value) || 1,
@@ -343,21 +368,33 @@ function submitCreate() {
 
 function showCreateResult(code) {
   const origin = window.location.origin;
+
+  // Preferred path: the pre-bound GUI probe. It carries this collector's URL and
+  // the CODE inside the download, so the technician just runs it — no typing.
+  const guiDl = probeguiDownload
+    ? `<p class="primary-dl"><a href="/download/voiptesterprobe.exe?code=${code}" download>⬇ Download voiptesterprobe.exe (ready to connect)</a></p>
+       <p class="muted">This app is pre-loaded with CODE <span class="code">${code}</span> and this collector's address. The technician just runs it inside the network under test — it connects and starts on its own, then stays in the system tray until the PC is rebooted.</p>`
+    : "";
+
   const dl = probeDownload
-    ? `<p><a href="/download/probe.exe" download>⬇ Download probe.exe</a> — give this and the CODE to whoever runs the test.</p>`
-    : `<p class="muted">Give the technician <code>probe.exe</code> and the CODE below.</p>`;
-  const simple = probeDownload ? `probe.exe -code ${code}` : `probe.exe -server ${origin} -code ${code}`;
+    ? `<p><a href="/download/voiptesterprobe-cli.exe" download>⬇ Download voiptesterprobe-cli.exe (console)</a> — give this and the CODE to whoever runs the test.</p>`
+    : `<p class="muted">Give the technician <code>voiptesterprobe-cli.exe</code> and the CODE below.</p>`;
+  const simple = probeDownload ? `voiptesterprobe-cli.exe -code ${code}` : `voiptesterprobe-cli.exe -server ${origin} -code ${code}`;
+
   const box = $("#create-result");
   box.hidden = false;
   box.innerHTML = `
     <div>Test created — CODE <span class="code">${code}</span></div>
-    ${dl}
-    <p>On a computer inside the network under test, run:</p>
-    <pre>${simple}</pre>
-    <button class="btn-copy" data-copy="${simple}">copy command</button>
-    ${probeDownload ? `<p class="muted" style="margin-top:10px">Or double-click the downloaded <code>probe.exe</code> and paste the CODE when prompted.</p>` : ""}
-    <p class="muted" style="margin-top:10px">Explicit form (any probe build): <code>probe.exe -server ${origin} -code ${code}</code></p>`;
-  box.querySelector(".btn-copy").addEventListener("click", (e) => {
+    ${guiDl}
+    <details style="margin-top:10px">
+      <summary class="muted">Prefer the console probe?</summary>
+      ${dl}
+      <p>On a computer inside the network under test, run:</p>
+      <pre>${simple}</pre>
+      <button class="btn-copy" data-copy="${simple}">copy command</button>
+      <p class="muted" style="margin-top:10px">Explicit form (any probe build): <code>voiptesterprobe-cli.exe -server ${origin} -code ${code}</code></p>
+    </details>`;
+  box.querySelector(".btn-copy")?.addEventListener("click", (e) => {
     navigator.clipboard?.writeText(e.target.dataset.copy);
     e.target.textContent = "copied ✓";
   });
@@ -438,6 +475,15 @@ function fmt(v, d) {
 }
 function codecName(c) {
   return { g711: "G.711", g729: "G.729", g722: "G.722", opus: "Opus" }[c] || c || "?";
+}
+// Render a seconds count as a compact human duration (e.g. 90 -> "1m 30s",
+// 7200 -> "2h", 172800 -> "2d").
+function fmtDuration(sec) {
+  sec = Math.round(Number(sec) || 0);
+  if (sec < 60) return sec + "s";
+  if (sec < 3600) { const m = Math.floor(sec / 60), s = sec % 60; return s ? `${m}m ${s}s` : `${m}m`; }
+  if (sec < 86400) { const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60); return m ? `${h}h ${m}m` : `${h}h`; }
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600); return h ? `${d}d ${h}h` : `${d}d`;
 }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
