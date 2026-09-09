@@ -7,6 +7,7 @@ package protocol
 import (
 	"crypto/rand"
 	"math/big"
+	"time"
 )
 
 // Codec identifies the simulated voice codec. We never actually encode audio;
@@ -284,8 +285,10 @@ type Aggregate struct {
 // TestSummary is the compact row used by the test-list view.
 type TestSummary struct {
 	Code       string     `json:"code"`
+	CreatedAt  time.Time  `json:"created_at"`    // when the test was created (or the report generated, for history)
 	State      TestState  `json:"state"`
-	Codec      Codec      `json:"codec"`
+	Codec      Codec      `json:"codec"`         // shared codec, or "mixed" (kept for the compare view)
+	Codecs     []Codec    `json:"codecs,omitempty"` // every distinct codec in the test (so the list shows them all, not "mixed")
 	Transport  Transport  `json:"transport"`
 	Channels   int        `json:"channels"`
 	PtimeMs    int        `json:"ptime_ms"`

@@ -104,6 +104,64 @@ td.pick input { cursor: pointer; }
 .form-grid label, #profiles-body label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
 .dur-field { display: flex; gap: 6px; }
 .dur-field input { width: 72px; }
+td.nowrap { white-space: nowrap; }
+.mono { font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; }
+
+/* ---- Fixed MOS quality gauge (center-right, stays put while scrolling) ---- */
+#mos-gauge {
+  position: fixed; right: 12px; top: 50%; transform: translateY(-50%);
+  z-index: 60; width: 112px; padding: 12px 10px 10px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.45);
+}
+.mg-cap { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; text-align: center; }
+.mg-track { position: relative; display: flex; flex-direction: column; height: 260px; }
+.mg-band { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; font-size: 11px; font-weight: 600; color: #0b0f14; }
+.mg-band:first-child { border-radius: 8px 8px 0 0; }
+.mg-band:last-child { border-radius: 0 0 8px 8px; }
+.mg-band small { font-weight: 500; opacity: .75; font-size: 10px; }
+.mg-band[data-c="exc"]  { background: #2ea043; }
+.mg-band[data-c="good"] { background: #6cc24a; }
+.mg-band[data-c="fair"] { background: #d29922; }
+.mg-band[data-c="poor"] { background: #e0692b; }
+.mg-band[data-c="bad"]  { background: #f85149; color: #fff; }
+/* current-value marker: an arrow + value pill on the left edge, pointing right */
+.mg-marker { position: absolute; left: 0; right: 0; transform: translateY(50%); pointer-events: none; }
+.mg-marker::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--text); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+.mg-marker b { position: absolute; left: -6px; bottom: -10px; transform: translateX(-100%); background: var(--text); color: var(--bg); font: 700 12px/1 "Cascadia Code", Consolas, monospace; padding: 3px 6px; border-radius: 5px; white-space: nowrap; }
+.mg-marker b::after { content: ""; position: absolute; right: -5px; bottom: 4px; border: 5px solid transparent; border-left-color: var(--text); }
+/* worst-channel tick: thin dashed line */
+.mg-worst { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed rgba(255,255,255,.7); transform: translateY(50%); pointer-events: none; }
+/* ---- Bandwidth needle gauge (total send+receive Mbps) ---- */
+.bwg-card { display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  border: 1px solid var(--border); border-radius: 12px; padding: 10px 18px 12px; background: var(--panel-2); }
+.bwg-title { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); align-self: flex-start; }
+.bwg-svg { width: 260px; height: 150px; display: block; }
+.bwg-track { fill: none; stroke: var(--border); stroke-width: 12; stroke-linecap: round; }
+.bwg-fill { fill: none; stroke-width: 12; stroke-linecap: butt; }
+.bwg-fill.send { stroke: var(--accent); }
+.bwg-fill.recv { stroke: #58a6ff; }
+.bwg-needle { stroke: var(--text); stroke-width: 3; stroke-linecap: round; }
+.bwg-hub { fill: var(--text); }
+.bwg-val { fill: var(--text); font: 700 26px "Cascadia Code", Consolas, monospace; }
+.bwg-unit { fill: var(--muted); font: 500 10px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .05em; }
+.bwg-tick { fill: var(--muted); font: 500 11px system-ui, sans-serif; }
+.bwg-legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; margin-top: -8px; }
+.bwg-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.bwg-dot.send { background: var(--accent); }
+.bwg-dot.recv { background: #58a6ff; }
+
+/* per-channel horizontal MOS quality bar */
+.mosbar { position: relative; width: 104px; }
+.mb-track { display: flex; height: 9px; border-radius: 5px; overflow: hidden; }
+.mb-track span[data-c="bad"]  { background: #f85149; }
+.mb-track span[data-c="poor"] { background: #e0692b; }
+.mb-track span[data-c="fair"] { background: #d29922; }
+.mb-track span[data-c="good"] { background: #6cc24a; }
+.mb-track span[data-c="exc"]  { background: #2ea043; }
+.mb-mark { position: absolute; top: -2px; height: 13px; width: 2px; margin-left: -1px; background: var(--text); box-shadow: 0 0 0 1px rgba(0,0,0,.7); border-radius: 1px; }
+
+@media (max-width: 900px) { #mos-gauge { display: none; } }
 input, select { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 8px; font: 13px system-ui; }
 input[type="number"] { width: 90px; }
 #profiles-body input[type="number"] { width: 80px; }

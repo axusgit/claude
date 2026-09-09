@@ -90,15 +90,15 @@
           <thead>
             <tr>
               <th class="pick"></th>
-              <th>CODE</th><th>State</th><th>Codec</th><th>Transport</th>
+              <th>CODE</th><th>Date</th><th>State</th><th>Codec</th><th>Transport</th>
               <th class="num">Chans</th><th class="num">Ptime</th>
-              <th>Client</th><th class="num">Elapsed</th><th class="num">Remain</th>
+              <th>Client</th><th>Source IP</th><th class="num">Elapsed</th><th class="num">Remain</th>
               <th class="num">Loss%</th><th class="num">MOS</th><th>Verdict</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="tests-body">
-            <tr><td colspan="14" class="empty">No tests yet. Create one via the control API.</td></tr>
+            <tr><td colspan="16" class="empty">No tests yet. Create one via the control API.</td></tr>
           </tbody>
         </table>
       </div>
@@ -131,6 +131,8 @@
         Nagle inflate jitter/RTT and can mask loss versus UDP — interpret accordingly.
       </p>
 
+      <div id="bw-gauge" class="bwg-card" hidden></div>
+
       <div class="cards" id="d-cards"></div>
 
       <h3 class="dir-head">Per-direction <span class="muted">(one-way, collector-measured)</span></h3>
@@ -143,7 +145,7 @@
       </div>
 
       <div class="panel-head">
-        <h3>Per-channel <span class="muted">(worst first)</span></h3>
+        <h3>Per-channel <span class="muted">(in channel order; failing rows highlighted)</span></h3>
         <div class="reports">
           <a id="r-txt" target="_blank" rel="noopener">report.txt</a>
           <a id="r-json" target="_blank" rel="noopener">json</a>
@@ -158,6 +160,8 @@
               <th class="num">Bursts</th><th class="num">Jitter</th><th class="num">Jit p95</th>
               <th class="num">RTT</th><th class="num">1-way*</th>
               <th class="num">kbps</th><th class="num">R</th><th class="num">MOS</th>
+              <th>Quality</th>
+              <th>Codec</th>
             </tr>
           </thead>
           <tbody id="channels-body"></tbody>
@@ -166,6 +170,21 @@
       <p class="muted foot">* one-way delay is estimated as RTT/2 (clocks not assumed NTP-synced).</p>
     </section>
   </main>
+
+  <!-- Fixed MOS quality gauge (center-right; stays put while scrolling). Bands are
+       colour-coded quality levels; the marker shows the open test's mean MOS. -->
+  <aside id="mos-gauge" hidden aria-label="MOS quality scale">
+    <div class="mg-cap">MOS quality</div>
+    <div class="mg-track" id="mg-track">
+      <div class="mg-band" data-c="exc"  style="flex-grow:.7"><span>Excellent</span><small>4.3</small></div>
+      <div class="mg-band" data-c="good" style="flex-grow:.3"><span>Good</span><small>4.0</small></div>
+      <div class="mg-band" data-c="fair" style="flex-grow:.4"><span>Fair</span><small>3.6</small></div>
+      <div class="mg-band" data-c="poor" style="flex-grow:.5"><span>Poor</span><small>3.1</small></div>
+      <div class="mg-band" data-c="bad"  style="flex-grow:2.1"><span>Bad</span><small>1.0</small></div>
+      <div class="mg-worst" id="mg-worst" hidden title="worst channel"></div>
+      <div class="mg-marker" id="mg-marker" hidden><b id="mg-val">–</b></div>
+    </div>
+  </aside>
 
   <script src="app.js"></script>
 </body>

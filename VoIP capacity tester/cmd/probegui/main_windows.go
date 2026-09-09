@@ -21,9 +21,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -36,6 +38,7 @@ import (
 
 	"voiptest/internal/client"
 	"voiptest/internal/probecfg"
+	"voiptest/internal/protocol"
 )
 
 // defaultServer is the collector URL used to prefill the field. Bake it at build
@@ -60,7 +63,12 @@ type app struct {
 	runBtn   *walk.PushButton
 	status   *walk.Label
 	progress *walk.ProgressBar
+	bwGauge  *walk.CustomWidget
 	logView  *walk.TextEdit
+
+	// Live bandwidth-gauge values (written on the UI thread via Synchronize, read
+	// by the paint handler on the UI thread — no locking needed).
+	bwTotal, bwMax, bwSend, bwRecv float64
 
 	mu       sync.Mutex
 	running  bool // a test is currently in progress
@@ -101,6 +109,14 @@ func main() {
 				},
 			},
 			dcl.ProgressBar{AssignTo: &a.progress},
+			dcl.CustomWidget{
+				AssignTo:            &a.bwGauge,
+				MinSize:             dcl.Size{Width: 260, Height: 150},
+				MaxSize:             dcl.Size{Height: 160},
+				ClearsBackground:    true,
+				InvalidatesOnResize: true,
+				Paint:               a.paintBwGauge,
+			},
 			dcl.Label{AssignTo: &a.status, Text: "Idle — enter a CODE and click Run."},
 			dcl.TextEdit{AssignTo: &a.logView, ReadOnly: true, VScroll: true},
 		},
@@ -258,6 +274,7 @@ func (a *app) onRun() {
 	_ = a.progress.SetMarqueeMode(true)
 	_ = a.status.SetText("Running test " + code + " …")
 	_ = a.logView.SetText("")
+	a.setBandwidth(0, 0, 0, 0)
 	a.appendLog("Starting test " + code + " on " + server)
 
 	outDir := reportsDir()
@@ -286,6 +303,13 @@ func (a *app) onRun() {
 			ClientID:       clientID(),
 			OutDir:         outDir,
 			ReportInterval: time.Second,
+			OnProgress: func(_ float64, agg protocol.Aggregate) {
+				send := agg.ExpectedKbps / 1000 // upstream sent (nominal IP-layer)
+				recv := agg.BitrateKbps / 1000  // downstream echoes received
+				total := send + recv
+				mx := niceMax(math.Max(send*2, total) * 1.05)
+				a.mw.Synchronize(func() { a.setBandwidth(total, mx, send, recv) })
+			},
 		})
 
 		_ = w.Close()
@@ -310,6 +334,156 @@ func (a *app) onRun() {
 			}
 		})
 	}()
+}
+
+// setBandwidth stores the live gauge values and repaints (call on the UI thread).
+func (a *app) setBandwidth(total, max, send, recv float64) {
+	a.bwTotal, a.bwMax, a.bwSend, a.bwRecv = total, max, send, recv
+	if a.bwGauge != nil {
+		_ = a.bwGauge.Invalidate()
+	}
+}
+
+// niceMax rounds up to a "nice" gauge maximum (1/2/2.5/5 × 10^n).
+func niceMax(x float64) float64 {
+	if x <= 0 {
+		return 1
+	}
+	p := math.Pow(10, math.Floor(math.Log10(x)))
+	switch n := x / p; {
+	case n <= 1:
+		return 1 * p
+	case n <= 2:
+		return 2 * p
+	case n <= 2.5:
+		return 2.5 * p
+	case n <= 5:
+		return 5 * p
+	default:
+		return 10 * p
+	}
+}
+
+// paintBwGauge draws the semicircular send+receive bandwidth needle gauge.
+func (a *app) paintBwGauge(canvas *walk.Canvas, _ walk.Rectangle) error {
+	b := a.bwGauge.ClientBounds()
+	cx := b.Width / 2
+	cy := b.Height - 22
+	r := b.Width/2 - 24
+	if h := b.Height - 34; r > h {
+		r = h
+	}
+	if r < 10 {
+		return nil
+	}
+
+	colTrack := walk.RGB(0xd7, 0xdd, 0xe4)
+	colSend := walk.RGB(0xf9, 0x73, 0x16)
+	colRecv := walk.RGB(0x2f, 0x81, 0xf6)
+	colInk := walk.RGB(0x24, 0x2a, 0x31)
+	colMuted := walk.RGB(0x6a, 0x73, 0x7d)
+
+	arcPts := func(f0, f1 float64, rr int, n int) []walk.Point {
+		pts := make([]walk.Point, 0, n+1)
+		for i := 0; i <= n; i++ {
+			f := f0 + (f1-f0)*float64(i)/float64(n)
+			th := math.Pi * (1 - f)
+			pts = append(pts, walk.Point{
+				X: cx + int(float64(rr)*math.Cos(th)+0.5),
+				Y: cy - int(float64(rr)*math.Sin(th)+0.5),
+			})
+		}
+		return pts
+	}
+	drawArc := func(f0, f1 float64, col walk.Color, width int) {
+		if f1 <= f0 {
+			return
+		}
+		br, err := walk.NewSolidColorBrush(col)
+		if err != nil {
+			return
+		}
+		defer br.Dispose()
+		pen, err := walk.NewGeometricPen(walk.PenSolid|walk.PenCapRound, width, br)
+		if err != nil {
+			return
+		}
+		defer pen.Dispose()
+		_ = canvas.DrawPolyline(pen, arcPts(f0, f1, r, segs(f1-f0)))
+	}
+
+	// Track + send/receive fills.
+	drawArc(0, 1, colTrack, 12)
+	max := a.bwMax
+	var fs, ft float64
+	if max > 0 {
+		fs = clamp01(a.bwSend / max)
+		ft = clamp01(a.bwTotal / max)
+	}
+	drawArc(0, fs, colSend, 12)
+	drawArc(fs, ft, colRecv, 12)
+
+	// Needle.
+	th := math.Pi * (1 - ft)
+	nx := cx + int(float64(r-14)*math.Cos(th)+0.5)
+	ny := cy - int(float64(r-14)*math.Sin(th)+0.5)
+	if nbr, err := walk.NewSolidColorBrush(colInk); err == nil {
+		defer nbr.Dispose()
+		if npen, err := walk.NewGeometricPen(walk.PenSolid|walk.PenCapRound, 3, nbr); err == nil {
+			defer npen.Dispose()
+			_ = canvas.DrawLine(npen, walk.Point{X: cx, Y: cy}, walk.Point{X: nx, Y: ny})
+		}
+		_ = canvas.FillEllipse(nbr, walk.Rectangle{X: cx - 5, Y: cy - 5, Width: 10, Height: 10})
+	}
+
+	// Text: big total, unit, and 0 / max tick labels.
+	bigFont, _ := walk.NewFont("Segoe UI", 15, walk.FontBold)
+	smFont, _ := walk.NewFont("Segoe UI", 8, 0)
+	if bigFont != nil {
+		defer bigFont.Dispose()
+		_ = canvas.DrawText(fmt.Sprintf("%.2f", a.bwTotal), bigFont, colInk,
+			walk.Rectangle{X: cx - 70, Y: cy - 50, Width: 140, Height: 26}, walk.TextCenter)
+	}
+	if smFont != nil {
+		defer smFont.Dispose()
+		_ = canvas.DrawText("Mbps total", smFont, colMuted,
+			walk.Rectangle{X: cx - 70, Y: cy - 26, Width: 140, Height: 14}, walk.TextCenter)
+		_ = canvas.DrawText("0", smFont, colMuted,
+			walk.Rectangle{X: cx - r - 10, Y: cy, Width: 20, Height: 14}, walk.TextCenter)
+		_ = canvas.DrawText(trimNum(max), smFont, colMuted,
+			walk.Rectangle{X: cx + r - 10, Y: cy, Width: 24, Height: 14}, walk.TextCenter)
+	}
+	return nil
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// segs picks a point count for an arc span (smoother for larger spans).
+func segs(span float64) int {
+	n := int(span * 60)
+	if n < 2 {
+		n = 2
+	}
+	return n
+}
+
+// trimNum formats a float without trailing zeros (e.g. 2.5, 6, 0.75).
+func trimNum(v float64) string {
+	s := strconv.FormatFloat(v, 'f', 2, 64)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	if s == "" {
+		s = "0"
+	}
+	return s
 }
 
 // onExit is the only path to actually quit. It confirms, then tears down.

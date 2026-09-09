@@ -141,6 +141,9 @@ func (t *Test) startMedia(bind string, portMin, portMax int) error {
 		if err != nil {
 			return err
 		}
+		// Big buffers so the echo endpoint never drops under a many-channel burst.
+		_ = conn.SetReadBuffer(8 << 20)
+		_ = conn.SetWriteBuffer(8 << 20)
 		t.udpConn = conn
 		t.mediaPort = conn.LocalAddr().(*net.UDPAddr).Port
 		markSockDSCP(conn, t.Config.DSCP) // mark the echoes we send back
@@ -442,8 +445,10 @@ func (t *Test) summary() protocol.TestSummary {
 	defer t.mu.Unlock()
 	return protocol.TestSummary{
 		Code:       t.Code,
+		CreatedAt:  t.CreatedAt,
 		State:      t.State,
 		Codec:      summaryCodec(t.Config),
+		Codecs:     distinctCodecs(t.Config),
 		Transport:  t.Config.Transport,
 		Channels:   t.Config.TotalChannels(),
 		PtimeMs:    summaryPtime(t.Config),
@@ -516,6 +521,21 @@ func summaryCodec(cfg protocol.TestConfig) protocol.Codec {
 		return pc
 	}
 	return protocol.Codec("mixed")
+}
+
+// distinctCodecs returns every codec used in the test, in profile order and
+// de-duplicated — so the list can show all of them (e.g. "G.711, G.729") instead
+// of collapsing a mixed test to "mixed".
+func distinctCodecs(cfg protocol.TestConfig) []protocol.Codec {
+	var out []protocol.Codec
+	seen := map[protocol.Codec]bool{}
+	for _, p := range cfg.Profiles {
+		if p.Codec != "" && !seen[p.Codec] {
+			seen[p.Codec] = true
+			out = append(out, p.Codec)
+		}
+	}
+	return out
 }
 
 // summaryPtime is the ptime shown in the list: the shared ptime, or 0 (mixed).

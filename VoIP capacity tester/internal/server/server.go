@@ -650,8 +650,10 @@ func (s *Server) summaries() []protocol.TestSummary {
 func resultSummary(res report.Result) protocol.TestSummary {
 	return protocol.TestSummary{
 		Code:       res.Code,
+		CreatedAt:  res.GeneratedAt,
 		State:      protocol.StateComplete,
 		Codec:      summaryCodec(res.Config),
+		Codecs:     distinctCodecs(res.Config),
 		Transport:  res.Config.Transport,
 		Channels:   res.Config.TotalChannels(),
 		PtimeMs:    summaryPtime(res.Config),
@@ -814,7 +816,21 @@ func normalizeConfig(c *protocol.TestConfig) error {
 	return nil
 }
 
+// clientIP is the real source public IP of the probe. Behind nginx the TCP peer
+// (r.RemoteAddr) is 127.0.0.1, so we trust the reverse proxy's forwarded headers
+// first (X-Real-IP, then the left-most hop of X-Forwarded-For).
 func clientIP(r *http.Request) string {
+	if xr := strings.TrimSpace(r.Header.Get("X-Real-IP")); xr != "" {
+		return xr
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			xff = xff[:i]
+		}
+		if xff = strings.TrimSpace(xff); xff != "" {
+			return xff
+		}
+	}
 	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return h
 	}

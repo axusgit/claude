@@ -26,7 +26,7 @@ function renderList(tests) {
   const body = $("#tests-body");
   $("#test-count").textContent = tests.length ? `${tests.length} total` : "";
   if (!tests.length) {
-    body.innerHTML = `<tr><td colspan="14" class="empty">No tests yet. Create one via the control API.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="16" class="empty">No tests yet. Create one via the control API.</td></tr>`;
     return;
   }
   // Drop selections for tests that no longer exist.
@@ -42,12 +42,14 @@ function renderList(tests) {
     tr.innerHTML = `
       <td class="pick">${pickable ? `<input type="checkbox" class="cmp" ${checked} aria-label="compare ${t.code}">` : ""}</td>
       <td class="code">${t.code}</td>
+      <td class="nowrap">${fmtDate(t.created_at)}</td>
       <td><span class="state ${t.state}">${t.state}</span></td>
-      <td>${codecName(t.codec)}</td>
+      <td>${codecsLabel(t)}</td>
       <td>${t.transport.toUpperCase()}</td>
       <td class="num">${t.channels}</td>
       <td class="num">${t.ptime_ms}ms</td>
-      <td>${t.client_ip ? `${escapeHtml(t.client_id || "?")} <span class="muted">${t.client_ip}</span>` : "<span class='muted'>—</span>"}</td>
+      <td>${t.client_id ? escapeHtml(t.client_id) : "<span class='muted'>—</span>"}</td>
+      <td>${t.client_ip ? `<span class="mono">${escapeHtml(t.client_ip)}</span>` : "<span class='muted'>—</span>"}</td>
       <td class="num">${fmt(t.elapsed_sec, 0)}s</td>
       <td class="num">${t.state === "running" ? fmt(t.remain_sec, 0) + "s" : "—"}</td>
       <td class="num">${hasStats(t) ? fmt(t.loss_pct, 2) : "—"}</td>
@@ -108,6 +110,7 @@ function closeDetail() {
   if (detailSrc) { detailSrc.close(); detailSrc = null; }
   selected = null;
   $("#detail").hidden = true;
+  $("#mos-gauge").hidden = true;
   document.querySelectorAll("#tests-body tr").forEach((tr) => tr.classList.remove("active"));
 }
 $("#d-close").addEventListener("click", closeDetail);
@@ -208,8 +211,10 @@ function renderDetail(d) {
   }
 
   renderCards(d, a);
+  renderBwGauge(a, running);
+  updateMosGauge(a);
   renderDirections(d.forward_agg || {}, d.return_agg || {});
-  renderChannels(d.channels || []);
+  renderChannels(d.channels || [], (d.config && d.config.profiles) || []);
   drawCharts(d.history || [], c);
 }
 
@@ -248,6 +253,107 @@ function renderCards(d, a) {
   $("#d-cards").innerHTML = cards.join("");
 }
 
+// updateMosGauge positions the fixed center-right MOS gauge's marker at the
+// test's mean MOS (and a dashed tick at the worst channel). Value 1..5 maps
+// bottom (Bad) -> top (Excellent).
+function updateMosGauge(a) {
+  const g = $("#mos-gauge");
+  g.hidden = false; // reference bands always visible while a test is open
+  positionMosGauge();
+  const marker = $("#mg-marker"), val = $("#mg-val"), worst = $("#mg-worst");
+  const mos = a && a.mos_mean;
+  const posPct = (m) => Math.max(0, Math.min(100, ((m - 1) / 4) * 100));
+  if (!mos || mos <= 0) { marker.hidden = true; worst.hidden = true; return; }
+  marker.style.bottom = posPct(mos) + "%";
+  val.textContent = mos.toFixed(2);
+  marker.hidden = false;
+  const w = a.mos_min;
+  if (w && w > 0 && Math.abs(w - mos) > 0.02) {
+    worst.style.bottom = posPct(w) + "%";
+    worst.hidden = false;
+  } else {
+    worst.hidden = true;
+  }
+}
+
+// ---- Bandwidth needle gauge (total send+receive Mbps in use) ----------------
+
+// niceMax rounds up to a "nice" axis maximum (1/2/2.5/5 × 10^n).
+function niceMax(x) {
+  if (!(x > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(x)));
+  const n = x / p;
+  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+  return step * p;
+}
+function trimNum(v) { return (Math.round(v * 100) / 100).toString(); }
+
+function renderBwGauge(a, running) {
+  const el = $("#bw-gauge");
+  if (!running) { el.hidden = true; el.innerHTML = ""; return; }
+  const send = (a.expected_kbps || 0) / 1000;   // upstream (sent, nominal IP-layer)
+  const recv = (a.bitrate_kbps || 0) / 1000;    // downstream (echoes actually received)
+  const total = send + recv;
+  // Full scale ≈ both directions at full load (2×send), with a little headroom.
+  const max = niceMax(Math.max(send * 2, total) * 1.05) || 1;
+  el.hidden = false;
+  el.innerHTML = `<div class="bwg-title">Bandwidth in use <span class="muted">(send + receive)</span></div>` +
+    bwGaugeSVG(total, max, send, recv);
+}
+
+// bwGaugeSVG draws a semicircular needle gauge (0..max Mbps) with the needle at
+// `total`, the used portion filled, and a send/receive breakdown below.
+function bwGaugeSVG(total, max, send, recv) {
+  const cx = 130, cy = 124, r = 98;
+  const f = Math.max(0, Math.min(1, max > 0 ? total / max : 0));
+  const pt = (frac, rr) => {
+    const th = Math.PI * (1 - frac);
+    return [cx + rr * Math.cos(th), cy - rr * Math.sin(th)];
+  };
+  const arc = (f0, f1, rr) => {
+    const [x0, y0] = pt(f0, rr), [x1, y1] = pt(f1, rr);
+    return `M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${rr} ${rr} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+  };
+  const fs = Math.max(0, Math.min(1, max > 0 ? send / max : 0)); // send portion
+  const [nx, ny] = pt(f, 84);
+  const [l0x, l0y] = pt(0, r), [lmx, lmy] = pt(0.5, r), [l1x, l1y] = pt(1, r);
+  return `<svg viewBox="0 0 260 150" class="bwg-svg" role="img" aria-label="Bandwidth ${trimNum(total)} of ${trimNum(max)} Mbps">
+    <path d="${arc(0, 1, r)}" class="bwg-track"/>
+    <path d="${arc(0, fs, r)}" class="bwg-fill send"/>
+    <path d="${arc(fs, f, r)}" class="bwg-fill recv"/>
+    <line x1="${cx}" y1="${cy}" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" class="bwg-needle"/>
+    <circle cx="${cx}" cy="${cy}" r="6" class="bwg-hub"/>
+    <text x="${cx}" y="${cy - 26}" class="bwg-val" text-anchor="middle">${trimNum(total)}</text>
+    <text x="${cx}" y="${cy - 9}" class="bwg-unit" text-anchor="middle">Mbps total</text>
+    <text x="${(l0x - 4).toFixed(0)}" y="${(l0y + 15).toFixed(0)}" class="bwg-tick" text-anchor="middle">0</text>
+    <text x="${lmx.toFixed(0)}" y="${(lmy - 7).toFixed(0)}" class="bwg-tick" text-anchor="middle">${trimNum(max / 2)}</text>
+    <text x="${(l1x + 4).toFixed(0)}" y="${(l1y + 15).toFixed(0)}" class="bwg-tick" text-anchor="middle">${trimNum(max)}</text>
+  </svg>
+  <div class="bwg-legend">
+    <span><i class="bwg-dot send"></i>Send ${trimNum(send)}</span>
+    <span><i class="bwg-dot recv"></i>Recv ${trimNum(recv)}</span>
+    <span class="muted">Mbps</span>
+  </div>`;
+}
+
+// positionMosGauge centers the fixed gauge horizontally in the gap between the
+// content's right edge and the screen's right edge — so the table/detail stays
+// centered and the gauge floats in the right margin. Falls back to the right edge
+// if there isn't enough room (e.g. a narrower window).
+function positionMosGauge() {
+  const g = $("#mos-gauge");
+  if (!g || g.hidden) return;
+  const panel = $("#detail");
+  const el = panel && !panel.hidden ? panel : document.querySelector("main");
+  const contentRight = el.getBoundingClientRect().right;
+  const gw = g.offsetWidth || 138;
+  const gap = window.innerWidth - contentRight;
+  const left = gap >= gw + 16 ? contentRight + (gap - gw) / 2 : window.innerWidth - gw - 8;
+  g.style.left = Math.round(left) + "px";
+  g.style.right = "auto";
+}
+window.addEventListener("resize", positionMosGauge);
+
 function kpi(k, val, bad, lowerIsWorse, suffix) {
   let cls = "card";
   if (bad === true) cls += " bad";
@@ -255,15 +361,20 @@ function kpi(k, val, bad, lowerIsWorse, suffix) {
   return `<div class="${cls}"><div class="k">${k}</div><div class="v">${val}${s}</div></div>`;
 }
 
-function renderChannels(chans) {
-  const sorted = [...chans].sort((a, b) => a.mos - b.mos); // worst first
+function renderChannels(chans, profiles) {
+  profiles = profiles || [];
+  const sorted = [...chans].sort((a, b) => a.channel - b.channel); // channel order
+  // Zero-pad the channel number (00, 01, …) so the column aligns; width grows
+  // with the channel count (2 digits min, 3+ for 100+ channels).
+  const width = Math.max(2, String(Math.max(0, ...chans.map((c) => c.channel || 0))).length);
+  const padCh = (n) => String(n).padStart(width, "0");
   const body = $("#channels-body");
   body.innerHTML = "";
   for (const c of sorted) {
     const tr = document.createElement("tr");
     if (!c.pass) tr.className = "chan-fail";
     tr.innerHTML = `
-      <td class="num">${c.channel}</td>
+      <td class="num">${padCh(c.channel)}</td>
       <td>${c.pass ? "<span class='verdict-pass'>PASS</span>" : "<span class='verdict-fail'>FAIL</span>"}</td>
       <td class="num">${fmt(c.loss_pct, 3)}</td>
       <td class="num">${c.burst_count}/${c.longest_burst}</td>
@@ -273,9 +384,19 @@ function renderChannels(chans) {
       <td class="num">${fmt(c.oneway_ms, 2)}</td>
       <td class="num">${fmt(c.bitrate_kbps, 0)}</td>
       <td class="num">${fmt(c.r_factor, 1)}</td>
-      <td class="num">${fmt(c.mos, 2)}</td>`;
+      <td class="num">${fmt(c.mos, 2)}</td>
+      <td>${mosBar(c.mos)}</td>
+      <td>${channelCodec(c, profiles)}</td>`;
     body.appendChild(tr);
   }
+}
+
+// channelCodec resolves the codec used by one channel from its profile_id, e.g.
+// "G.711" or "Opus 48k". Falls back to "—" if the profile can't be resolved.
+function channelCodec(c, profiles) {
+  const p = profiles[c.profile_id];
+  if (!p) return "<span class='muted'>—</span>";
+  return codecName(p.codec) + (p.codec === "opus" ? ` ${p.bitrate_kbps || 32}k` : "");
 }
 
 // ---- Create test ------------------------------------------------------------
@@ -475,6 +596,44 @@ function fmt(v, d) {
 }
 function codecName(c) {
   return { g711: "G.711", g729: "G.729", g722: "G.722", opus: "Opus" }[c] || c || "?";
+}
+// codecsLabel lists every codec in a test (e.g. "G.711, G.729") instead of
+// collapsing a mixed test to "mixed". Falls back to the single summary codec.
+function codecsLabel(t) {
+  if (Array.isArray(t.codecs) && t.codecs.length) return t.codecs.map(codecName).join(", ");
+  return codecName(t.codec);
+}
+// mosBar renders a small horizontal MOS quality bar (Bad red -> Excellent green,
+// band widths proportional to the 1..5 scale) with a marker at this channel's MOS.
+function mosBar(mos) {
+  if (!mos || mos <= 0) return "<span class='muted'>—</span>";
+  const pct = Math.max(0, Math.min(100, ((mos - 1) / 4) * 100));
+  return `<div class="mosbar" title="MOS ${fmt(mos, 2)} — ${mosLabel(mos)}">
+    <div class="mb-track">
+      <span data-c="bad"  style="flex-grow:2.1"></span>
+      <span data-c="poor" style="flex-grow:.5"></span>
+      <span data-c="fair" style="flex-grow:.4"></span>
+      <span data-c="good" style="flex-grow:.3"></span>
+      <span data-c="exc"  style="flex-grow:.7"></span>
+    </div>
+    <i class="mb-mark" style="left:${pct}%"></i>
+  </div>`;
+}
+// mosLabel names the quality band for a MOS value (used in the bar's tooltip).
+function mosLabel(m) {
+  if (m >= 4.3) return "Excellent";
+  if (m >= 4.0) return "Good";
+  if (m >= 3.6) return "Fair";
+  if (m >= 3.1) return "Poor";
+  return "Bad";
+}
+// fmtDate renders an ISO timestamp as a compact local date+time; "—" if absent
+// or the Go zero time.
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime()) || d.getFullYear() < 2000) return "—";
+  return d.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 // Render a seconds count as a compact human duration (e.g. 90 -> "1m 30s",
 // 7200 -> "2h", 172800 -> "2d").

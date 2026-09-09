@@ -42,6 +42,11 @@ type Options struct {
 	OutDir         string
 	ReportInterval time.Duration
 	DrainTime      time.Duration // extra time to collect in-flight echoes at end
+
+	// OnProgress, if set, is called on each report tick with the live aggregate
+	// (used by the GUI probe to drive a live bandwidth gauge). Called from the
+	// reporter goroutine — the callback must be safe to invoke off the UI thread.
+	OnProgress func(elapsedSec float64, agg protocol.Aggregate)
 }
 
 // activeGuard enforces one active test per process.
@@ -141,7 +146,11 @@ func Run(opts Options) error {
 				return
 			case <-ticker.C:
 				elapsed := time.Since(start).Seconds()
-				postStats(base, opts.Code, opts.ClientID, elapsed, false, snapshot(chans, elapsed))
+				snap := snapshot(chans, elapsed)
+				if opts.OnProgress != nil {
+					opts.OnProgress(elapsed, metrics.Aggregate(snap))
+				}
+				postStats(base, opts.Code, opts.ClientID, elapsed, false, snap)
 			}
 		}
 	}()
@@ -256,6 +265,12 @@ func runChannel(ctx context.Context, cfg protocol.TestConfig, ci codec.Info, add
 		if err != nil {
 			return nil, fmt.Errorf("dial: %w", err)
 		}
+		// Large receive buffer so a burst of echoes (all channels return around the
+		// same ptime boundary) isn't dropped at THIS endpoint's socket. A capacity
+		// test must measure the network, not the client's default socket buffer —
+		// otherwise endpoint drops masquerade as return-leg packet loss.
+		_ = conn.SetReadBuffer(8 << 20)
+		_ = conn.SetWriteBuffer(4 << 20)
 		markDSCP(conn, cfg.DSCP)
 		go recvUDP(conn, m)
 		sendLoop(ctx, start, ptime, func(pkt []byte) error {
