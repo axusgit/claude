@@ -79,11 +79,16 @@
 
 html {
   transition: none;
+  /* Larger, more readable base — scales every rem-based size in the app up. */
+  font-size: 17.5px;
 }
 
 body {
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.003em;
   background-color: var(--body-base);
   background-image:
     radial-gradient(1200px 620px at 12% -12%, var(--body-glow-1), transparent 58%),
@@ -92,6 +97,15 @@ body {
   background-attachment: fixed;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Keep printed output at a normal document scale, not the enlarged UI scale. */
+@media print {
+  html {
+    font-size: 15px;
+  }
 }
 
 /* Faint tech grid, fading toward the top */
@@ -197,23 +211,113 @@ body::before {
   color: #fff;
 }
 
-/* Print / Save-as-PDF: clean black-on-white document */
+/* Print / Save-as-PDF: clean document on the Axus letterhead */
+.print-letterhead {
+  display: none;
+}
+/* On screen the print frame is just normal block flow (the table structure only
+   matters for paged printing). */
+.print-frame,
+.print-frame > thead,
+.print-frame > tfoot,
+.print-frame > tbody,
+.print-frame > thead > tr,
+.print-frame > tfoot > tr,
+.print-frame > tbody > tr,
+.print-frame > thead > tr > td,
+.print-frame > tfoot > tr > td,
+.print-frame > tbody > tr > td {
+  display: block;
+}
+.pf-space-top,
+.pf-space-bottom {
+  display: none;
+}
 @media print {
+  /* Zero page margins so the browser drops its date/URL header & footer, and the
+     letterhead can bleed to the page edges. */
+  @page {
+    size: letter;
+    margin: 0;
+  }
+  html,
   body {
     background: #fff !important;
     color: #111 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   body::before {
     display: none !important;
   }
   header,
   footer,
-  .no-print {
+  aside,
+  .no-print,
+  .ro-theme-toggle {
     display: none !important;
   }
+  /* Axus letterhead (an <img>), fixed BEHIND the content so it repeats on
+     every printed page without covering the text. */
+  .print-letterhead {
+    display: block;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    z-index: -1;
+  }
   main {
+    position: static !important;
     max-width: 100% !important;
     padding: 0 !important;
+  }
+  /* Rebuild the frame as a real table so thead/tfoot repeat on every page. */
+  .print-frame {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse;
+  }
+  .print-frame > thead.pf-head {
+    display: table-header-group !important;
+  }
+  .print-frame > tfoot.pf-foot {
+    display: table-footer-group !important;
+  }
+  .print-frame > tbody.pf-body {
+    display: table-row-group !important;
+  }
+  .print-frame > thead.pf-head > tr,
+  .print-frame > tfoot.pf-foot > tr,
+  .print-frame > tbody.pf-body > tr {
+    display: table-row !important;
+  }
+  .print-frame > thead.pf-head > tr > td,
+  .print-frame > tfoot.pf-foot > tr > td,
+  .print-frame > tbody.pf-body > tr > td {
+    display: table-cell !important;
+  }
+  /* Per-page header/footer clearance (reserved on every page by thead/tfoot). */
+  .pf-space-top {
+    display: block;
+    height: 2.35in;
+  }
+  .pf-space-bottom {
+    display: block;
+    height: 1.25in;
+  }
+  /* Side margins for the printed content. */
+  .print-frame > tbody.pf-body > tr > td {
+    padding: 0 0.85in;
+  }
+  /* Keep these blocks whole — move them to the next page rather than splitting.
+     (Only the print-keep cards and the nested line-item rows — never the frame's
+     own content row, which must be allowed to paginate.) */
+  .print-keep,
+  .pf-body td table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .glass {
     background: #fff !important;
@@ -248,6 +352,12 @@ body::before {
   .hcn-logo {
     filter: invert(1) !important;
   }
+}
+
+/* Hide the fixed theme toggle while an overlay (cart panel / disclaimer) is open,
+   so it doesn't collide with the panel's close button. */
+body.ro-overlay-open .ro-theme-toggle {
+  display: none !important;
 }
 
 /* Custom scrollbar (webkit) */

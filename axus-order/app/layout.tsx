@@ -4,6 +4,7 @@ import "./globals.css";
 import { getIdentity, roleOf, canSeePricing } from "@/lib/auth";
 import { TopNav } from "./components/TopNav";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { VisitLogger } from "./components/VisitLogger";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const display = Space_Grotesk({ subsets: ["latin"], variable: "--font-space" });
@@ -29,6 +30,7 @@ export default async function RootLayout({
       className={`${inter.variable} ${display.variable} ${mono.variable}`}
     >
       <body>
+        <VisitLogger />
         {/* Set the theme before paint to avoid a flash */}
         <script
           dangerouslySetInnerHTML={{
@@ -36,8 +38,8 @@ export default async function RootLayout({
               "(function(){try{var t=localStorage.getItem('ro-theme');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();",
           }}
         />
-        {/* Theme toggle — fixed top-right */}
-        <div className="fixed right-4 top-4 z-50">
+        {/* Theme toggle — fixed top-right (hidden while a cart/disclaimer overlay is open) */}
+        <div className="ro-theme-toggle fixed right-4 top-4 z-50">
           <ThemeToggle />
         </div>
         <div className="relative z-10 flex min-h-screen">
@@ -47,8 +49,8 @@ export default async function RootLayout({
             restricted={restricted}
           />
           <div className="min-w-0 flex-1">
-            <main className="mx-auto max-w-6xl px-5 py-9">{children}</main>
-          <footer className="mx-auto max-w-6xl px-5 pb-10 pt-6 text-xs text-faint">
+            <main className="mx-auto max-w-[1600px] px-6 py-9 lg:px-10">{children}</main>
+          <footer className="mx-auto max-w-[1600px] px-6 pb-10 pt-6 text-xs text-faint lg:px-10">
             <div className="hairline mb-4" />
             <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
               <span>Axus Technologies</span>

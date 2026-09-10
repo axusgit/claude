@@ -18,6 +18,11 @@ model CatalogItem {
   category     String?
   mfgPN        String?
   synnexSKU    String?
+  // Admin-defined successor part (e.g. FAP-231F-A -> FAP-231K-A). A TD SYNNEX SKU
+  // (numeric) or a manufacturer part number; offered to the customer as an
+  // accept-able replacement when set. replacementName is an optional friendly label.
+  replacementSku   String?
+  replacementName  String?
   marginType   String      @default("PERCENT") // "PERCENT" | "FIXED"
   marginValue  Float       @default(15)
   active       Boolean     @default(true)
@@ -35,12 +40,27 @@ model Quote {
   createdAt  DateTime    @default(now())
   // Human-friendly quote number: <3-letter business><MMDDYYYY><NNN> (e.g. AXU09032026001).
   quoteNumber          String?   @unique
-  // Customer identity captured from the logged-in Authentik user at creation.
+  // Customer identity — self-supplied at creation (the site is open, no login).
   customerName         String?
   customerEmail        String?
+  customerCompany      String?
+  // Client IP captured for the usage/audit log.
+  ipAddress            String?
   // Disclaimer acceptance (required before a quote is created).
   disclaimerAcceptedAt DateTime?
   lines      QuoteLine[]
+}
+
+// Anonymous page-visit log for the open site (usage/audit dashboard).
+model Visit {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  path      String
+  ip        String?
+  userAgent String?
+  referer   String?
+
+  @@index([createdAt])
 }
 
 model QuoteLine {
@@ -56,4 +76,7 @@ model QuoteLine {
   lineTotal        Float?
   unitCostSnapshot Float?       // SERVER ONLY — never return in an API response
   status           String
+  // When the customer accepted a suggested alternative, record it for a quote note.
+  usedReplacement  Boolean      @default(false)
+  originalName     String?      // the original item this replacement stands in for
 }

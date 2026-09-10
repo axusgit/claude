@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { DISCLAIMER_TITLE, DISCLAIMER_TEXT } from "@/lib/disclaimer";
 import { PrintButton } from "@/app/components/PrintButton";
+import { EmailQuoteButton } from "@/app/components/EmailQuoteButton";
+import { RemoveLineButton } from "@/app/components/RemoveLineButton";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,33 @@ export default async function QuotePage({
 
   return (
     <div className="mx-auto max-w-4xl">
+      {/* Axus letterhead — only visible when printing / saving as PDF.
+          An <img> (not a CSS background) so it prints without the browser's
+          "Background graphics" option being enabled. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/axus-letterhead.jpg" alt="" aria-hidden className="print-letterhead" />
+
+      {/* Print frame: the empty thead/tfoot rows repeat on every printed page and
+          reserve space so content never overlaps the letterhead header/footer.
+          On screen the whole thing collapses to normal block flow. */}
+      <table className="print-frame">
+        <thead className="pf-head">
+          <tr>
+            <td>
+              <div className="pf-space-top" />
+            </td>
+          </tr>
+        </thead>
+        <tfoot className="pf-foot">
+          <tr>
+            <td>
+              <div className="pf-space-bottom" />
+            </td>
+          </tr>
+        </tfoot>
+        <tbody className="pf-body">
+          <tr>
+            <td>
       <Link href="/" className="no-print text-sm text-muted transition-colors hover:text-ink">
         ← Back to catalog
       </Link>
@@ -47,7 +76,7 @@ export default async function QuotePage({
       <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight">
-            Ballpark <span className="grad-text">Quote</span>
+            Quote for <span className="grad-text">Guidance</span> Purposes
           </h1>
           <p className="mt-1 font-mono text-xs text-faint">#{quote.quoteNumber ?? quote.id}</p>
         </div>
@@ -68,7 +97,7 @@ export default async function QuotePage({
       </div>
 
       {/* Customer information (from the logged-in account) */}
-      <div className="glass mt-6 rounded-xl p-5">
+      <div className="print-keep glass mt-6 rounded-xl p-5">
         <h2 className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-cyan">
           Customer Information
         </h2>
@@ -76,27 +105,8 @@ export default async function QuotePage({
           <Field label="Name" value={quote.customerName ?? "—"} />
           <Field label="Email" value={quote.customerEmail ?? "—"} />
           <Field label="Quote #" value={quote.quoteNumber ?? quote.id} mono />
-          <Field label="Date" value={dateFmt(quote.createdAt)} />
+          <Field label="Date" value={dateOnly(quote.createdAt)} />
         </div>
-      </div>
-
-      {/* Legal disclaimer — printed at the top of every quote */}
-      <div className="mt-4 rounded-xl border border-accent/25 bg-accent-soft/40 p-5">
-        <h2 className="font-display text-sm font-semibold text-accent">
-          {DISCLAIMER_TITLE}
-        </h2>
-        <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-muted">
-          {DISCLAIMER_TEXT}
-        </p>
-        {quote.disclaimerAcceptedAt && (
-          <p className="mt-3 text-[11px] text-muted">
-            Accepted by{" "}
-            <span className="text-ink">
-              {quote.customerName ?? quote.customerEmail ?? "the customer"}
-            </span>{" "}
-            on {dateFmt(quote.disclaimerAcceptedAt)}.
-          </p>
-        )}
       </div>
 
       {isSample && (
@@ -115,6 +125,7 @@ export default async function QuotePage({
                 <th className="px-4 py-3 text-right font-medium">Qty</th>
                 <th className="px-4 py-3 text-right font-medium">Unit (approx.)</th>
                 <th className="px-4 py-3 text-right font-medium">Line total</th>
+                <th className="no-print px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -124,13 +135,22 @@ export default async function QuotePage({
                   <tr key={l.id} className="border-b border-line/70 align-top last:border-0">
                     <td className="px-4 py-3">
                       <div className="font-medium text-ink">
-                        {l.catalogItem?.internalName ?? l.description}
+                        {l.usedReplacement
+                          ? l.description
+                          : l.catalogItem?.internalName ?? l.description}
                       </div>
-                      {l.synnexSKU && !l.synnexSKU.startsWith("MOCK-") && (
-                        <div className="mt-0.5 font-mono text-[11px] text-cyan/80">
-                          SKU {l.synnexSKU}
+                      {l.usedReplacement && (
+                        <div className="mt-0.5 text-[11px] text-cyan">
+                          Suggested alternative selected — replaces {l.originalName}
                         </div>
                       )}
+                      {l.synnexSKU &&
+                        !/^MOCK-/i.test(l.synnexSKU) &&
+                        l.synnexSKU.trim().length >= 4 && (
+                          <div className="mt-0.5 font-mono text-[11px] text-cyan/80">
+                            SKU {l.synnexSKU}
+                          </div>
+                        )}
                       {contact && (
                         <div className="mt-0.5 text-[11px] text-warn">
                           Configurable / custom — we&rsquo;ll price this for you
@@ -140,17 +160,20 @@ export default async function QuotePage({
                     <td className="tabular px-4 py-3 text-right text-muted">{l.qty}</td>
                     <td className="tabular px-4 py-3 text-right text-ink">
                       {contact ? (
-                        <span className="text-warn">Contact us</span>
+                        <span className="text-warn">Not available</span>
                       ) : (
                         approx(l.unitBallpark!)
                       )}
                     </td>
                     <td className="tabular px-4 py-3 text-right font-semibold text-ink">
                       {contact ? (
-                        <span className="text-warn">Contact us</span>
+                        <span className="text-warn">Not available</span>
                       ) : (
                         approx(l.lineTotal!)
                       )}
+                    </td>
+                    <td className="no-print px-4 py-3 text-right">
+                      <RemoveLineButton quoteId={quote.id} lineId={l.id} />
                     </td>
                   </tr>
                 );
@@ -164,6 +187,7 @@ export default async function QuotePage({
                 <td className="tabular px-4 py-3.5 text-right font-display text-lg font-semibold text-accent">
                   {approx(quote.subtotal)}
                 </td>
+                <td className="no-print" />
               </tr>
             </tfoot>
           </table>
@@ -172,11 +196,31 @@ export default async function QuotePage({
 
       {hasContactUs && (
         <p className="mt-3 text-xs text-muted">
-          Some items are configurable and shown as{" "}
-          <span className="font-medium text-warn">Contact us</span>. They&rsquo;re not
-          included in the subtotal — an Axus rep will follow up with pricing.
+          Some items are shown as{" "}
+          <span className="font-medium text-warn">Not available</span> (with a suggested
+          alternative on the catalog). They&rsquo;re not included in the subtotal — an
+          Axus rep will follow up with pricing.
         </p>
       )}
+
+      {/* Legal disclaimer — printed below the pricing on every quote */}
+      <div className="print-keep mt-6 rounded-xl border border-accent/25 bg-accent-soft/40 p-5">
+        <h2 className="font-display text-sm font-semibold text-accent">
+          {DISCLAIMER_TITLE}
+        </h2>
+        <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-muted">
+          {DISCLAIMER_TEXT}
+        </p>
+        {quote.disclaimerAcceptedAt && (
+          <p className="mt-3 text-[11px] text-muted">
+            Accepted by{" "}
+            <span className="text-ink">
+              {quote.customerName ?? quote.customerEmail ?? "the customer"}
+            </span>{" "}
+            on {dateFmt(quote.disclaimerAcceptedAt)}.
+          </p>
+        )}
+      </div>
 
       <div className="no-print mt-8 flex flex-wrap gap-3">
         <PrintButton />
@@ -186,17 +230,16 @@ export default async function QuotePage({
         >
           Continue shopping
         </Link>
-        <a
-          href={`mailto:sales@axustechnologies.com?subject=${encodeURIComponent(`Quote ${quote.quoteNumber ?? quote.id}`)}`}
-          className="rounded-lg border border-line bg-white/[0.02] px-4 py-2 text-sm font-medium text-ink transition-all hover:border-accent hover:text-accent"
-        >
-          Talk to Axus about this quote
-        </a>
+        <EmailQuoteButton quoteId={quote.id} />
       </div>
       <p className="no-print mt-3 text-xs text-faint">
         This quote is saved — bookmark this page to return to it anytime, or download a
         PDF copy above.
       </p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }

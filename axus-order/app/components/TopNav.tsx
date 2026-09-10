@@ -21,6 +21,28 @@ export function TopNav({
             Catalog
           </Link>
         )}
+        <Link
+          href="/guide"
+          className="rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-line/50 hover:text-ink"
+        >
+          User Guide
+        </Link>
+        {userName && (
+          <Link
+            href="/admin"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-line/50 hover:text-ink"
+          >
+            Usage &amp; Audit
+          </Link>
+        )}
+        {userName && (
+          <Link
+            href="/admin/guide"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-line/50 hover:text-ink"
+          >
+            Admin Guide
+          </Link>
+        )}
         {!restricted && isAdmin && (
           <Link
             href="/admin/catalog"

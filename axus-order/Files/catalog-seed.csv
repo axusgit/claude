@@ -6,54 +6,37 @@ Firewall / SD-WAN,FortiGate 120G,FG-120G,,PERCENT,15,Fortinet
 Firewall / SD-WAN,FortiGate 200G,FG-200G,,PERCENT,15,Fortinet (replaces EOO 200F)
 Networking,Managed Gigabit Switch,FS-124G-FPOE,,PERCENT,15,Business-grade managed gigabit (FortiSwitch 124G-FPOE)
 Networking,Wireless Access Point (WiFi6 dual-band),FAP-231F-A,,PERCENT,15,Centralized mgmt (FortiAP 231F Americas)
-Power,Redundant UPS,SMT1500RM2UC,,PERCENT,15,APC Smart-UPS 1500VA 2U rackmount
-Workstation,Client Workstation (Win11 / i5-i7 or Ryzen 5-7 / 16GB / SSD),G2V4X,,PERCENT,15,Dell OptiPlex 7020 SFF (i5-14500 / 16GB / 512GB SSD; config-to-order)
-Workstation,Welcome Kiosk PC (Win11 / touch),2NTMN,,PERCENT,15,Dell OptiPlex 7420 AIO 23.8in multi-touch
-Workstation,Welcome Tablet PC (Win11 / 10in multitouch),XGT-00003,,PERCENT,15,Microsoft Surface Go 4 for Business 10.5in
-Workstation,Laptop Workstation (Dell Pro 16 Plus / Ryzen AI 7 PRO / 32GB / 512GB / Win11 Pro),,14753676,PERCENT,15,Dell Pro 16 Plus PB16255 16in FHD+ (drop-ship)
-Monitor,24in Monitor 1920x1080,P2425H,,PERCENT,15,Dell P2425H FHD (replaces EOL 23in P2319H)
-Monitor,24in Monitor 1920x1200,P2425,,PERCENT,15,Dell P-series 24in WUXGA 16:10
-Monitor,17in+ Touchscreen Monitor (kiosk),E126096,,PERCENT,15,Elo 2202L 22in touchscreen
-Webcam,Logitech C615 Webcam,C615,,PERCENT,15,HCN Recommended
-Webcam,Logitech C920e Business Webcam,960-001401,,PERCENT,15,Replaces discontinued MS LifeCam Studio
-Webcam,Provider Webcam 1080p+,,,PERCENT,15,Needs model
-Tablet / Mobile,Apple iPad (Canto / Haiku),,,PERCENT,15,
-Tablet / Mobile,Apple iPhone / iPod Touch (Haiku),,,PERCENT,15,
-Server,MiPACS Storage Server (Win Server / Xeon 6-core / 16GB / 1TB RAID1),210-BJTQ,,PERCENT,15,Dell PowerEdge R360 base (config-to-order: 6-core E-2456 / 16GB / 2x1TB RAID1)
-Server,MiPACS Central Regional Server (Win Server / 8-16 vCPU / 32-64GB),8GP0F,,PERCENT,15,Dell PowerEdge R660xs base (config-to-order: Xeon Silver 4410Y / 32-64GB)
-Payment Terminal,Verifone P200 EMV,P200,,PERCENT,15,HCN Recommended
-Payment Terminal,PAX A80 EMV,A80,,PERCENT,15,HCN Recommended
-Payment Terminal,SRedkey 2 EMV,IDSK2-504ED,,PERCENT,15,HCN Recommended (ID TECH SREDKey 2)
-Signature Pad,Topaz T-S461-HSB-R,T-S461-HSB-R,,PERCENT,15,HCN Recommended
-Signature Pad,Topaz T-LBK755-BHSB-R,T-LBK755-BHSB-R,,PERCENT,15,HCN Recommended
-Signature Pad,Scriptel SlimShield LCD ST1580 ProScript,ST1580,,PERCENT,15,HCN Recommended
-Barcode Scanner,Datalogic Gryphon GD4520 (corded 2D),,,PERCENT,15,HCN Recommended (specify GD4520 variant)
-Barcode Scanner,Datalogic Gryphon GM4500 (wireless),GM4500,,PERCENT,15,Wireless (EOO Oct 2026; successor GM4600)
-Biometrics,Imprivata PatientSecure,,,PERCENT,15,
-Biometrics,M2SYS RightPatient,,,PERCENT,15,
-Thermal Printer (Kiosk),Custom Engineering KPM216H,KPM216H,,PERCENT,15,USB
-Thermal Printer (Kiosk),Custom Engineering KPM216HII,KPM216HII,,PERCENT,15,USB
-Thermal Printer (Kiosk),Practical Automation ITK 38,ITK38,,PERCENT,15,USB
-Label Printer,Dymo LabelWriter 550,2112552,,PERCENT,15,
-Label Printer,Dymo LabelWriter 550 Turbo,2112553,,PERCENT,15,Replaces EOL 450 Turbo
-Label Printer,Zebra ZD411 (direct thermal),ZD4A022-D01M00EZ,,PERCENT,15,Replaces EOL LP2824 Plus
-Kiosk Scanner,Ambir DS490i,DS490i,,PERCENT,15,8.5in full size
-Kiosk Scanner,Ambir DS490ix,DS490ix,,PERCENT,15,8.5in full size
-Kiosk Scanner,Ambir DS687,DS687,,PERCENT,15,business cards
-Kiosk Scanner,Inuvio Ecoscan i6d,ECSC-i6d,,PERCENT,15,business card
-Kiosk Scanner,Plustek MobileOffice D620,D620,,PERCENT,15,business card
-Document Scanner,Fujitsu fi-8820,FI-8820,,PERCENT,15,High-volume
-Document Scanner,Fujitsu fi-8930,FI-8930,,PERCENT,15,High-volume
-Document Scanner,Fujitsu fi-8950,FI-8950,,PERCENT,15,High-volume
-Document Scanner,Fujitsu fi-8150,FI-8150,,PERCENT,15,Departmental
-Document Scanner,Fujitsu fi-8270 (flatbed),FI-8270,,PERCENT,15,Departmental
-Document Scanner,Fujitsu fi-8190,FI-8190,,PERCENT,15,Departmental / Registration
-Document Scanner,Fujitsu fi-8170,FI-8170,,PERCENT,15,Registration
-Document Scanner,Kodak Alaris S3120,S3120,,PERCENT,15,High-volume (replaces EOL i4250)
-Document Scanner,Kodak Alaris i5650S,I5650S,,PERCENT,15,High-volume
-Document Scanner,Kodak Alaris i5850S,I5850S,,PERCENT,15,High-volume
-Document Scanner,Kodak Alaris S2040,S2040,,PERCENT,15,Departmental (replaces EOL i1190E)
-Document Scanner,Kodak Alaris S2070,S2070,,PERCENT,15,Departmental (replaces EOL i2820)
-Document Scanner,Kodak Alaris S3060,S3060,,PERCENT,15,Departmental (replaces EOL i2900)
-Document Scanner,Kodak Alaris E1025,E1025,,PERCENT,15,Registration
-Document Scanner,Kodak Alaris E1035,E1035,,PERCENT,15,Registration
+Desktop,Dell OptiPlex 7020 Plus SFF,94W75,,PERCENT,15,Meets Epic client workstation specs; good standard desktop option. — Intel Core i5-14500, 14th Gen, up to 5.0 GHz; 16 GB DDR5; 512 GB NVMe SSD
+Desktop,HP EliteDesk 8 G1i Tower,C6TX1UT#ABA,,PERCENT,15,Future-ready desktop with additional RAM and storage headroom. — Intel Core Ultra 7 265; 32 GB; 1 TB SSD
+Desktop,Lenovo ThinkCentre M90t Gen 5 Tower,12V20008US,,PERCENT,15,Enterprise-class desktop; strong manageability and reliability. — Intel Core i5-14500, 14th Gen, up to 5.0 GHz; 32 GB DDR5; 512 GB NVMe SSD
+Laptop,Dell Latitude 5550,7X988,,PERCENT,15,Business-class mobile device for Epic users. — Intel Core Ultra 5 135U, up to 4.4 GHz; 16 GB; 512 GB NVMe SSD
+Laptop,HP EliteBook 860 G11,A6TD8UT#ABA,,PERCENT,15,Good provider/manager laptop with larger 16-inch display. — Intel Core Ultra 5 125U; 16 GB DDR5; 512 GB NVMe SSD
+Laptop,Lenovo ThinkPad T14 Gen 5,21ML0089US,,PERCENT,15,Strong enterprise laptop for mobile clinical/administrative users. — Intel Core Ultra 7 155U, up to 4.8 GHz; 16 GB; 512 GB SSD
+Barcode Reader,Datalogic Gryphon I GD4520,GD4520-BK-USB,,PERCENT,15,Wired 2D barcode scanner for front desk, registration, and clinical workflows. — 2D imager, USB handheld
+Barcode Reader,Datalogic Gryphon GD4520 Handheld USB Kit,GD4520-HCK1,,PERCENT,15,Enhanced GD45XX option with image capture and document scanning capabilities. — 1MP optics, USB-only interface, omnidirectional reading
+Barcode Reader,Datalogic Gryphon I GM4500 Kit,GM4500-BK-910K1,,PERCENT,15,Cordless barcode scanner option for mobile clinical workflows. — 2D imager, RF 910 MHz wireless kit
+Signature Pad,Topaz SigLite SL,T-S461-HSB-R,,PERCENT,15,REQUIRED for Epic go-live. Cost-effective signature pad for Epic registration-style workflows. — USB, 4.4 x 1.4 in signing area
+Signature Pad,Topaz SignatureGem LCD 4x3,T-LBK755-BHSB-R,,PERCENT,15,REQUIRED for Epic go-live. Preferred LCD model for patient registration where users can see the signature. — LCD, serial/USB, 4.4 x 2.4 in signing area
+Signature Pad,Topaz SignatureGem LCD 1x5,T-LBK462-HSB-R,,PERCENT,15,REQUIRED for Epic go-live. Additional Topaz LCD model compatible with registration/signature capture workflows. — LCD, USB, 4.4 x 1.3 in signing area
+Signature Pad,Topaz SignatureGem LCD 4x5,T-LBK766SE-BHSB-R,,PERCENT,15,REQUIRED for Epic go-live. Larger signing area Topaz option for signature capture workflows. — LCD, serial/USB, 4.6 x 3.4 in signing area
+Signature Pad,Scriptel SlimShield LCD,ST1580,,PERCENT,15,REQUIRED for Epic go-live. Requested model; CDW listing not located during search. Validate availability through CDW account team. — LCD signature capture
+Signature Pad,Scriptel SlimShield LCD,ST1570,,PERCENT,15,REQUIRED for Epic go-live. Commonly used Scriptel model for healthcare registration workflows; validate Epic and CDW availability. — LCD signature capture
+Signature Pad,Scriptel EasyScript,ST1551,,PERCENT,15,REQUIRED for Epic go-live. Common Scriptel signature capture option; validate Epic and CDW availability. — USB signature capture
+Signature Pad,Scriptel SlimShield LCD,ST1581,,PERCENT,15,REQUIRED for Epic go-live. Updated SlimShield-family option; validate Epic and CDW availability. — LCD signature capture
+Printer,HP LaserJet Enterprise M611dn,7PS84A#BGJ,,PERCENT,15,Enterprise printer suitable for Epic forms, reports, schedules, and prescription-style workflows. — Monochrome laser, PCL support, 1200 x 1200 dpi
+Printer,HP LaserJet Enterprise M612dn,7PS86A#201,,PERCENT,15,High-volume enterprise printer option for clinical/business office printing. — Monochrome laser, PCL support, high-volume
+Printer,Brother HL-L6415DW,HLL6415DW,,PERCENT,15,Lower-cost workgroup printer option compatible with PCL6-style enterprise printing. — Monochrome laser, PCL6 emulation, Gigabit LAN/Wi-Fi
+Document Scanner,Ricoh fi-8170,PA03810-B055,,PERCENT,15,REQUIRED for Epic go-live. Best enterprise/high-volume scanner for Epic scanning workflows. — TWAIN/ISIS via PaperStream IP, 70 ppm, 100-page ADF
+Document Scanner,Epson DS-530 II,B11B261202,,PERCENT,15,REQUIRED for Epic go-live. Best value scanner for general clinic or registration scanning. — TWAIN/ISIS drivers, 35 ppm, 50-page ADF
+Document Scanner,Epson WorkForce DS-1730,B11B273201,,PERCENT,15,REQUIRED for Epic go-live. Best front desk scanner when flatbed scanning for IDs/cards is needed. — TWAIN/ISIS/WIA, flatbed plus ADF
+Label Printer,DYMO LabelWriter 550 Turbo,2112553,,PERCENT,15,Registration labels and patient address/chart label workflows. — Direct thermal, 300 dpi, USB/LAN, up to 90 labels/min
+Label Printer,Zebra ZD421d Advanced 4-Inch Direct Thermal Desktop Printer,ZD4A042-D01E00EZ,,PERCENT,15,Versatile healthcare labeling option for patient labels, specimen labels, and wristbands. — Direct thermal, 203 dpi, USB/Ethernet, ZPL/EPL
+Label Printer,Zebra ZD411 203dpi Direct Thermal Barcode Printer,ZD4A022-D01E00EZ,,PERCENT,15,Compact label printer for small clinic or workstation-specific label needs. — Direct thermal, 2 in print width, USB/Ethernet
+Webcam,Logitech C615 HD Webcam,C615,,PERCENT,15,Requested legacy option; verify current CDW availability or substitute with newer Logitech model. — USB, 1080p, autofocus
+Webcam,Microsoft LifeCam HD-3000,HD-3000,,PERCENT,15,Requested legacy option; Microsoft Modern Webcam is current replacement-style option on CDW. — USB, 720p, built-in microphone
+Webcam,Logitech C925e Business Webcam,960-001075,,PERCENT,15,Best current recommendation for provider telehealth/video visit workflows. — 1080p/30fps, autofocus, dual mics, privacy shutter
+Webcam,Logitech C920e,960-001401,,PERCENT,15,Good value standard webcam alternative. — 1080p, autofocus, privacy screen
+Webcam,Microsoft Modern Webcam,8L3-00001,,PERCENT,15,Current Microsoft webcam option for standardized environments. — 1080p, USB, built-in microphone
+Server,HPE ProLiant ML30 Gen11 Tower Server,P86726-005,,PERCENT,15,Recommended MiPACS server option; redundant power supplies; exceeds >10 client requirements. — Intel Xeon 6325P 3.5 GHz / up to 5.2 GHz; 32 GB; 2 x 960 GB SSD, RAID capable
+Server,HPE ProLiant ML30 Gen11 Tower Server,P72995-005,,PERCENT,15,Budget-friendly MiPACS server option; validate core count for larger deployments. — Intel Xeon E-2434 3.4 GHz / up to 5.0 GHz; 32 GB; 2 x 960 GB SSD, RAID capable
+Server,Dell PowerEdge R450,P7K9K,,PERCENT,15,Rack server option; needs storage/OS configuration changes for MiPACS requirement. — 2 x Intel Xeon Silver 4310, up to 3.3 GHz; 32 GB; 480 GB SSD listed; recommend upgrade to 2 x 1.92 TB RAID 1

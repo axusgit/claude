@@ -6,8 +6,10 @@ import { prisma } from "@/lib/prisma";
 import { getIdentity, roleOf } from "@/lib/auth";
 import { getAdapter } from "@/lib/synnex";
 import { toBallpark, type MarginRule } from "@/lib/synnex/pricing";
-import type { SkuQuery, PriceAvailability } from "@/lib/synnex/adapter";
+import { idQuery, type SkuQuery, type PriceAvailability } from "@/lib/synnex/adapter";
 import Link from "next/link";
+import { SkuEditor } from "./SkuEditor";
+import { ReplacementEditor } from "./ReplacementEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -60,14 +62,11 @@ export default async function AdminCatalogPage() {
   const queries: SkuQuery[] = [];
   const lineToItemId = new Map<number, string>();
   items.forEach((it, i) => {
-    if (!it.synnexSKU && !it.mfgPN) return;
+    const q = idQuery(it.synnexSKU, it.mfgPN);
+    if (!q.synnexSKU && !q.mfgPN) return;
     const lineNumber = i + 1;
     lineToItemId.set(lineNumber, it.id);
-    queries.push({
-      synnexSKU: it.synnexSKU ?? undefined,
-      mfgPN: it.synnexSKU ? undefined : it.mfgPN ?? undefined,
-      lineNumber,
-    });
+    queries.push({ ...q, lineNumber });
   });
 
   let paByItemId = new Map<string, PriceAvailability>();
@@ -118,6 +117,9 @@ export default async function AdminCatalogPage() {
       category: it.category ?? "Other",
       name: it.internalName,
       sku: it.mfgPN ?? it.synnexSKU ?? "—",
+      synnexSKU: it.synnexSKU ?? "",
+      replacementSku: it.replacementSku ?? "",
+      replacementName: it.replacementName ?? "",
       statusLabel,
       tone,
       ballpark,
@@ -165,6 +167,15 @@ export default async function AdminCatalogPage() {
         Status &amp; availability are live from the pricing source
         {adapterMode === "real" ? " (third-party distributor)." : " — sample data (mock adapter)."}
       </p>
+      <p className="mb-5 text-sm text-muted">
+        For any item showing <span className="text-warn">Not found</span>, paste a
+        working identifier into the{" "}
+        <span className="text-ink">TD SYNNEX SKU / Mfg Part #</span> field and Save — it
+        re-prices immediately. You can use either a numeric TD SYNNEX SKU (from the TD
+        SYNNEX EC portal) or a manufacturer part number (the{" "}
+        <span className="text-ink">Mfg. Part #</span> on CDW.com — not the CDW Part #).
+        Numeric values are looked up as a SKU, everything else as a part number.
+      </p>
 
       {sourceError && (
         <div className="mb-4 rounded-md border border-line bg-accent-soft px-4 py-2 text-sm text-warn">
@@ -173,27 +184,38 @@ export default async function AdminCatalogPage() {
       )}
 
       <div className="glass overflow-hidden rounded-xl">
-        <div className="overflow-x-auto">
+        <div className="max-h-[78vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-faint">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-line bg-surface text-left text-[11px] uppercase tracking-wider text-faint [&>th]:bg-surface">
                 <th className="px-4 py-3 font-medium">Category</th>
                 <th className="px-4 py-3 font-medium">Item</th>
-                <th className="px-4 py-3 font-medium">SKU (mfgPN)</th>
+                <th className="px-4 py-3 font-medium">Part No. (mfgPN)</th>
+                <th className="px-4 py-3 font-medium">TD SYNNEX SKU / Mfg Part #</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 text-right font-medium">Avail.</th>
                 <th className="px-4 py-3 text-right font-medium">Unit (approx.)</th>
-                <th className="px-4 py-3 font-medium">Replacement</th>
-                <th className="px-4 py-3 font-medium">Notes</th>
+                <th className="px-4 py-3 font-medium">Set Replacement</th>
+                <th className="px-4 py-3 font-medium">Closest Available</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="row-glow border-b border-line/70 align-top last:border-0">
                   <td className="px-4 py-2.5 text-muted whitespace-nowrap">{r.category}</td>
-                  <td className="px-4 py-2.5 font-medium">{r.name}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-ink">{r.name}</div>
+                    {r.notes && (
+                      <div className="mt-1 max-w-[420px] text-[12px] leading-relaxed text-muted">
+                        {r.notes}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 font-mono text-[11px] text-faint whitespace-nowrap">
                     {r.sku}
+                  </td>
+                  <td className="px-4 py-2.5 whitespace-nowrap">
+                    <SkuEditor id={r.id} initial={r.synnexSKU} />
                   </td>
                   <td className="px-4 py-2.5 whitespace-nowrap">
                     <StatusBadge label={r.statusLabel} tone={r.tone} />
@@ -203,10 +225,17 @@ export default async function AdminCatalogPage() {
                   </td>
                   <td className="tabular px-4 py-2.5 text-right">
                     {r.ballpark == null ? (
-                      <span className="text-warn">Contact us</span>
+                      <span className="text-warn">Not available</span>
                     ) : (
                       approx(r.ballpark)
                     )}
+                  </td>
+                  <td className="px-4 py-2.5 align-top">
+                    <ReplacementEditor
+                      id={r.id}
+                      initialSku={r.replacementSku}
+                      initialName={r.replacementName}
+                    />
                   </td>
                   <td className="px-4 py-2.5 text-xs">
                     {(() => {
@@ -225,7 +254,6 @@ export default async function AdminCatalogPage() {
                       );
                     })()}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-muted">{r.notes}</td>
                 </tr>
               ))}
             </tbody>

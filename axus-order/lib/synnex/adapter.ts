@@ -45,6 +45,21 @@ export interface SynnexAdapter {
   getPriceAvailability(items: SkuQuery[]): Promise<PriceAvailability[]>;
 }
 
+// Turn an item's identifiers into a P&A query. A manual override (synnexSKU field)
+// may hold EITHER a numeric TD SYNNEX SKU or a manufacturer part number (e.g. CDW's
+// "Mfg. Part #") — numeric is queried as a SKU, anything else as a mfgPN. Falls
+// back to the catalog mfgPN.
+export function idQuery(
+  synnexSKU?: string | null,
+  mfgPN?: string | null
+): { synnexSKU?: string; mfgPN?: string } {
+  const s = synnexSKU?.trim();
+  if (s) return /^\d+$/.test(s) ? { synnexSKU: s } : { mfgPN: s };
+  const m = mfgPN?.trim();
+  if (m) return { mfgPN: m };
+  return {};
+}
+
 interface SynnexConfig {
   tokenUrl: string;
   apiBase: string;
@@ -109,6 +124,18 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
   return out;
 };
 
+// Last-good price cache (per SKU key). TD SYNNEX's P&A occasionally returns a
+// transient "Server.RuntimeError"; without this, one hiccup blanks the whole
+// catalog to "Contact us". We retry, then fall back to the last good price.
+const PA_CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
+const paCache = new Map<string, { pa: PriceAvailability; at: number }>();
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function skuKey(it: SkuQuery): string | null {
+  if (it.synnexSKU != null && it.synnexSKU !== "") return "s:" + String(it.synnexSKU);
+  if (it.mfgPN) return "m:" + it.mfgPN;
+  return null;
+}
+
 export class RestSynnexAdapter implements SynnexAdapter {
   private cfg: SynnexConfig;
   constructor(cfg?: Partial<SynnexConfig>) {
@@ -122,44 +149,99 @@ export class RestSynnexAdapter implements SynnexAdapter {
     const withLines = items.map((it, i) => ({ ...it, lineNumber: it.lineNumber ?? i + 1 }));
 
     const results: PriceAvailability[] = [];
-    for (const batch of chunk(withLines, 100)) { // API cap is 100 SKUs/request
-      const token = await getAccessToken(this.cfg);
-      const payload = {
-        version: this.cfg.paVersion,
-        skuList: batch.map((it) => ({
-          ...(it.synnexSKU != null ? { synnexSKU: String(it.synnexSKU) } : {}),
-          ...(it.mfgPN ? { mfgPN: it.mfgPN } : {}),
-          ...(it.customerPartNo ? { customerPartNo: it.customerPartNo } : {}),
-          lineNumber: it.lineNumber,
-          priceType: it.priceType ?? this.cfg.defaultPriceType,
-        })),
-      };
-
-      let res = await fetch(`${this.cfg.apiBase}/api/v1/webservice/json/GetPriceAvailability`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      // One transparent retry if the cached token was rejected.
-      if (res.status === 401) {
-        tokenCache = null;
-        const fresh = await getAccessToken(this.cfg);
-        res = await fetch(`${this.cfg.apiBase}/api/v1/webservice/json/GetPriceAvailability`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${fresh}`, "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+    for (const batch of chunk(withLines, 50)) {
+      // Dedupe identical identifiers: TD SYNNEX collapses duplicate SKUs/mfgPNs in a
+      // single request (echoing only the first line), so we query each once and fan
+      // the result back to every line that asked for it.
+      const byKey = new Map<string, { rep: (typeof batch)[number]; lines: number[] }>();
+      for (const it of batch) {
+        const k = skuKey(it);
+        if (!k) continue;
+        const g = byKey.get(k);
+        if (g) g.lines.push(it.lineNumber);
+        else byKey.set(k, { rep: it, lines: [it.lineNumber] });
       }
+      const list = await this.callPA([...byKey.values()].map((g) => g.rep));
 
-      const json: any = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const err = json?.data?.errorMessage || json?.data?.errorCode || res.statusText;
-        throw new Error(`GetPriceAvailability failed (${res.status}): ${err}`);
+      if (list) {
+        // The response is keyed by each representative line number.
+        const repLineToKey = new Map<number, string>();
+        for (const [k, g] of byKey) repLineToKey.set(g.rep.lineNumber, k);
+        const bestByKey = new Map<string, PriceAvailability>();
+        for (const item of list) {
+          const pa = normalize(item);
+          const k = repLineToKey.get(pa.lineNumber);
+          if (!k) continue;
+          const cur = bestByKey.get(k);
+          if (!cur || (!cur.isQuotable && pa.isQuotable)) bestByKey.set(k, pa);
+        }
+        for (const [k, g] of byKey) {
+          const pa = bestByKey.get(k);
+          if (!pa) continue;
+          for (const ln of g.lines) results.push({ ...pa, lineNumber: ln });
+          if (pa.isQuotable) paCache.set(k, { pa, at: Date.now() });
+        }
+      } else {
+        // Transient failure after retries — serve last-good cached prices.
+        for (const it of batch) {
+          const key = skuKey(it);
+          const c = key ? paCache.get(key) : undefined;
+          if (c && Date.now() - c.at < PA_CACHE_TTL) {
+            results.push({ ...c.pa, lineNumber: it.lineNumber });
+          }
+        }
       }
-      for (const item of json.PriceAvailabilityList ?? []) results.push(normalize(item));
     }
     return results;
+  }
+
+  // Calls GetPriceAvailability with retries; returns the PriceAvailabilityList on
+  // success, or null after exhausting retries (transient error / network).
+  private async callPA(
+    batch: (SkuQuery & { lineNumber: number })[]
+  ): Promise<unknown[] | null> {
+    const url = `${this.cfg.apiBase}/api/v1/webservice/json/GetPriceAvailability`;
+    const payload = {
+      version: this.cfg.paVersion,
+      skuList: batch.map((it) => ({
+        ...(it.synnexSKU != null ? { synnexSKU: String(it.synnexSKU) } : {}),
+        ...(it.mfgPN ? { mfgPN: it.mfgPN } : {}),
+        ...(it.customerPartNo ? { customerPartNo: it.customerPartNo } : {}),
+        lineNumber: it.lineNumber,
+        priceType: it.priceType ?? this.cfg.defaultPriceType,
+      })),
+    };
+    const body = JSON.stringify(payload);
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        let token = await getAccessToken(this.cfg);
+        let res = await fetch(url, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body,
+        });
+        if (res.status === 401) {
+          tokenCache = null;
+          token = await getAccessToken(this.cfg);
+          res = await fetch(url, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body,
+          });
+        }
+        const json: any = await res.json().catch(() => ({}));
+        // Success only when the list is present and no transient error is reported.
+        if (res.ok && Array.isArray(json?.PriceAvailabilityList) && !json?.errorMessage) {
+          return json.PriceAvailabilityList;
+        }
+        // else: transient (Server.RuntimeError / empty) — fall through to retry.
+      } catch {
+        // network error — retry
+      }
+      if (attempt < 3) await sleep(400 * (attempt + 1)); // 0.4s, 0.8s, 1.2s
+    }
+    return null;
   }
 }
 
