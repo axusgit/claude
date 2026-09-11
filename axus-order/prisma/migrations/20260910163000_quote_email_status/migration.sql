@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Quote" ADD COLUMN "emailStatus" TEXT;
+ALTER TABLE "Quote" ADD COLUMN "emailedAt" DATETIME;
+ALTER TABLE "Quote" ADD COLUMN "emailError" TEXT;
+ALTER TABLE "Quote" ADD COLUMN "emailAttempts" INTEGER NOT NULL DEFAULT 0;

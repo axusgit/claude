@@ -1,11 +1,8 @@
 // lib/synnex/quote-service.ts
-// Turns a cart + catalog into a priced, client-safe quote.
-// Internally it sees partner cost; externally it returns only ballpark prices.
-import {
-  idQuery, type SynnexAdapter, type SkuQuery, type PriceAvailability,
-} from "./adapter";
-import { getAdapter } from "./index";
-import { toBallpark, type MarginRule, type BallparkLine } from "./pricing";
+// Turns a cart + catalog into a priced, client-safe quote using the NIGHTLY CACHED
+// ballpark prices (the same prices the catalog shows) — no live distributor call.
+import { idQuery } from "./adapter";
+import { type BallparkLine } from "./pricing";
 
 export interface CatalogItemInput {
   id: string;
@@ -14,6 +11,8 @@ export interface CatalogItemInput {
   mfgPN: string | null;
   replacementSku?: string | null;
   replacementName?: string | null;
+  cachedUnitPrice?: number | null;
+  cachedReplacementPrice?: number | null;
   marginType: "PERCENT" | "FIXED";
   marginValue: number;
 }
@@ -74,82 +73,43 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 export async function buildQuote(
   cart: CartLineInput[],
   catalog: CatalogItemInput[],
-  opts?: { adapter?: SynnexAdapter; validHours?: number }
+  opts?: { validHours?: number }
 ): Promise<QuoteBuild> {
-  const adapter = opts?.adapter ?? getAdapter();
   const validHours = opts?.validHours ?? 24 * 30; // 30-day budgetary validity window
   const byId = new Map(catalog.map((c) => [c.id, c]));
-  // Effective identifier per cart line (honors an accepted replacement).
-  const effs = cart.map((cl) => {
-    const item = byId.get(cl.catalogItemId);
-    return item ? effectiveId(item, cl.useReplacement) : null;
-  });
-
-  // Build P&A queries with stable line numbers so we can match results back.
-  const queries: SkuQuery[] = [];
-  cart.forEach((cl, i) => {
-    const eff = effs[i];
-    if (!eff) return;
-    // No identifier -> don't send an empty query to the API (it can error the whole
-    // batch). It falls through as "Not found" -> "Contact us" below.
-    if (!eff.synnexSKU && !eff.mfgPN) return;
-    queries.push({
-      synnexSKU: eff.synnexSKU,
-      mfgPN: eff.mfgPN,
-      lineNumber: i + 1,
-    });
-  });
-
-  const pa = queries.length ? await adapter.getPriceAvailability(queries) : [];
-
-  // One mfgPN can expand to several SKUs -> keep the best (Active w/ cost) per line.
-  const bestByLine = new Map<number, PriceAvailability>();
-  for (const r of pa) {
-    const cur = bestByLine.get(r.lineNumber);
-    if (!cur || (!cur.isQuotable && r.isQuotable)) bestByLine.set(r.lineNumber, r);
-  }
 
   const lines: QuoteLineResult[] = [];
   const serverCost: Record<string, number | null> = {};
   let subtotal = 0;
   let hasUnavailable = false;
 
-  cart.forEach((cl, i) => {
+  cart.forEach((cl) => {
     const item = byId.get(cl.catalogItemId);
-    const eff = effs[i];
-    if (!item || !eff) return;
+    if (!item) return;
+    const eff = effectiveId(item, cl.useReplacement);
     const qty = Math.max(1, Math.floor(cl.qty || 1));
-    const found = bestByLine.get(i + 1);
-    const rule: MarginRule = { type: item.marginType, value: item.marginValue };
-    const displayName = eff.name;
-
-    if (!found) {
-      hasUnavailable = true;
-      serverCost[item.id] = null;
-      lines.push({
-        catalogItemId: item.id, internalName: displayName,
-        synnexSKU: eff.sku, mfgPN: eff.mpn, description: null,
-        status: "Not found", available: 0, inStock: false,
-        unitBallpark: null, msrp: null, qty, lineTotal: null,
-        unavailableReason: "No pricing returned",
-        usedReplacement: eff.isReplacement, originalName: item.internalName,
-      });
-      return;
-    }
-
-    const bp = toBallpark(found, rule);
-    serverCost[item.id] = found.cost; // server-only snapshot
-    const lineTotal = bp.unitBallpark != null ? round2(bp.unitBallpark * qty) : null;
+    // Use the SAME nightly cached ballpark the catalog shows.
+    const unitBallpark =
+      (cl.useReplacement ? item.cachedReplacementPrice : item.cachedUnitPrice) ?? null;
+    const lineTotal = unitBallpark != null ? round2(unitBallpark * qty) : null;
     if (lineTotal != null) subtotal = round2(subtotal + lineTotal);
-    if (bp.unitBallpark == null) hasUnavailable = true;
+    if (unitBallpark == null) hasUnavailable = true;
+    serverCost[item.id] = null; // partner cost is not tracked in the cached model
 
     lines.push({
-      ...bp,
       catalogItemId: item.id,
-      internalName: displayName,
+      internalName: eff.name,
+      synnexSKU: eff.sku,
+      mfgPN: eff.mpn,
+      description: null,
+      status: unitBallpark != null ? "Active" : "Not found",
+      available: 0,
+      inStock: false,
+      unitBallpark,
+      msrp: null,
       qty,
       lineTotal,
-      unavailableReason: bp.unitBallpark == null ? `Not quotable (${bp.status})` : undefined,
+      unavailableReason: unitBallpark == null ? "Not available" : undefined,
       usedReplacement: eff.isReplacement,
       originalName: item.internalName,
     });

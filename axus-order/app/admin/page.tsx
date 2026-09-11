@@ -102,7 +102,7 @@ export default async function AdminDashboard() {
                     <td className="whitespace-nowrap px-4 py-2.5 text-muted">{dt(q.createdAt)}</td>
                     <td className="px-4 py-2.5">
                       <Link
-                        href={`/quote/${q.id}`}
+                        href={`/quote/${q.id}?review=1`}
                         className="font-mono text-xs text-cyan hover:underline"
                       >
                         {q.quoteNumber ?? q.id.slice(0, 8)}

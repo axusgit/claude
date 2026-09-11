@@ -5,7 +5,8 @@
   const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const initials = n => (n || "?").split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
-  const TITLES = { dashboard: "Dashboard", apps: "Products", monitoring: "Monitoring", reports: "Reports", admin: "Administration" };
+  const TITLES = { dashboard: "Dashboard", apps: "Products", tools: "Tools", monitoring: "Monitoring", reports: "Reports", admin: "Administration" };
+  const TOOLS_CAT = "Axus Tools";  // backend category value; these apps live in their own "Tools" tab
   let me = null, health = {};
 
   function applyTheme(t) {
@@ -158,26 +159,22 @@
   const stat = (n, label, cls) => `<div class="stat-card"><div class="stat-num ${cls}">${n}</div><div class="stat-label">${label}</div></div>`;
 
   function renderApps() {
-    const wrap = $("launcher"); wrap.innerHTML = "";
-    $("apps-count").textContent = me.apps.length ? `${me.apps.length} available` : "";
-    $("no-apps").classList.toggle("hidden", me.apps.length > 0);
-    // Group tiles by category. Uncategorized apps render first (no header);
-    // categorized ones (e.g. "Axus Tools") get a full-width section heading.
-    const cats = {}, order = [];
-    me.apps.forEach(a => {
-      const c = a.category || "";
-      if (!(c in cats)) { cats[c] = []; order.push(c); }
-      cats[c].push(a);
-    });
-    order.forEach(c => {
-      if (c) {
-        const h = document.createElement("h3");
-        h.className = "launcher-section";
-        h.textContent = c;
-        wrap.appendChild(h);
-      }
-      cats[c].forEach(a => wrap.appendChild(appTile(a, false)));
-    });
+    // Axus Tools now have their own left-nav tab; keep them out of Products.
+    const products = me.apps.filter(a => (a.category || "") !== TOOLS_CAT);
+    const tools = me.apps.filter(a => (a.category || "") === TOOLS_CAT);
+
+    fillLauncher($("launcher"), products);
+    $("apps-count").textContent = products.length ? `${products.length} available` : "";
+    $("no-apps").classList.toggle("hidden", products.length > 0);
+
+    fillLauncher($("launcher-tools"), tools);
+    $("tools-count").textContent = tools.length ? `${tools.length} available` : "";
+    $("no-tools").classList.toggle("hidden", tools.length > 0);
+  }
+
+  function fillLauncher(wrap, apps) {
+    wrap.innerHTML = "";
+    apps.forEach(a => wrap.appendChild(appTile(a, false)));
   }
 
   function renderMonitoring() {
@@ -280,6 +277,24 @@
     if (me) renderStats();  // refresh Online / Needs-attention counts + hero summary
   }
 
+  /* ---------- host metrics gauges (CPU / MEM / DISK) ---------- */
+  const gaugeColor = v => (v >= 90 ? "#dc2626" : v >= 70 ? "#f59e0b" : "#16a34a");
+  function setGauge(key, v) {
+    v = Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+    const arc = $(key + "Arc"), needle = $(key + "Needle"), val = $(key + "Val");
+    if (!arc || !needle || !val) return;
+    arc.setAttribute("stroke-dashoffset", 100 - v);
+    arc.setAttribute("stroke", gaugeColor(v));
+    needle.setAttribute("transform", "rotate(" + (-90 + v * 1.8) + " 50 50)");
+    val.textContent = v;
+  }
+  async function loadMetrics() {
+    try {
+      const d = await api("/api/sysmetrics");
+      setGauge("cpu", d.cpu); setGauge("mem", d.mem); setGauge("disk", d.disk);
+    } catch (e) { /* transient — keep last reading */ }
+  }
+
   function wireSearch() {
     $("search").oninput = e => {
       const q = e.target.value.toLowerCase();
@@ -307,6 +322,9 @@
     loadHealth();
     // Auto-refresh product health every 60s (skip while the tab is hidden).
     setInterval(() => { if (!document.hidden) loadHealth(); }, 60000);
+    // Live host gauges (CPU/MEM/DISK) — poll every second like the Syslog server.
+    loadMetrics();
+    setInterval(() => { if (!document.hidden) loadMetrics(); }, 1000);
   }
 
   document.addEventListener("DOMContentLoaded", start);

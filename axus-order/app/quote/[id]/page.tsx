@@ -2,9 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { DISCLAIMER_TITLE, DISCLAIMER_TEXT } from "@/lib/disclaimer";
-import { PrintButton } from "@/app/components/PrintButton";
-import { EmailQuoteButton } from "@/app/components/EmailQuoteButton";
 import { RemoveLineButton } from "@/app/components/RemoveLineButton";
+import { QuoteActions } from "@/app/components/QuoteActions";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +24,13 @@ const dateOnly = (d: Date) =>
 
 export default async function QuotePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ review?: string }>;
 }) {
   const { id } = await params;
+  const adminReview = (await searchParams)?.review === "1";
 
   const quote = await prisma.quote.findUnique({
     where: { id },
@@ -125,7 +127,7 @@ export default async function QuotePage({
                 <th className="px-4 py-3 text-right font-medium">Qty</th>
                 <th className="px-4 py-3 text-right font-medium">Unit (approx.)</th>
                 <th className="px-4 py-3 text-right font-medium">Line total</th>
-                <th className="no-print px-4 py-3" />
+                {!adminReview && <th className="no-print px-4 py-3" />}
               </tr>
             </thead>
             <tbody>
@@ -172,9 +174,11 @@ export default async function QuotePage({
                         approx(l.lineTotal!)
                       )}
                     </td>
-                    <td className="no-print px-4 py-3 text-right">
-                      <RemoveLineButton quoteId={quote.id} lineId={l.id} />
-                    </td>
+                    {!adminReview && (
+                      <td className="no-print px-4 py-3 text-right">
+                        <RemoveLineButton quoteId={quote.id} lineId={l.id} />
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -187,7 +191,7 @@ export default async function QuotePage({
                 <td className="tabular px-4 py-3.5 text-right font-display text-lg font-semibold text-accent">
                   {approx(quote.subtotal)}
                 </td>
-                <td className="no-print" />
+                {!adminReview && <td className="no-print" />}
               </tr>
             </tfoot>
           </table>
@@ -222,16 +226,7 @@ export default async function QuotePage({
         )}
       </div>
 
-      <div className="no-print mt-8 flex flex-wrap gap-3">
-        <PrintButton />
-        <Link
-          href="/"
-          className="rounded-lg border border-line bg-white/[0.02] px-4 py-2 text-sm font-medium text-ink transition-all hover:border-accent hover:text-accent"
-        >
-          Continue shopping
-        </Link>
-        <EmailQuoteButton quoteId={quote.id} />
-      </div>
+      <QuoteActions quoteId={quote.id} adminReview={adminReview} />
       <p className="no-print mt-3 text-xs text-faint">
         This quote is saved — bookmark this page to return to it anytime, or download a
         PDF copy above.

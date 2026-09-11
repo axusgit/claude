@@ -5,6 +5,9 @@ reads the identity and shows each user the apps they're entitled to. In local de
 (AUTH_MODE=local) a synthetic identity is used so the dashboard runs standalone.
 """
 import os
+import re
+import time
+import threading
 import httpx
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -88,6 +91,78 @@ def _apps_for(identity: Identity):
 @app.get("/api/health")
 def health():
     return {"status": "ok", "app": "Axus Hub"}
+
+
+# ------------------------------- host metrics -------------------------------
+# Lightweight CPU/MEM/DISK readings for the dashboard gauges (mirrors the Syslog
+# server). Read from /proc so they reflect the host box; CPU is sampled on a
+# background thread from /proc/stat deltas so each API hit is instant. All three
+# are percentages (0-100).
+_metrics = {"cpu": 0, "mem": 0, "disk": 0}
+_prev_cpu = None
+
+
+def _cpu_times():
+    try:
+        with open("/proc/stat") as f:
+            parts = f.readline().split()
+        vals = [int(x) for x in parts[1:]]
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)  # idle + iowait
+        return idle, sum(vals)
+    except Exception:
+        return None
+
+
+def _sample_metrics():
+    global _prev_cpu
+    # CPU: busy fraction since the previous sample.
+    cur = _cpu_times()
+    if cur and _prev_cpu:
+        idle_d = cur[0] - _prev_cpu[0]
+        total_d = cur[1] - _prev_cpu[1]
+        if total_d > 0:
+            _metrics["cpu"] = max(0, min(100, round((1 - idle_d / total_d) * 100)))
+    if cur:
+        _prev_cpu = cur
+
+    # MEM: /proc/meminfo (MemAvailable accounts for cache).
+    try:
+        mi = open("/proc/meminfo").read()
+        total = int(re.search(r"MemTotal:\s+(\d+)", mi).group(1))
+        avail = int(re.search(r"MemAvailable:\s+(\d+)", mi).group(1))
+        if total > 0:
+            _metrics["mem"] = round((1 - avail / total) * 100)
+    except Exception:
+        pass
+
+    # DISK: usage of the root filesystem (matches `df` Use%).
+    try:
+        s = os.statvfs("/")
+        used = s.f_blocks - s.f_bfree
+        denom = used + s.f_bavail
+        if denom > 0:
+            _metrics["disk"] = round(used / denom * 100)
+    except Exception:
+        pass
+
+
+def _metrics_loop():
+    while True:
+        try:
+            _sample_metrics()
+        except Exception:
+            pass
+        time.sleep(1)
+
+
+_sample_metrics()  # prime
+threading.Thread(target=_metrics_loop, daemon=True).start()
+
+
+@app.get("/api/sysmetrics")
+def sysmetrics(request: Request):
+    get_identity(request)  # gated like the rest of the app
+    return dict(_metrics)
 
 
 @app.get("/api/me")

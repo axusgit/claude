@@ -27,6 +27,11 @@ model CatalogItem {
   marginValue  Float       @default(15)
   active       Boolean     @default(true)
   createdAt    DateTime    @default(now())
+  // Client-facing ballpark prices, refreshed by the nightly price job (1 AM ET).
+  // The catalog reads these instead of calling the distributor on every request.
+  cachedUnitPrice        Float?
+  cachedReplacementPrice Float?
+  pricedAt               DateTime?
   quoteLines   QuoteLine[]
 }
 
@@ -48,6 +53,12 @@ model Quote {
   ipAddress            String?
   // Disclaimer acceptance (required before a quote is created).
   disclaimerAcceptedAt DateTime?
+  // Email delivery tracking ("Talk to Axus" send + resend/auto-retry).
+  // emailStatus: null = never sent · "sent" · "failed".
+  emailStatus   String?
+  emailedAt     DateTime?
+  emailError    String?
+  emailAttempts Int       @default(0)
   lines      QuoteLine[]
 }
 

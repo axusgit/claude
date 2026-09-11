@@ -32,8 +32,7 @@ export default function GuidePage() {
         How to use <span className="grad-text">Readiness Order</span>
       </h1>
       <p className="mt-2 text-sm text-muted">
-        A quick guide to building an EPIC-readiness hardware quote — and, for Axus staff,
-        keeping the catalog priced.
+        A quick guide to building an EPIC-readiness hardware quote.
       </p>
 
       {/* ---------------- Regular users ---------------- */}

@@ -37,6 +37,14 @@ export function TopNav({
         )}
         {userName && (
           <Link
+            href="/admin/quotes"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-line/50 hover:text-ink"
+          >
+            Quotes
+          </Link>
+        )}
+        {userName && (
+          <Link
             href="/admin/guide"
             className="rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-line/50 hover:text-ink"
           >

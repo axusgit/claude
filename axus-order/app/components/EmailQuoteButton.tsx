@@ -29,7 +29,7 @@ export function EmailQuoteButton({ quoteId }: { quoteId: string }) {
   if (state === "sent") {
     return (
       <span className="inline-flex items-center rounded-lg border border-ok/40 bg-ok/10 px-4 py-2 text-sm font-medium text-ok">
-        ✓ Sent to Axus — we&rsquo;ll be in touch
+        ✓ Sent to Axus — a copy is on its way to your inbox
       </span>
     );
   }

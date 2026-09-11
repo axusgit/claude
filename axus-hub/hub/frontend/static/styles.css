@@ -49,13 +49,13 @@ a { text-decoration: none; color: inherit; }
 .foot-actions .icon-btn, .foot-actions .theme-toggle { background: rgba(255,255,255,.07); border-color: transparent; color: var(--sidebar-text); }
 
 .main { min-width: 0; }
-.topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 30px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 4; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 30px; min-height: 92px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 4; }
 #page-title { font-size: 20px; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
 .global-search { width: 280px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 13px; font: inherit; color: var(--text); }
 .global-search:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 4px var(--ring); }
 .accent-strip { height: 3px; background: var(--grad); }
-.content { padding: 28px 30px 60px; max-width: 1080px; }
+.content { padding: 28px 30px 60px; }
 
 .hero { margin-bottom: 22px; }
 .hero h2 { font-size: 26px; }
@@ -71,19 +71,36 @@ a { text-decoration: none; color: inherit; }
 .stat-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
 
 /* launcher */
-.launcher { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
-.launcher.compact { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
-.launcher-section { grid-column: 1 / -1; margin: 12px 0 -2px; font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+/* Tools (and any small set) use auto-fill so tiles keep their size and don't balloon. */
+.launcher { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+/* Products fill the full row width (auto-fit collapses empty tracks) → wider, near-square tiles. */
+#launcher { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.launcher.compact { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.launcher-section { grid-column: 1 / -1; margin: 9px 0 -2px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .launcher-section:first-child { margin-top: 0; }
-.app-tile { background: var(--surface); border: 1px solid var(--border); border-radius: 15px; padding: 20px; box-shadow: var(--shadow); cursor: pointer; transition: transform .15s, box-shadow .2s, border-color .2s; display: flex; flex-direction: column; gap: 9px; position: relative; }
+.app-tile { background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 13px; box-shadow: var(--shadow); cursor: pointer; transition: transform .15s, box-shadow .2s, border-color .2s; display: flex; flex-direction: column; gap: 7px; position: relative; min-height: 140px; }
 .app-tile:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); border-color: var(--orange); }
-.app-icon { width: 48px; height: 48px; border-radius: 13px; background: var(--surface-2); display: grid; place-items: center; font-size: 24px; }
-.app-name { font-family: "Poppins"; font-weight: 700; font-size: 16px; }
-.app-desc { color: var(--text-soft); font-size: 12.5px; line-height: 1.5; flex: 1; }
+.app-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); display: grid; place-items: center; font-size: 16px; }
+.app-name { font-family: "Poppins"; font-weight: 700; font-size: 13.5px; line-height: 1.15; }
+.app-desc { color: var(--text-soft); font-size: 11px; line-height: 1.4; flex: 1; }
 .launcher.compact .app-desc { display: none; }
-.app-launch { color: var(--orange); font-weight: 600; font-size: 12.5px; }
-.app-status { position: absolute; top: 14px; right: 14px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); }
+.app-launch { color: var(--orange); font-weight: 600; font-size: 11px; }
+.app-status { position: absolute; top: 11px; right: 11px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); }
 .app-status.up { background: #16a34a; } .app-status.down { background: #e5484d; } .app-status.degraded { background: var(--orange-2); }
+
+/* Fixed host-metrics gauges (top center) — mirrors the Syslog server */
+.sysgauges { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 20;
+  display: flex; gap: 10px; padding: 7px 12px 5px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); }
+.gauge { width: 66px; text-align: center; }
+.gauge svg { width: 66px; height: 36px; display: block; margin: 0 auto; }
+.gauge .track { stroke: var(--surface-2); }
+.gauge .arc { transition: stroke-dashoffset .35s ease, stroke .3s ease; }
+.gauge .needle { stroke: var(--text); transition: transform .35s ease; }
+.gauge .hub { fill: var(--text); }
+.gauge .gval { font-size: 12.5px; font-weight: 700; line-height: 1; margin-top: 1px; font-variant-numeric: tabular-nums; }
+.gauge .glabel { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 1px; }
+@media (max-width: 600px) { .sysgauges { gap: 4px; padding: 6px 8px 4px; } .gauge { width: 56px; } .gauge svg { width: 56px; height: 31px; } }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 26px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 15px; padding: 20px; box-shadow: var(--shadow); }

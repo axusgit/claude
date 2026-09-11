@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildQuote, type CartLineInput } from "@/lib/synnex/quote-service";
 import { getIdentity } from "@/lib/auth";
+import { validateCustomerEmail } from "@/lib/email-validate";
 
 // --- Human-friendly quote number: <3-letter business><MMDDYYYY><NNN> ---
 // Prefer an explicit organization/company; fall back to the email domain, then name.
@@ -80,6 +81,12 @@ export async function POST(req: NextRequest) {
     const customerEmail = (cust.email?.trim() || identity?.email || "").trim() || null;
     const customerCompany = cust.company?.trim() || null;
 
+    // Require a real, reachable email (rejects placeholder/disposable/unroutable).
+    const emailCheck = await validateCustomerEmail(customerEmail ?? "");
+    if (!emailCheck.ok) {
+      return NextResponse.json({ error: emailCheck.reason }, { status: 400 });
+    }
+
     const catalog = await prisma.catalogItem.findMany({
       where: { id: { in: cart.map((l) => l.catalogItemId) }, active: true },
     });
@@ -95,6 +102,8 @@ export async function POST(req: NextRequest) {
         mfgPN: c.mfgPN,
         replacementSku: c.replacementSku,
         replacementName: c.replacementName,
+        cachedUnitPrice: c.cachedUnitPrice,
+        cachedReplacementPrice: c.cachedReplacementPrice,
         marginType: c.marginType as "PERCENT" | "FIXED",
         marginValue: c.marginValue,
       }))

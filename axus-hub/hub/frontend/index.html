@@ -20,6 +20,7 @@
       <nav class="side-nav">
         <a data-view="dashboard" class="nav-item active"><span class="ni">▦</span> Dashboard</a>
         <a data-view="apps" class="nav-item"><span class="ni">▣</span> Products</a>
+        <a data-view="tools" class="nav-item"><span class="ni">🧰</span> Tools</a>
         <a data-view="monitoring" class="nav-item admin-only"><span class="ni">📡</span> Monitoring</a>
         <a data-view="reports" class="nav-item admin-only"><span class="ni">📈</span> Reports</a>
         <a data-view="admin" class="nav-item admin-only"><span class="ni">⚙</span> Administration</a>
@@ -39,6 +40,39 @@
 
     <!-- ===================== MAIN ===================== -->
     <div class="main">
+      <!-- Live host metrics (CPU / MEM / DISK) — fixed top-center, mirrors the Syslog server -->
+      <div class="sysgauges" title="Live host metrics — CPU, memory, disk">
+        <div class="gauge">
+          <svg viewBox="0 0 100 54" role="img" aria-label="CPU usage">
+            <path class="track" d="M8 50 A42 42 0 0 1 92 50" fill="none" stroke-width="8" stroke-linecap="round"></path>
+            <path id="cpuArc" class="arc" d="M8 50 A42 42 0 0 1 92 50" fill="none" stroke-width="8" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" stroke="#16a34a"></path>
+            <line id="cpuNeedle" class="needle" x1="50" y1="50" x2="50" y2="15" stroke-width="2.4" stroke-linecap="round" transform="rotate(-90 50 50)"></line>
+            <circle class="hub" cx="50" cy="50" r="3.2"></circle>
+          </svg>
+          <div class="gval"><span id="cpuVal">–</span>%</div>
+          <div class="glabel">CPU</div>
+        </div>
+        <div class="gauge">
+          <svg viewBox="0 0 100 54" role="img" aria-label="Memory usage">
+            <path class="track" d="M8 50 A42 42 0 0 1 92 50" fill="none" stroke-width="8" stroke-linecap="round"></path>
+            <path id="memArc" class="arc" d="M8 50 A42 42 0 0 1 92 50" fill="none" stroke-width="8" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" stroke="#16a34a"></path>
+            <line id="memNeedle" class="needle" x1="50" y1="50" x2="50" y2="15" stroke-width="2.4" stroke-linecap="round" transform="rotate(-90 50 50)"></line>
+            <circle class="hub" cx="50" cy="50" r="3.2"></circle>
+          </svg>
+          <div class="gval"><span id="memVal">–</span>%</div>
+          <div class="glabel">MEM</div>
+        </div>
+        <div class="gauge">
+          <svg viewBox="0 0 100 54" role="img" aria-label="Disk usage">
+            <path class="track" d="M8 50 A42 42 0 0 1 92 50" fill="none" stroke-width="8" stroke-linecap="round"></path>
+            <path id="diskArc" class="arc" d="M8 50 A42 42 0 0 1 92 50" fill="none" stroke-width="8" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" stroke="#16a34a"></path>
+            <line id="diskNeedle" class="needle" x1="50" y1="50" x2="50" y2="15" stroke-width="2.4" stroke-linecap="round" transform="rotate(-90 50 50)"></line>
+            <circle class="hub" cx="50" cy="50" r="3.2"></circle>
+          </svg>
+          <div class="gval"><span id="diskVal">–</span>%</div>
+          <div class="glabel">DISK</div>
+        </div>
+      </div>
       <header class="topbar">
         <h1 id="page-title">Dashboard</h1>
         <div class="topbar-right">
@@ -75,6 +109,13 @@
           <div class="section-head"><h3>Your products</h3><span class="muted" id="apps-count"></span></div>
           <div id="launcher" class="launcher"></div>
           <div id="no-apps" class="empty hidden"><div class="empty-emoji">🔒</div><h3>No products</h3><p class="muted">You don't have access to any products yet. Contact an administrator.</p></div>
+        </section>
+
+        <!-- TOOLS -->
+        <section id="view-tools" class="view hidden">
+          <div class="section-head"><h3>Tools</h3><span class="muted" id="tools-count"></span></div>
+          <div id="launcher-tools" class="launcher"></div>
+          <div id="no-tools" class="empty hidden"><div class="empty-emoji">🧰</div><h3>No tools</h3><p class="muted">You don't have access to any tools yet. Contact an administrator.</p></div>
         </section>
 
         <!-- MONITORING -->

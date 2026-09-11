@@ -190,6 +190,20 @@ export function CatalogBrowser({ catalog }: { catalog: CatalogCardItem[] }) {
     });
   }
 
+  // Fresh start: empty the cart + accepted alternatives and reset the disclaimer
+  // acceptance so the legal message is shown again on the next quote.
+  function startNewQuote() {
+    setCart({});
+    setRepAccepted({});
+    setDisclaimerAccepted(false);
+    setCartOpen(false);
+    try {
+      localStorage.removeItem(DISCLAIMER_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
   const customerReady =
     customer.name.trim() !== "" &&
     EMAIL_RE.test(customer.email.trim()) &&
@@ -259,9 +273,11 @@ export function CatalogBrowser({ catalog }: { catalog: CatalogCardItem[] }) {
       setDisclaimerAccepted(true);
       router.push(`/quote/${data.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+      const msg = e instanceof Error ? e.message : "Something went wrong. Please try again.";
+      setError(msg);
       setSubmitting(false);
-      setShowDisclaimer(false);
+      // Re-open the details modal so the customer can correct a rejected email.
+      setShowDisclaimer(true);
     }
   }
 
@@ -609,6 +625,13 @@ export function CatalogBrowser({ catalog }: { catalog: CatalogCardItem[] }) {
                       className="text-sm text-muted transition-colors hover:text-ink"
                     >
                       Clear
+                    </button>
+                    <button
+                      onClick={startNewQuote}
+                      title="Empty the cart and start a brand new quote"
+                      className="text-sm text-muted transition-colors hover:text-ink"
+                    >
+                      Start new
                     </button>
                     <button
                       onClick={openDisclaimer}
