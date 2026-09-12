@@ -36,6 +36,15 @@ foreach ($repo in $repos) {
       Log "no changes $name ($branch)"
     }
 
+    # Fast-forward from origin first, so a repo that is ALSO pushed from
+    # elsewhere (e.g. a server mirroring its live state — copy-trading pushes
+    # nightly from axus-srv01) doesn't turn into a non-fast-forward push here.
+    # --ff-only is a safe no-op for repos only this workspace pushes; if it ever
+    # can't fast-forward (genuine divergence) it's logged and the push below
+    # surfaces the failure for manual reconciliation rather than auto-merging.
+    $pull = git -C $repo pull --ff-only origin $branch 2>&1
+    if ($LASTEXITCODE -ne 0) { Log "pull(ff-only) skipped $name ($branch): $pull" }
+
     $out = git -C $repo push origin $branch 2>&1
     if ($LASTEXITCODE -eq 0) { Log "pushed $name ($branch) OK" }
     else { Log "PUSH FAILED $name ($branch): $out" }
