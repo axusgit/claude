@@ -35,6 +35,8 @@ Thumbs.db
 On Call AI Agent/
 axus-backups/
 axus-insights/
+beacon-field-toolkit/
+copy-trading/
 
 # Audio Recorder captures — large local user data, never push (kept on disk)
 Audio Recorder/recordings/
