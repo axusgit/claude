@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { buildQuote, type CartLineInput } from "@/lib/synnex/quote-service";
 import { getIdentity } from "@/lib/auth";
 import { validateCustomerEmail } from "@/lib/email-validate";
+import { notifyQuoteCreated } from "@/lib/notify-quote-created";
 
 // --- Human-friendly quote number: <3-letter business><MMDDYYYY><NNN> ---
 // Prefer an explicit organization/company; fall back to the email domain, then name.
@@ -150,6 +151,19 @@ export async function POST(req: NextRequest) {
         if (attempt >= 4 || (e as { code?: string })?.code !== "P2002") throw e;
       }
     }
+
+    // Fire-and-forget internal heads-up to Axus sales. Never awaited: it must not
+    // add SMTP latency to the customer's response or fail the quote if mail hiccups.
+    notifyQuoteCreated({
+      id: quote.id,
+      quoteNumber: quote.quoteNumber,
+      customerName,
+      customerEmail,
+      customerCompany,
+      subtotal: build.subtotal,
+      lineCount: build.lines.length,
+      ipAddress: quote.ipAddress,
+    }).catch((e) => console.error("Quote-created notification failed:", e));
 
     return NextResponse.json({
       id: quote.id,
