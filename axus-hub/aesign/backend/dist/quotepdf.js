@@ -213,6 +213,21 @@ export async function generateQuotePdf(d, opts = {}) {
         }
         py += 9;
     }
+    // Optional caller-supplied clause (e.g. the On Call preliminary-quote note),
+    // rendered as a standout block after the standard terms — with an optional
+    // bold heading — so it visually separates from the routine T&C.
+    if (d.terms_addendum && d.terms_addendum.trim()) {
+        py += 6;
+        if (d.terms_addendum_heading && d.terms_addendum_heading.trim()) {
+            put(p2, d.terms_addendum_heading.trim(), M, py, { size: 10.5, bold: true, color: INK });
+            py += 16;
+        }
+        for (const l of wrap(d.terms_addendum.trim(), helv, 9.5, W - 2 * M)) {
+            put(p2, l, M, py, { size: 9.5, color: rgb(0.25, 0.27, 0.3) });
+            py += 13;
+        }
+        py += 9;
+    }
     py += 24;
     put(p2, "To accept this quotation, sign, print, date and return.", M, py, { size: 10, bold: true });
     py += 30;

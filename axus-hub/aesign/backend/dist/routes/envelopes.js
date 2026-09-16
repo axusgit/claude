@@ -2,14 +2,16 @@ import { createReadStream, createWriteStream, existsSync } from "node:fs";
 import { readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { getIdentity, hasEsignAccess } from "../identity.js";
 import { sendSigningInvite, sendPendingReminder } from "../mail.js";
-import { stampBaaPdf, etTodayLong } from "../baa.js";
+import { generateBaaPdf, etTodayLong } from "../baapdf.js";
 import { generateCocPdf } from "../cocpdf.js";
+import { generateSlaPdf } from "../slapdf.js";
 import { envelopeDocName } from "../docname.js";
+import { isOnCallQuote, notifyOnCallQuoteCompleted } from "../oncall.js";
 import { logActivity, renameActivity } from "./activity.js";
 function requireStaff(req, reply) {
     const id = getIdentity(req);
@@ -47,14 +49,18 @@ export async function envelopeRoutes(app) {
         const id = requireStaff(req, reply);
         if (!id)
             return;
-        const archived = req.query.archived === "true";
+        const q = req.query;
+        const deleted = q.deleted === "true";
+        // Recycle Bin lists soft-deleted docs; Documents/Archive exclude them.
+        const where = deleted ? "e.deleted = true" : "e.archived = $1 and e.deleted = false";
+        const params = deleted ? [] : [q.archived === "true"];
         const { rows } = await pool.query(`select e.id, e.title, e.status, e.created_by, e.created_at, e.sent_at, e.completed_at,
-              e.pdf_file, e.doc_type, e.company, e.archived, e.archived_at,
+              e.pdf_file, e.doc_type, e.company, e.archived, e.archived_at, e.deleted, e.deleted_at,
               coalesce((
                 select json_agg(json_build_object('name', r.name, 'status', r.status) order by r.sign_order)
                 from recipient r where r.envelope_id = e.id
               ), '[]') as recipients
-       from envelope e where e.archived = $1 order by e.created_at desc limit 500`, [archived]);
+       from envelope e where ${where} order by e.created_at desc limit 500`, params);
         return { envelopes: rows };
     });
     // Create a draft envelope.
@@ -119,7 +125,47 @@ export async function envelopeRoutes(app) {
         return { envelope: rows[0] };
     });
     // Delete an envelope (and its recipients/fields/events + stored files).
+    // Soft-delete: move a document to the Recycle Bin (kept 90 days, then flushed).
     app.delete("/:id", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const envId = req.params.id;
+        const r = await pool.query(`update envelope set deleted = true, deleted_at = now() where id = $1 and deleted = false returning title`, [envId]);
+        if (!r.rowCount)
+            return reply.code(404).send({ error: "Not found" });
+        logActivity(id.email, "Moved to Recycle Bin", r.rows[0].title, envId);
+        return { ok: true };
+    });
+    // Restore a document from the Recycle Bin back to the Documents tab (also
+    // clears archived so it lands in Documents, not Archive).
+    app.post("/:id/restore", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const envId = req.params.id;
+        const r = await pool.query(`update envelope set deleted = false, deleted_at = null, archived = false, archived_at = null where id = $1 returning title`, [envId]);
+        if (!r.rowCount)
+            return reply.code(404).send({ error: "Not found" });
+        logActivity(id.email, "Restored from Recycle Bin", r.rows[0].title, envId);
+        return { ok: true };
+    });
+    // Archive a single document (e.g. straight from the Recycle Bin) — moves it to
+    // the Archive tab and out of the bin (clears deleted).
+    app.post("/:id/archive", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const envId = req.params.id;
+        const r = await pool.query(`update envelope set archived = true, archived_at = now(), deleted = false, deleted_at = null where id = $1 returning title`, [envId]);
+        if (!r.rowCount)
+            return reply.code(404).send({ error: "Not found" });
+        logActivity(id.email, "Archived document", r.rows[0].title, envId);
+        return { ok: true };
+    });
+    // Permanently delete a document (from the Recycle Bin) — removes files + all
+    // rows (recipients/fields/events cascade). Irreversible.
+    app.delete("/:id/purge", async (req, reply) => {
         const id = requireStaff(req, reply);
         if (!id)
             return;
@@ -141,7 +187,7 @@ export async function envelopeRoutes(app) {
             }
         }
         await pool.query(`delete from envelope where id = $1`, [envId]); // cascades children
-        logActivity(id.email, "Deleted document", r.title, envId);
+        logActivity(id.email, "Permanently deleted document", r.title, envId);
         return { ok: true };
     });
     // Total disk used by stored document files (source / generated / sealed PDFs).
@@ -173,7 +219,7 @@ export async function envelopeRoutes(app) {
     });
     // Bulk archive: move documents older than a chosen age to the Archive tab.
     const ARCHIVE_DAYS = new Set([1, 7, 30, 60, 90, 183, 365, 1095, 1825, 3650]);
-    const olderThan = `archived = false and created_at < now() - ($1 || ' days')::interval`;
+    const olderThan = `archived = false and deleted = false and created_at < now() - ($1 || ' days')::interval`;
     // How many (non-archived) documents WOULD be archived (shown before confirming).
     app.get("/archive-preview", async (req, reply) => {
         const id = requireStaff(req, reply);
@@ -221,6 +267,57 @@ export async function envelopeRoutes(app) {
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'cancelled', 'Cancelled')`, [envId, id.email]);
         logActivity(id.email, "Cancelled document", r.rows[0].title, envId);
         return { ok: true };
+    });
+    // Complete a document from a MANUALLY signed copy. Used when a recipient signed
+    // OFFLINE (e.g. printed the quote PDF, wet-signed it, and returned it) rather
+    // than through the eSign link. The uploaded PDF becomes the sealed (final) copy,
+    // the envelope is marked completed, every non-declined recipient is recorded as
+    // signed, and — for an On Call-originated quote — On Call is notified so the
+    // signed quote appears under its Invoices, exactly like an e-signed completion.
+    app.post("/:id/upload-signed", async (req, reply) => {
+        const id = requireStaff(req, reply);
+        if (!id)
+            return;
+        const envId = req.params.id;
+        const env = await pool.query(`select id, title, status, created_by, doc_type, company, quote_data from envelope where id = $1`, [envId]);
+        if (!env.rowCount)
+            return reply.code(404).send({ error: "Not found" });
+        const e = env.rows[0];
+        if (e.status === "completed") {
+            return reply.code(409).send({ error: "This document is already completed." });
+        }
+        if (e.status === "cancelled" || e.status === "declined") {
+            return reply.code(409).send({ error: `This document has been ${e.status} and can't be completed.` });
+        }
+        const file = await req.file();
+        if (!file)
+            return reply.code(400).send({ error: "No file uploaded" });
+        const ext = (file.filename.split(".").pop() ?? "").toLowerCase();
+        if (ext !== "pdf") {
+            // Drain the stream so the request completes cleanly, then reject.
+            file.file.resume();
+            return reply.code(415).send({ error: "Please upload a PDF of the signed document." });
+        }
+        const stored = `${envId}-signed.pdf`;
+        await pipeline(file.file, createWriteStream(join(config.storageDir, stored)));
+        const bytes = await readFile(join(config.storageDir, stored));
+        const sha256 = createHash("sha256").update(bytes).digest("hex");
+        // The uploaded signed PDF is the final sealed copy.
+        await pool.query(`update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`, [stored, sha256, envId]);
+        // Record every recipient (who hasn't declined) as signed offline.
+        await pool.query(`update recipient set status = 'signed', signed_at = coalesce(signed_at, now())
+       where envelope_id = $1 and status <> 'declined'`, [envId]);
+        await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'completed', $3)`, [envId, id.email, `Manually signed copy uploaded (signed offline). SHA-256 ${sha256}`]);
+        logActivity(id.email, "Completed document (manual signed copy)", e.title, envId);
+        // On Call-originated quote: notify On Call so it shows under Invoices, same as
+        // an e-signed completion. Fire-and-forget (the helper never throws).
+        if (isOnCallQuote(e)) {
+            const recs = await pool.query(`select name, email,
+                to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
+         from recipient where envelope_id = $1 order by sign_order`, [envId]);
+            void notifyOnCallQuoteCompleted(e, bytes, sha256, recs.rows);
+        }
+        return { ok: true, completed: true };
     });
     // Resend the signing link to everyone who hasn't signed or declined yet.
     app.post("/:id/resend", async (req, reply) => {
@@ -347,11 +444,39 @@ export async function envelopeRoutes(app) {
             await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'document_uploaded', $3)`, [envId, id.email, "Certificate of Completion template applied"]);
             return { ok: true, applied: true, pdf: stored };
         }
-        const TEMPLATE_FILES = { BAA: "axus-baa.pdf" };
+        // SLA (After Hours On Call) is likewise GENERATED on the fly, baked with the
+        // company + today's date, and carries its own two-signer field layout.
+        if (type === "SLA") {
+            const { bytes, layout } = await generateSlaPdf({
+                company: row.company ?? undefined,
+                dateLong: etTodayLong(),
+            });
+            const stored = `${envId}-source.pdf`;
+            await writeFile(join(config.storageDir, stored), bytes);
+            await pool.query(`update envelope set source_file = $1, pdf_file = $2, field_layout = $3 where id = $4`, [stored, stored, JSON.stringify(layout), envId]);
+            await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'document_uploaded', $3)`, [envId, id.email, "SLA template applied"]);
+            return { ok: true, applied: true, pdf: stored };
+        }
+        // BAA (HIPAA/HITECH) is GENERATED on the fly, baked with the Covered Entity +
+        // today's date + Florida governing law, on the Axus letterhead, with its own
+        // two-signer field layout (like the SLA / Certificate of Completion).
+        if (type === "BAA") {
+            const { bytes, layout } = await generateBaaPdf({
+                company: row.company ?? undefined,
+                dateLong: etTodayLong(),
+            });
+            const stored = `${envId}-source.pdf`;
+            await writeFile(join(config.storageDir, stored), bytes);
+            await pool.query(`update envelope set source_file = $1, pdf_file = $2, field_layout = $3 where id = $4`, [stored, stored, JSON.stringify(layout), envId]);
+            await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'document_uploaded', $3)`, [envId, id.email, "BAA template applied"]);
+            return { ok: true, applied: true, pdf: stored };
+        }
+        // Stored-template path (PDF, or .docx converted via Gotenberg). No types use it
+        // today — BAA/SLA/COC/Quote are all generated — but kept for future templates.
+        const TEMPLATE_FILES = {};
         const base = TEMPLATE_FILES[type];
         if (!base)
             return { ok: true, applied: false, reason: "no template for this type" };
-        // Prefer a PDF; accept a .docx sibling (converted via Gotenberg).
         let tmplPath = null;
         let tmplName = base;
         for (const c of [base, base.replace(/\.pdf$/i, ".docx")]) {
@@ -366,18 +491,7 @@ export async function envelopeRoutes(app) {
             return { ok: true, applied: false, reason: "template file not found" };
         const ext = (tmplName.split(".").pop() ?? "pdf").toLowerCase();
         const stored = `${envId}-source.${ext}`;
-        // For the BAA PDF, fill the page-1 blanks (Effective Date = today, Covered
-        // Entity = this envelope's company) before storing.
-        if (type === "BAA" && ext === "pdf") {
-            const stamped = await stampBaaPdf(await readFile(tmplPath), {
-                company: row.company ?? undefined,
-                dateLong: etTodayLong(),
-            });
-            await writeFile(join(config.storageDir, stored), stamped);
-        }
-        else {
-            await writeFile(join(config.storageDir, stored), await readFile(tmplPath));
-        }
+        await writeFile(join(config.storageDir, stored), await readFile(tmplPath));
         const pdfFile = ext === "pdf" ? stored : await convertToPdf(join(config.storageDir, stored), tmplName, envId);
         if (!pdfFile)
             return reply.code(422).send({ error: "Could not prepare the template PDF." });
@@ -402,17 +516,24 @@ export async function envelopeRoutes(app) {
             reply.header("Content-Type", "application/pdf");
             return reply.send(Buffer.from(bytes));
         }
-        const TEMPLATE_FILES = { BAA: "axus-baa.pdf" };
+        if (type === "SLA") {
+            const { bytes } = await generateSlaPdf({ company: q.company, dateLong: etTodayLong() });
+            reply.header("Content-Type", "application/pdf");
+            return reply.send(Buffer.from(bytes));
+        }
+        if (type === "BAA") {
+            const { bytes } = await generateBaaPdf({ company: q.company, dateLong: etTodayLong() });
+            reply.header("Content-Type", "application/pdf");
+            return reply.send(Buffer.from(bytes));
+        }
+        const TEMPLATE_FILES = {};
         const base = TEMPLATE_FILES[type];
         if (!base)
             return reply.code(404).send({ error: "No template for this type" });
         const p = join(process.cwd(), "templates", base);
         if (!existsSync(p))
             return reply.code(404).send({ error: "Template file not found" });
-        let bytes = await readFile(p);
-        if (type === "BAA") {
-            bytes = await stampBaaPdf(bytes, { company: q.company, dateLong: etTodayLong() });
-        }
+        const bytes = await readFile(p);
         reply.header("Content-Type", "application/pdf");
         return reply.send(Buffer.from(bytes));
     });

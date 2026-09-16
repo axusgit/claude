@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { requireStaff } from "../identity.js";
 import { generateQuotePdf, generateQuoteTemplatePdf } from "../quotepdf.js";
 import { logActivity, renameActivity } from "./activity.js";
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 // Today's date in Eastern Time as MMDDYYYY (the quote-number prefix).
 function etDatePrefix() {
     const p = new Intl.DateTimeFormat("en-US", {
@@ -15,6 +16,26 @@ function etDatePrefix() {
     }).formatToParts(new Date());
     const get = (t) => p.find((x) => x.type === t)?.value ?? "";
     return `${get("month")}${get("day")}${get("year")}`;
+}
+// Auto-sync a quote's signer to match its contact: replace the envelope's
+// recipients + fields with a single "Customer" signer and the layout's signature
+// fields. No-op when no valid contact email is supplied (leaves recipients as-is),
+// so removing the contact doesn't wipe a manually-managed recipient.
+async function syncQuoteRecipient(envId, recipient, layout) {
+    const email = (recipient?.email ?? "").trim().toLowerCase();
+    const name = (recipient?.name ?? "").trim();
+    if (!name || !EMAIL_RE.test(email))
+        return;
+    await pool.query(`delete from field where envelope_id = $1`, [envId]);
+    await pool.query(`delete from recipient where envelope_id = $1`, [envId]);
+    const rec = await pool.query(`insert into recipient (envelope_id, name, email, role, sign_order)
+     values ($1, $2, $3, 'signer', 1) returning id`, [envId, name, email]);
+    const recipientId = rec.rows[0].id;
+    const slot = (layout ?? []).find((s) => s.role === "Customer") ?? layout?.[0];
+    for (const f of slot?.fields ?? []) {
+        await pool.query(`insert into field (envelope_id, recipient_id, type, page, x, y, w, h, required)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, true)`, [envId, recipientId, f.type, f.page, f.x, f.y, f.w, f.h]);
+    }
 }
 export async function quoteRoutes(app) {
     // Download a blank, Axus-branded quote template for sales to fill in and hand
@@ -51,6 +72,8 @@ export async function quoteRoutes(app) {
         await writeFile(join(config.storageDir, fname), Buffer.from(bytes));
         await pool.query(`update envelope set source_file = $1, pdf_file = $1 where id = $2`, [fname, envId]);
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`, [envId, id.email, title]);
+        // Auto-add the signer to match the quote's contact.
+        await syncQuoteRecipient(envId, body.recipient, layout);
         const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
         logActivity(id.email, "Created quote", title, envId);
         return reply.code(201).send({ envelope: updated.rows[0] });
@@ -65,20 +88,35 @@ export async function quoteRoutes(app) {
         const q = body.quote;
         if (!q?.customer?.company?.trim())
             return reply.code(400).send({ error: "A customer company is required." });
-        const cur = await pool.query(`select status from envelope where id = $1`, [envId]);
+        const cur = await pool.query(`select status, quote_data from envelope where id = $1`, [envId]);
         if (!cur.rowCount)
             return reply.code(404).send({ error: "Not found" });
         if (cur.rows[0].status !== "draft") {
             return reply.code(409).send({ error: "Only draft quotes can be edited." });
         }
+        // Preserve caller-supplied fields the quote EDITOR doesn't manage (e.g. the
+        // On Call preliminary-quote clause added via /api/external) so that editing a
+        // quote in eSign — adding a company, changing an item — never drops them.
+        const prev = (cur.rows[0].quote_data ?? {});
+        if (prev.terms_addendum && !q.terms_addendum)
+            q.terms_addendum = prev.terms_addendum;
+        if (prev.terms_addendum_heading && !q.terms_addendum_heading)
+            q.terms_addendum_heading = prev.terms_addendum_heading;
         const { bytes, layout } = await generateQuotePdf(q);
         const fname = `${envId}-quote.pdf`;
         await writeFile(join(config.storageDir, fname), Buffer.from(bytes));
+        // Keep the standard "<Company> — Quote <number>" title on edit (the editor
+        // otherwise sends a plain "<Company> Quote", dropping the quote number).
+        const num = (q.quote_number || prev.quote_number || "").trim();
+        const newTitle = (num
+            ? `${q.customer.company.trim()} — Quote ${num}`
+            : `${q.customer.company.trim()} Quote`).slice(0, 200);
         await pool.query(`update envelope set quote_data = $1, company = $2, source_file = $3, pdf_file = $3,
-              field_layout = $4, title = coalesce($5, title) where id = $6`, [JSON.stringify(q), q.customer.company.trim(), fname, JSON.stringify(layout), body.title?.trim() || null, envId]);
+              field_layout = $4, title = $5 where id = $6`, [JSON.stringify(q), q.customer.company.trim(), fname, JSON.stringify(layout), newTitle, envId]);
+        // Keep the signer in sync with the quote's contact on edit.
+        await syncQuoteRecipient(envId, body.recipient, layout);
         const updated = await pool.query(`select * from envelope where id = $1`, [envId]);
-        if (body.title?.trim())
-            renameActivity(envId, body.title.trim().slice(0, 200));
+        renameActivity(envId, newTitle);
         return { envelope: updated.rows[0] };
     });
 }
