@@ -8,7 +8,7 @@ import { pool } from "../db.js";
 import { config } from "../config.js";
 import { getIdentity, hasEsignAccess, type Identity } from "../identity.js";
 import { sendSigningInvite, sendPendingReminder } from "../mail.js";
-import { stampBaaPdf, etTodayLong } from "../baa.js";
+import { generateBaaPdf, etTodayLong } from "../baapdf.js";
 import { generateCocPdf } from "../cocpdf.js";
 import { generateSlaPdf } from "../slapdf.js";
 import { envelopeDocName } from "../docname.js";
@@ -474,11 +474,33 @@ export async function envelopeRoutes(app: FastifyInstance) {
       return { ok: true, applied: true, pdf: stored };
     }
 
-    const TEMPLATE_FILES: Record<string, string> = { BAA: "axus-baa.pdf" };
+    // BAA (HIPAA/HITECH) is GENERATED on the fly, baked with the Covered Entity +
+    // today's date + Florida governing law, on the Axus letterhead, with its own
+    // two-signer field layout (like the SLA / Certificate of Completion).
+    if (type === "BAA") {
+      const { bytes, layout } = await generateBaaPdf({
+        company: row.company ?? undefined,
+        dateLong: etTodayLong(),
+      });
+      const stored = `${envId}-source.pdf`;
+      await writeFile(join(config.storageDir, stored), bytes);
+      await pool.query(
+        `update envelope set source_file = $1, pdf_file = $2, field_layout = $3 where id = $4`,
+        [stored, stored, JSON.stringify(layout), envId],
+      );
+      await pool.query(
+        `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'document_uploaded', $3)`,
+        [envId, id.email, "BAA template applied"],
+      );
+      return { ok: true, applied: true, pdf: stored };
+    }
+
+    // Stored-template path (PDF, or .docx converted via Gotenberg). No types use it
+    // today — BAA/SLA/COC/Quote are all generated — but kept for future templates.
+    const TEMPLATE_FILES: Record<string, string> = {};
     const base = TEMPLATE_FILES[type];
     if (!base) return { ok: true, applied: false, reason: "no template for this type" };
 
-    // Prefer a PDF; accept a .docx sibling (converted via Gotenberg).
     let tmplPath: string | null = null;
     let tmplName = base;
     for (const c of [base, base.replace(/\.pdf$/i, ".docx")]) {
@@ -493,17 +515,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
 
     const ext = (tmplName.split(".").pop() ?? "pdf").toLowerCase();
     const stored = `${envId}-source.${ext}`;
-    // For the BAA PDF, fill the page-1 blanks (Effective Date = today, Covered
-    // Entity = this envelope's company) before storing.
-    if (type === "BAA" && ext === "pdf") {
-      const stamped = await stampBaaPdf(await readFile(tmplPath), {
-        company: row.company ?? undefined,
-        dateLong: etTodayLong(),
-      });
-      await writeFile(join(config.storageDir, stored), stamped);
-    } else {
-      await writeFile(join(config.storageDir, stored), await readFile(tmplPath));
-    }
+    await writeFile(join(config.storageDir, stored), await readFile(tmplPath));
     const pdfFile =
       ext === "pdf" ? stored : await convertToPdf(join(config.storageDir, stored), tmplName, envId);
     if (!pdfFile) return reply.code(422).send({ error: "Could not prepare the template PDF." });
@@ -537,15 +549,17 @@ export async function envelopeRoutes(app: FastifyInstance) {
       reply.header("Content-Type", "application/pdf");
       return reply.send(Buffer.from(bytes));
     }
-    const TEMPLATE_FILES: Record<string, string> = { BAA: "axus-baa.pdf" };
+    if (type === "BAA") {
+      const { bytes } = await generateBaaPdf({ company: q.company, dateLong: etTodayLong() });
+      reply.header("Content-Type", "application/pdf");
+      return reply.send(Buffer.from(bytes));
+    }
+    const TEMPLATE_FILES: Record<string, string> = {};
     const base = TEMPLATE_FILES[type];
     if (!base) return reply.code(404).send({ error: "No template for this type" });
     const p = join(process.cwd(), "templates", base);
     if (!existsSync(p)) return reply.code(404).send({ error: "Template file not found" });
-    let bytes: Uint8Array = await readFile(p);
-    if (type === "BAA") {
-      bytes = await stampBaaPdf(bytes, { company: q.company, dateLong: etTodayLong() });
-    }
+    const bytes: Uint8Array = await readFile(p);
     reply.header("Content-Type", "application/pdf");
     return reply.send(Buffer.from(bytes));
   });

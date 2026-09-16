@@ -1,21 +1,19 @@
 # Axus eSign — document templates
 
-Reusable source documents that get uploaded into an envelope when creating a
-non-Quote document (SOW / MSA / BAA). Quotes are generated on the fly and do not
-live here.
+Reusable *stored* source documents that get uploaded into an envelope when creating a
+non-generated document type. **Currently empty** — the branded document types are all
+**generated on the fly** in code (on the Axus letterhead), not stored here:
 
-## Conventions
-- One file per template, named `axus-<type>.<ext>` (e.g. `axus-baa.pdf`, `axus-msa.docx`).
-- **PDF** is preferred (exact layout, deterministic field placement). **DOCX** is
-  also accepted — the app converts it to PDF via Gotenberg on upload.
-- Include a clear signature block so the click-to-place editor can auto-fill
-  fields on the blanks, e.g.:
+- **BAA** → `backend/src/baapdf.ts` (`generateBaaPdf`)
+- **SLA** → `backend/src/slapdf.ts` (`generateSlaPdf`)
+- **Certificate of Completion** → `backend/src/cocpdf.ts` (`generateCocPdf`)
+- **Quote** → `backend/src/quotepdf.ts` (`generateQuotePdf`)
 
-  ```
-  Signature: ______________________    Date: __________
-  Printed Name: ___________________
-  Title: __________________________
-  ```
+All four draw `backend/assets/letterhead.jpg` as a full-page background and keep content
+inside the letterhead's clear zone (top-based Y `150 … 704`).
 
-Drop new templates here; wiring a template to a document type is a code change
-in the e-sign app (frontend/backend), not just a file drop.
+## If you add a stored-template type later
+- One file per template, named `axus-<type>.<ext>` (e.g. `axus-foo.pdf`, `axus-foo.docx`).
+- **PDF** preferred (deterministic); **DOCX** is converted to PDF via Gotenberg on upload.
+- Register it in `TEMPLATE_FILES` in `backend/src/routes/envelopes.ts` (both `apply-template`
+  and `template-preview`) — a file drop alone does nothing.

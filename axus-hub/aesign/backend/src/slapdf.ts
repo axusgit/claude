@@ -20,8 +20,11 @@ const MUTED = rgb(0.42, 0.45, 0.5);
 const W = 612;
 const H = 792;
 const M = 64;
-const TOP = 64; // baseline of the first body line on a continuation page (distance from top)
-const BOTTOM = H - 64; // lowest baseline before a new page is needed
+// Clear zone on the Axus letterhead (drawn full-page as the background of EVERY
+// page): below the top-right logo band, above the bottom contact strip. Content
+// baselines stay inside [TOP_SAFE, BOT_SAFE] (top-based Y) — matches quotepdf.ts.
+const TOP_SAFE = 150;
+const BOT_SAFE = 704;
 
 export interface SlaData {
   company?: string; // Client legal name (baked in)
@@ -92,11 +95,14 @@ export async function generateSlaPdf(
   const pdf = await PDFDocument.create();
   const helv = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  let logo: Awaited<ReturnType<typeof pdf.embedPng>> | null = null;
+  // Axus letterhead (corner banner + logo + faint X watermark + footer) laid down
+  // as a full-page background on every page, matching the Quote / Certificate of
+  // Completion. Sized to fill the whole portrait page exactly.
+  let letter: Awaited<ReturnType<typeof pdf.embedJpg>> | null = null;
   try {
-    logo = await pdf.embedPng(await readFile(join(assetsDir, "axus-logo.png")));
+    letter = await pdf.embedJpg(await readFile(join(assetsDir, "letterhead.jpg")));
   } catch {
-    /* logo optional */
+    /* letterhead optional */
   }
 
   const company = d.company?.trim() || "the Client";
@@ -123,22 +129,16 @@ export async function generateSlaPdf(
     return lines.length ? lines : [""];
   };
 
-  const newPage = (first = false) => {
+  const newPage = () => {
     page = pdf.addPage([W, H]);
     pages.push(page);
-    if (first && logo) {
-      const lw = 150;
-      const lh = (lw * 125) / 238;
-      page.drawImage(logo, { x: M, y: T(48) - lh, width: lw, height: lh });
-      page.drawLine({ start: { x: M, y: T(148) }, end: { x: W - M, y: T(148) }, thickness: 2, color: ORANGE });
-      y = 168; // below the header rule
-    } else {
-      y = TOP;
-    }
+    // Full-page letterhead background first, exactly filling the portrait page.
+    if (letter) page.drawImage(letter, { x: 0, y: 0, width: W, height: H });
+    y = TOP_SAFE; // first baseline sits below the letterhead's top logo band
   };
 
   const ensure = (space: number) => {
-    if (y + space > BOTTOM) newPage();
+    if (y + space > BOT_SAFE) newPage();
   };
 
   const block = (
@@ -157,8 +157,8 @@ export async function generateSlaPdf(
     y += o.after ?? 5;
   };
 
-  // ---- Page 1: header + title ----
-  newPage(true);
+  // ---- Page 1: title (letterhead already carries the logo top-right) ----
+  newPage();
   block("Service Level Agreement", { size: 19, font: bold, lead: 23, after: 2 });
   block("Axus After Hours On Call", { size: 9, color: MUTED, lead: 12, after: 10 });
 
@@ -213,13 +213,12 @@ export async function generateSlaPdf(
   const clientSlot = sigBlock("Client", company === "the Client" ? "Client" : company, leftX);
   const axusSlot = sigBlock("Axus Technologies", "Axus Technologies", rightX);
 
-  // ---- Footer (page X of Y) on every page ----
+  // ---- Page numbers, tucked just above the letterhead's contact strip ----
+  // (The letterhead footer already carries the Axus address / phone / web.)
   const total = pages.length;
   pages.forEach((p, i) => {
-    const fy = T(H - 44);
-    p.drawText("Axus After Hours On Call - Service Level Agreement", { x: M, y: fy, size: 7.5, font: helv, color: MUTED });
     const pn = `Page ${i + 1} of ${total}`;
-    p.drawText(pn, { x: W - M - helv.widthOfTextAtSize(pn, 7.5), y: fy, size: 7.5, font: helv, color: MUTED });
+    p.drawText(pn, { x: W - M - helv.widthOfTextAtSize(pn, 7.5), y: T(722), size: 7.5, font: helv, color: MUTED });
   });
 
   return { bytes: await pdf.save(), layout: [clientSlot, axusSlot] };

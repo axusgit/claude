@@ -36,9 +36,9 @@ const FLOWS: Flow[] = [
     tag: "Template · deferred",
     steps: [
       "New document → BAA → pick the Company → Continue.",
-      "The HIPAA BAA template opens PRE-FILLED: Effective Date = today, Covered Entity = the company, Governing Law = Florida.",
+      "The HIPAA BAA opens PRE-FILLED on the Axus letterhead: Effective Date = today, Covered Entity = the company, Governing Law = Florida.",
       "Nothing is saved until you click Save (or Send) — back out and no draft is left behind.",
-      "Add the signer(s), place the signature fields on page 4, then Save or Send.",
+      "Add the signer(s); the signature fields auto-place on the final page. Then Save or Send.",
     ],
   },
   {

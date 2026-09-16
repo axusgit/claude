@@ -33,25 +33,27 @@ import { Button, Card, Input, StatusBadge } from "@/components/ui";
 import { recipientColor } from "@/lib/utils";
 import { PdfCanvas } from "@/features/PdfCanvas";
 
-// The BAA template is a fixed file, so its signature-block positions are known.
-// (Quote layouts are computed at generation time and come from envelope.field_layout.)
+// BAA is generated on the fly (backend/src/baapdf.ts) on the Axus letterhead with
+// two signers (Covered Entity, then Axus Technologies) at FIXED positions on a
+// dedicated final page (page 5 — stable regardless of the baked company name).
+// Add recipients IN THIS ORDER for auto-placement.
 const BAA_LAYOUT: SignSlot[] = [
   {
     role: "Covered Entity",
     fields: [
-      { type: "signature", page: 4, x: 0.2032, y: 0.1705, w: 0.3436, h: 0.0215 },
-      { type: "date", page: 4, x: 0.652, y: 0.1705, w: 0.1487, h: 0.0215 },
-      { type: "name", page: 4, x: 0.2401, y: 0.1957, w: 0.3066, h: 0.0215 },
-      { type: "title", page: 4, x: 0.1543, y: 0.221, w: 0.3924, h: 0.0215 },
+      { type: "signature", page: 5, x: 0.1889, y: 0.3965, w: 0.2589, h: 0.0189 },
+      { type: "name", page: 5, x: 0.2009, y: 0.4293, w: 0.2468, h: 0.0189 },
+      { type: "title", page: 5, x: 0.1498, y: 0.4621, w: 0.2979, h: 0.0189 },
+      { type: "date", page: 5, x: 0.1534, y: 0.4949, w: 0.2943, h: 0.0189 },
     ],
   },
   {
     role: "Axus Technologies",
     fields: [
-      { type: "signature", page: 4, x: 0.2032, y: 0.2904, w: 0.3436, h: 0.0215 },
-      { type: "date", page: 4, x: 0.652, y: 0.2904, w: 0.1487, h: 0.0215 },
-      { type: "name", page: 4, x: 0.2401, y: 0.3157, w: 0.3066, h: 0.0215 },
-      { type: "title", page: 4, x: 0.1543, y: 0.3409, w: 0.3924, h: 0.0215 },
+      { type: "signature", page: 5, x: 0.5974, y: 0.3965, w: 0.2589, h: 0.0189 },
+      { type: "name", page: 5, x: 0.6094, y: 0.4293, w: 0.2468, h: 0.0189 },
+      { type: "title", page: 5, x: 0.5583, y: 0.4621, w: 0.2979, h: 0.0189 },
+      { type: "date", page: 5, x: 0.5619, y: 0.4949, w: 0.2943, h: 0.0189 },
     ],
   },
 ];
