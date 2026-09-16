@@ -29,6 +29,12 @@ CONSEC_MISS_STOP = 100    # consecutive 404s that mean "past the last ticket"
 COMMIT_EVERY = 50
 OPEN_STATUSES = ("open", "in_progress", "waiting", "reopened", "assigned")
 
+# Xcitium system/automation accounts (not real people) to exclude from the user
+# directory import. Matched case-insensitively against the Xcitium user name.
+# An already-imported row for one of these is soft-deactivated on the next run
+# (its uid falls out of seen_uids, so deletion reconciliation hides it).
+EXCLUDED_USER_NAMES = {"patch management agent"}
+
 
 # ---------- helpers ----------
 
@@ -294,20 +300,67 @@ def _directory_counts(db):
     }
 
 
+def _domain_of(email):
+    email = (email or "").strip().lower()
+    return email.rsplit("@", 1)[-1] if "@" in email else None
+
+
+# Domain-fallback tuning: a domain is auto-linked to a customer only when a single
+# customer accounts for at least this share of that domain's ticket volume. Genuinely
+# shared domains (e.g. @hcnetwork.org, used by multiple distinct HCN member orgs) fall
+# below this and are left unassigned + reported rather than silently misassigned.
+DOMAIN_DOMINANT_SHARE = 0.85
+
+
+def _org_by_domain(db):
+    """Learn email-domain -> customer from tickets that carry BOTH a user email and
+    an organization. Returns (confident_map, ambiguous) where confident_map[domain] is
+    the winning org and ambiguous[domain] = {org: count} for domains with no dominant
+    org (shared domains). Free/generic mailbox domains are never mapped."""
+    from collections import Counter
+    GENERIC = {
+        "gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com",
+        "aol.com", "live.com", "msn.com", "protonmail.com",
+        "microsoft.com", "communication.microsoft.com", "outlook.mail.microsoft",
+    }
+    domain_orgs = {}
+    rows = (db.query(XcitiumTicket.user_email, XcitiumTicket.organization_name)
+            .filter(XcitiumTicket.user_email.isnot(None),
+                    XcitiumTicket.organization_name.isnot(None)).all())
+    for email, org in rows:
+        dom = _domain_of(email)
+        org = (org or "").strip()
+        if not dom or not org or dom in GENERIC:
+            continue
+        domain_orgs.setdefault(dom, Counter())[org] += 1
+
+    confident, ambiguous = {}, {}
+    for dom, orgs in domain_orgs.items():
+        total = sum(orgs.values())
+        org, cnt = orgs.most_common(1)[0]
+        if len(orgs) == 1 or cnt / total >= DOMAIN_DOMINANT_SHARE:
+            confident[dom] = org
+        else:
+            ambiguous[dom] = dict(orgs)
+    return confident, ambiguous
+
+
 def import_directory():
     """Import the Xcitium User Directory (customer end users) and their customers
     into the native clients/users tables (tagged source='xcitium').
 
     - Customers = the organizations seen on imported tickets -> native Client rows.
     - Users = every entry from getUsers, created as role='client' and linked to
-      their customer via the org on their tickets. Users whose customer is unknown
-      (no tickets) are left unassigned (client_id NULL). Native users (e.g. staff)
-      are never relinked/downgraded -- only tagged with their xcitium id.
+      their customer via the org on their tickets. Users with no tickets of their own
+      are linked by EMAIL DOMAIN when that domain maps unambiguously to one customer
+      (learned from the ticket-linked users); otherwise left unassigned (client_id
+      NULL). Native users (e.g. staff) are never relinked/downgraded -- only tagged
+      with their xcitium id.
     """
     if not xcitium.is_configured():
         return {"configured": False}
     from app.models.client import Client
-    from app.models.user import User
+    from app.models.user import User, UserRole
     db = SessionLocal()
     try:
         # org name per Xcitium user id, from imported tickets
@@ -318,10 +371,16 @@ def import_directory():
             if uid and (org or "").strip():
                 org_by_uid[str(uid)] = org.strip()
 
-        # ensure a native Client for every org seen on tickets
+        # email-domain -> customer, learned from ticket-linked users (for the
+        # ticketless users that have no org of their own)
+        org_by_domain, ambiguous_domains = _org_by_domain(db)
+
+        # ensure a native Client for every org we might link to (ticket orgs +
+        # confident domain-mapped orgs -- the latter is a subset in practice)
+        all_orgs = set(org_by_uid.values()) | set(org_by_domain.values())
         client_id_by_org = {}
         clients_created = 0
-        for org in sorted(set(org_by_uid.values())):
+        for org in sorted(all_orgs):
             c = db.query(Client).filter(Client.company_name == org).first()
             if not c:
                 c = Client(company_name=org, contact_name="", email="", source="xcitium")
@@ -330,7 +389,19 @@ def import_directory():
         db.commit()
 
         users = xcitium.get_users()
-        created = updated = linked = unassigned = skipped = 0
+        # Drop system/automation accounts (e.g. "Patch Management Agent") before
+        # anything else, so they are never created here and any previously-imported
+        # row is left out of seen_uids -> soft-deactivated by reconciliation below.
+        excluded_names = 0
+        _filtered = []
+        for u in users:
+            if (u.get("name") or "").strip().lower() in EXCLUDED_USER_NAMES:
+                excluded_names += 1
+                continue
+            _filtered.append(u)
+        users = _filtered
+        seen_uids = {str(u.get("id")).strip() for u in users if u.get("id")}
+        created = updated = linked = unassigned = skipped = domain_linked = 0
         for u in users:
             email = (u.get("address") or "").strip().lower()
             uid = str(u.get("id") or "").strip()
@@ -339,6 +410,10 @@ def import_directory():
                 skipped += 1
                 continue
             org = org_by_uid.get(uid)
+            if not org:  # no ticket of their own -> fall back to email domain
+                org = org_by_domain.get(_domain_of(email))
+                if org:
+                    domain_linked += 1
             client_id = client_id_by_org.get(org) if org else None
             linked += 1 if client_id else 0
             unassigned += 0 if client_id else 1
@@ -364,9 +439,41 @@ def import_directory():
             if (created + updated) % 100 == 0:
                 db.commit()
         db.commit()
+
+        # Deletion reconciliation (soft-delete): a user removed from Xcitium drops
+        # out of getUsers, so we deactivate + hide the mirror row here. Reversible --
+        # if the user reappears in Xcitium they are reactivated. Only source='xcitium'
+        # CLIENT rows are touched (never staff/native, and never rows without an
+        # xcitium id). SAFETY GUARD: Xcitium's getUsers has been flaky (errored
+        # 2026-09-14); a truncated/empty response must not mass-deactivate everyone,
+        # so we skip the pass unless the response is plausibly complete.
+        existing_xc = (db.query(User)
+                       .filter(User.source == "xcitium", User.role == UserRole.client).count())
+        reconcile_ok = bool(seen_uids) and (existing_xc == 0 or len(seen_uids) >= 0.5 * existing_xc)
+        deactivated = reactivated = 0
+        if reconcile_ok:
+            for row in (db.query(User)
+                        .filter(User.source == "xcitium", User.role == UserRole.client).all()):
+                if not row.xcitium_user_id:
+                    continue  # can't match -> leave alone
+                present = row.xcitium_user_id in seen_uids
+                if not present and row.is_active:
+                    row.is_active = False; deactivated += 1
+                elif present and not row.is_active:
+                    row.is_active = True; reactivated += 1
+            db.commit()
+        else:
+            print(f"[xcitium] deletion reconciliation SKIPPED (guard): "
+                  f"getUsers returned {len(seen_uids)} vs {existing_xc} known", flush=True)
+
         result = {"configured": True, "clients_created": clients_created,
                   "users_seen": len(users), "created": created, "updated": updated,
-                  "linked": linked, "unassigned": unassigned, "skipped_no_email": skipped}
+                  "linked": linked, "linked_by_domain": domain_linked,
+                  "unassigned": unassigned, "skipped_no_email": skipped,
+                  "excluded_names": excluded_names,
+                  "deactivated": deactivated, "reactivated": reactivated,
+                  "reconcile_skipped": not reconcile_ok,
+                  "ambiguous_domains": ambiguous_domains}
         print(f"[xcitium] directory import: {result}", flush=True)
         return result
     except Exception as e:
