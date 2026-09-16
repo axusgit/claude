@@ -164,6 +164,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/support
       SECRET_KEY: ${SUPPORT_SECRET_KEY}
       UPLOAD_DIR: /data/uploads
+      # Read-only, one-way mirror of the legacy Xcitium Service Desk into the
+      # xcitium_* tables. Off unless XCITIUM_SYNC_ENABLED=1 and a key are set in
+      # infra/.env. Initial backfill on first start, then hourly (top of the hour).
+      XCITIUM_SYNC_ENABLED: ${XCITIUM_SYNC_ENABLED:-0}
+      XCITIUM_API_KEY: ${XCITIUM_API_KEY:-}
     volumes:
       # Ticket attachments must survive image rebuilds (`up -d --build`); without
       # this named volume every routine update wipes them. Migrate the legacy

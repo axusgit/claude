@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, B
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 import os
 import random
@@ -183,15 +183,55 @@ class TicketOut(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime]
     closed_at: Optional[datetime]
+    # Provenance. Native tickets are "native"; rows mirrored from the legacy
+    # Xcitium Service Desk are "xcitium" (read-only). For xcitium rows the client
+    # and reporter come as names (no native FK), so the UI shows them inline.
+    source: str = "native"
+    client_name: Optional[str] = None
+    reporter_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+# Map the legacy Xcitium status/priority vocabulary onto the native one so the
+# existing queue filters and badges keep working for imported rows.
+_XCITIUM_STATUS = {"open": "open", "closed": "closed", "resolved": "closed",
+                   "waiting": "waiting", "in_progress": "in_progress",
+                   "assigned": "in_progress", "reopened": "open"}
+_XCITIUM_PRIORITY = {"low": "low", "normal": "medium", "medium": "medium",
+                     "high": "high", "critical": "critical", "emergency": "critical"}
+
+
+def _xcitium_row(xt) -> TicketOut:
+    """Shape one mirrored Xcitium ticket as a read-only TicketOut. The id is the
+    negative external id so it never collides with a native ticket id and the UI
+    can route it to the read-only detail endpoint."""
+    return TicketOut(
+        id=-xt.external_id,
+        reference=f"X-{xt.external_id}",
+        title=xt.subject or "(no subject)",
+        description=None,
+        category=xt.category,
+        status=_XCITIUM_STATUS.get((xt.status or "").lower(), "open"),
+        priority=_XCITIUM_PRIORITY.get((xt.priority or "").lower(), "medium"),
+        ticket_type="standard",
+        client_id=0, board_id=None, contact_id=None, reporter_user_id=None,
+        assigned_to_id=None, project_id=None, created_by_id=0,
+        total_hours=0.0, invoiced=False,
+        created_at=xt.create_date or xt.synced_at,
+        updated_at=xt.update_date, closed_at=None,
+        source="xcitium",
+        client_name=xt.organization_name,
+        reporter_name=xt.username,
+    )
 
 
 @router.get("/", response_model=List[TicketOut])
 def list_tickets(
     status: Optional[str] = None,
     client_id: Optional[int] = None,
+    include_xcitium: bool = True,
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
@@ -200,7 +240,31 @@ def list_tickets(
         q = q.filter(Ticket.status == status)
     if client_id:
         q = q.filter(Ticket.client_id == client_id)
-    return q.order_by(Ticket.created_at.desc()).all()
+    rows = [TicketOut.model_validate(t) for t in q.order_by(Ticket.created_at.desc()).all()]
+
+    # Merge in the read-only Xcitium mirror (skipped when filtering by a native
+    # client, since imported rows have no native client_id).
+    if include_xcitium and not client_id:
+        from app.models.xcitium import XcitiumTicket
+        xq = db.query(XcitiumTicket)
+        xrows = [_xcitium_row(x) for x in xq.all()]
+        if status:
+            xrows = [r for r in xrows if r.status == status]
+        rows.extend(xrows)
+
+        def _epoch(r):
+            dt = r.created_at
+            if dt is None:
+                return 0.0
+            try:
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.timestamp()
+            except (OverflowError, OSError, ValueError):
+                return 0.0
+
+        rows.sort(key=_epoch, reverse=True)
+    return rows
 
 
 @router.post("/", response_model=TicketOut)

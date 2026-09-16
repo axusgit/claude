@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.routers import auth, clients, tickets, portal, users, summary, boards, email
+from app.routers import xcitium as xcitium_router
 import app.models  # ensure all models/relationships are registered
 import os
 
@@ -30,6 +31,7 @@ app.include_router(users.router)
 app.include_router(summary.router)
 app.include_router(boards.router)
 app.include_router(email.router)
+app.include_router(xcitium_router.router)
 
 
 @app.on_event("startup")
@@ -50,6 +52,21 @@ def start_email_poller():
             time.sleep(interval)
 
     threading.Thread(target=loop, daemon=True, name="email-poller").start()
+
+
+@app.on_event("startup")
+def start_xcitium_sync():
+    """Mirror the legacy Xcitium Service Desk into read-only xcitium_* tables.
+
+    Runs an initial backfill if the mirror is empty, then an incremental sync at
+    the top of every hour. Enabled only when XCITIUM_SYNC_ENABLED=1 and an API key
+    is present. Read-only: nothing is written back to Xcitium.
+    """
+    import os
+    from app import xcitium, xcitium_sync
+    if os.getenv("XCITIUM_SYNC_ENABLED") != "1" or not xcitium.is_configured():
+        return
+    xcitium_sync.start_scheduler_thread()
 
 
 @app.on_event("startup")

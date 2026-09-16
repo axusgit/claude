@@ -170,7 +170,7 @@ const Staff = (() => {
       if (fp && t.priority !== fp) return false;
       if (fc && String(t.client_id) !== fc) return false;
       if (q) {
-        const hay = `${t.reference} ${t.title} ${clientMap[t.client_id] || ""}`.toLowerCase();
+        const hay = `${t.reference} ${t.title} ${t.client_name || clientMap[t.client_id] || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -184,9 +184,9 @@ const Staff = (() => {
       tr.onclick = () => openTicket(t.id);
       const aName = t.assigned_to_id ? userMap[t.assigned_to_id] : null;
       tr.innerHTML = `
-        <td class="cell-ref col-ref">${esc(t.reference || "")}</td>
+        <td class="cell-ref col-ref">${esc(t.reference || "")}${t.source === "xcitium" ? ' <span class="src-tag" title="Imported from Xcitium (read-only)">Xcitium</span>' : ""}</td>
         <td class="cell-subject col-subject">${esc(t.title)}</td>
-        <td class="cell-muted col-company">${esc(clientMap[t.client_id] || "—")}</td>
+        <td class="cell-muted col-company">${esc(t.client_name || clientMap[t.client_id] || "—")}</td>
         <td class="cell-muted col-board">${t.board_id ? esc(boardMap[t.board_id] || "—") : "—"}</td>
         <td class="col-priority"><span class="prio-dot prio ${t.priority}">${cap(t.priority)}</span></td>
         <td class="col-status"><span class="badge ${t.status}">${cap(t.status)}</span></td>
@@ -226,7 +226,61 @@ const Staff = (() => {
   }
 
   /* ---------- Detail ---------- */
+  // Elements that only make sense for editable native tickets; hidden for the
+  // read-only Xcitium mirror.
+  function _detailEditableEls() {
+    return [
+      $("convert-project-btn"), $("edit-ticket-btn"),
+      document.querySelector(".control-row"),
+      $("reply-form"),
+      $("time-form") && $("time-form").closest(".card"),
+      $("attach-list") && $("attach-list").closest(".card"),
+      $("tu-list") && $("tu-list").closest(".card"),
+      $("activity") && $("activity").closest(".card"),
+    ].filter(Boolean);
+  }
+  function applyReadonly(on) {
+    _detailEditableEls().forEach(el => { el.style.display = on ? "none" : ""; });
+  }
+
+  // Xcitium comment bodies are rich HTML emails; render them as safe, readable
+  // text (keep line breaks, drop tags/scripts) rather than raw markup.
+  function htmlToText(html) {
+    if (!html) return "";
+    let s = html.replace(/<\s*(br|\/p|\/div|\/li|\/tr)\s*\/?>/gi, "\n")
+                .replace(/<[^>]+>/g, "");
+    const ta = document.createElement("textarea"); ta.innerHTML = s;
+    return ta.value.replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  async function openXcitiumTicket(externalId) {
+    const t = await api(`/api/xcitium/tickets/${externalId}`);
+    current = { id: -externalId, source: "xcitium" };
+    applyReadonly(true);
+    $("d-ref").textContent = `X-${externalId}`;
+    $("d-title").textContent = t.subject || "(no subject)";
+    $("d-desc").innerHTML = `<span class="ro-banner">Read-only — imported from Xcitium Service Desk</span>`;
+    $("p-company").textContent = t.organization || "—";
+    $("p-contact").textContent = t.user || "—";
+    $("p-project").textContent = "—";
+    $("p-category").textContent = t.category || "Uncategorized";
+    $("p-type").textContent = "Imported (Xcitium)";
+    $("p-hours").textContent = "—";
+    $("p-created").textContent = fmtDate(t.created);
+    // render the conversation read-only
+    const el = $("thread");
+    el.innerHTML = (t.threads && t.threads.length)
+      ? t.threads.map(th => `<div class="msg them">
+          <div class="msg-avatar">${initials(th.poster || t.user || "?")}</div>
+          <div class="msg-bubble"><div class="msg-meta">${esc(th.poster || "—")} · ${fmtDate(th.created)}</div>
+          <div class="msg-body">${esc(htmlToText(th.body)).replace(/\n/g, "<br>")}</div></div></div>`).join("")
+      : `<div class="thread-empty">No messages.</div>`;
+    showDetail();
+  }
+
   async function openTicket(id) {
+    if (id < 0) return openXcitiumTicket(-id);   // Xcitium mirror rows use negative ids
+    applyReadonly(false);
     current = await api(`/api/tickets/${id}`);
     $("d-ref").textContent = current.reference || "";
     $("d-title").textContent = current.title;

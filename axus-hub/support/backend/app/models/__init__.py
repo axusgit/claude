@@ -8,3 +8,6 @@ from app.models.ticket import (
 from app.models.attachment import Attachment
 from app.models.contact import Contact
 from app.models.board import Board
+from app.models.xcitium import (
+    XcitiumCustomer, XcitiumUser, XcitiumTicket, XcitiumThread, XcitiumSyncState,
+)
