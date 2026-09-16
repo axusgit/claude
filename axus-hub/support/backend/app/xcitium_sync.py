@@ -347,8 +347,11 @@ def import_directory():
             if existing:
                 if not existing.xcitium_user_id:
                     existing.xcitium_user_id = uid
-                # only manage rows we own; never touch a native user's role/client
-                if existing.source == "xcitium":
+                # only manage imported CLIENT rows; never touch native users or
+                # anyone promoted to staff (admin/technician) -- otherwise the
+                # hourly run would re-link a staff member to a customer.
+                role = existing.role.value if hasattr(existing.role, "value") else existing.role
+                if existing.source == "xcitium" and role == "client":
                     existing.full_name = name
                     if client_id and existing.client_id != client_id:
                         existing.client_id = client_id
