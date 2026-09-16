@@ -25,4 +25,7 @@ class User(Base):
     # Set for client-portal users: ties the login to the company they belong to,
     # so the portal can scope them to their own tickets only.
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    # Provenance + link back to the source record when imported from Xcitium.
+    source = Column(String, server_default="native", nullable=False)
+    xcitium_user_id = Column(String, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

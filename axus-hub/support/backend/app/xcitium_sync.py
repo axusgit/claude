@@ -187,6 +187,10 @@ def backfill():
         st.last_run_status = "backfill running"
         db.commit()
         imported, last = _sweep_from(db, 1)
+        try:
+            import_directory()
+        except Exception as e:
+            print(f"[xcitium] directory import failed during backfill: {e}", flush=True)
         st = _state(db)
         st.tickets_total = db.query(XcitiumTicket).count()
         st.running = False
@@ -233,6 +237,11 @@ def incremental():
                 db.commit()
         db.commit()
 
+        try:
+            import_directory()
+        except Exception as e:
+            print(f"[xcitium] directory import failed during incremental: {e}", flush=True)
+
         st = _state(db)
         st.tickets_total = db.query(XcitiumTicket).count()
         st.running = False
@@ -268,7 +277,99 @@ def status():
             "last_run_status": st.last_run_status,
             "last_full_backfill_at": (st.last_full_backfill_at.isoformat()
                                       if st.last_full_backfill_at else None),
+            "directory": _directory_counts(db),
         }
+    finally:
+        db.close()
+
+
+def _directory_counts(db):
+    from app.models.client import Client
+    from app.models.user import User
+    return {
+        "customers_imported": db.query(Client).filter(Client.source == "xcitium").count(),
+        "users_imported": db.query(User).filter(User.source == "xcitium").count(),
+        "users_unassigned": db.query(User).filter(
+            User.source == "xcitium", User.client_id.is_(None)).count(),
+    }
+
+
+def import_directory():
+    """Import the Xcitium User Directory (customer end users) and their customers
+    into the native clients/users tables (tagged source='xcitium').
+
+    - Customers = the organizations seen on imported tickets -> native Client rows.
+    - Users = every entry from getUsers, created as role='client' and linked to
+      their customer via the org on their tickets. Users whose customer is unknown
+      (no tickets) are left unassigned (client_id NULL). Native users (e.g. staff)
+      are never relinked/downgraded -- only tagged with their xcitium id.
+    """
+    if not xcitium.is_configured():
+        return {"configured": False}
+    from app.models.client import Client
+    from app.models.user import User
+    db = SessionLocal()
+    try:
+        # org name per Xcitium user id, from imported tickets
+        org_by_uid = {}
+        for uid, org in (db.query(XcitiumTicket.user_external_id, XcitiumTicket.organization_name)
+                         .filter(XcitiumTicket.user_external_id.isnot(None),
+                                 XcitiumTicket.organization_name.isnot(None)).distinct().all()):
+            if uid and (org or "").strip():
+                org_by_uid[str(uid)] = org.strip()
+
+        # ensure a native Client for every org seen on tickets
+        client_id_by_org = {}
+        clients_created = 0
+        for org in sorted(set(org_by_uid.values())):
+            c = db.query(Client).filter(Client.company_name == org).first()
+            if not c:
+                c = Client(company_name=org, contact_name="", email="", source="xcitium")
+                db.add(c); db.flush(); clients_created += 1
+            client_id_by_org[org] = c.id
+        db.commit()
+
+        users = xcitium.get_users()
+        created = updated = linked = unassigned = skipped = 0
+        for u in users:
+            email = (u.get("address") or "").strip().lower()
+            uid = str(u.get("id") or "").strip()
+            name = (u.get("name") or "").strip() or email or "Unknown"
+            if not email:
+                skipped += 1
+                continue
+            org = org_by_uid.get(uid)
+            client_id = client_id_by_org.get(org) if org else None
+            linked += 1 if client_id else 0
+            unassigned += 0 if client_id else 1
+
+            existing = db.query(User).filter(User.email == email).first()
+            if existing:
+                if not existing.xcitium_user_id:
+                    existing.xcitium_user_id = uid
+                # only manage rows we own; never touch a native user's role/client
+                if existing.source == "xcitium":
+                    existing.full_name = name
+                    if client_id and existing.client_id != client_id:
+                        existing.client_id = client_id
+                updated += 1
+            else:
+                db.add(User(email=email, full_name=name, hashed_password="",
+                            role="client", client_id=client_id,
+                            source="xcitium", xcitium_user_id=uid))
+                db.flush(); created += 1
+            if (created + updated) % 100 == 0:
+                db.commit()
+        db.commit()
+        result = {"configured": True, "clients_created": clients_created,
+                  "users_seen": len(users), "created": created, "updated": updated,
+                  "linked": linked, "unassigned": unassigned, "skipped_no_email": skipped}
+        print(f"[xcitium] directory import: {result}", flush=True)
+        return result
+    except Exception as e:
+        db.rollback()
+        print(f"[xcitium] directory import error: {e}", flush=True)
+        raise
     finally:
         db.close()
 
@@ -316,7 +417,9 @@ if __name__ == "__main__":
         print(json.dumps(backfill(), indent=2))
     elif cmd == "incremental":
         print(json.dumps(incremental(), indent=2))
+    elif cmd == "directory":
+        print(json.dumps(import_directory(), indent=2))
     elif cmd == "status":
         print(json.dumps(status(), indent=2))
     else:
-        print("usage: python -m app.xcitium_sync {backfill|incremental|status}")
+        print("usage: python -m app.xcitium_sync {backfill|incremental|directory|status}")

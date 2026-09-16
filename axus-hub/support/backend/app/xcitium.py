@@ -74,6 +74,22 @@ def ticket_exists(ticket_id: int) -> bool:
     return viewticket(ticket_id) is not None
 
 
+def get_users(page_size: int = 100) -> list:
+    """Every user in the Xcitium User Directory (customer end users), paginated.
+    Each record: {id, name, created, address(email)}. Note: no organization link
+    is returned here -- that comes from the tickets (viewticket user object)."""
+    out = []
+    page = 1
+    while page <= 200:  # safety cap
+        body = _call("getUsers", {"keyword": "", "pageNo": page, "pageSize": page_size})
+        data = body.get("data", []) if body.get("code") == 200 else []
+        out.extend(data)
+        if len(data) < page_size:
+            break
+        page += 1
+    return out
+
+
 def get_categories() -> list:
     body = _call("getcategories", {})
     return body.get("data", []) if body.get("code") == 200 else []

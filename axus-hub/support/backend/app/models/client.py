@@ -17,6 +17,9 @@ class Client(Base):
     address = Column(Text)                                      # exposed as "Location"
     notes = Column(Text)
     is_active = Column(Boolean, default=True)
+    # Provenance: "native" (created in Axus) or "xcitium" (imported from the
+    # legacy Service Desk). Lets imported records be identified and reverted.
+    source = Column(String, server_default="native", nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     @property
