@@ -4,7 +4,7 @@ import { Archive, ArchiveRestore, Copy, Download, Search, Trash2 } from "lucide-
 import { api, type Envelope } from "@/lib/api";
 import { Card, Input, StatusBadge } from "@/components/ui";
 
-const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "Quote"];
+const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote"];
 
 export function ArchivePage() {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);

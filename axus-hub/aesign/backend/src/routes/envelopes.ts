@@ -10,6 +10,7 @@ import { getIdentity, hasEsignAccess, type Identity } from "../identity.js";
 import { sendSigningInvite, sendPendingReminder } from "../mail.js";
 import { stampBaaPdf, etTodayLong } from "../baa.js";
 import { generateCocPdf } from "../cocpdf.js";
+import { generateSlaPdf } from "../slapdf.js";
 import { envelopeDocName } from "../docname.js";
 import { logActivity, renameActivity } from "./activity.js";
 
@@ -453,6 +454,26 @@ export async function envelopeRoutes(app: FastifyInstance) {
       return { ok: true, applied: true, pdf: stored };
     }
 
+    // SLA (After Hours On Call) is likewise GENERATED on the fly, baked with the
+    // company + today's date, and carries its own two-signer field layout.
+    if (type === "SLA") {
+      const { bytes, layout } = await generateSlaPdf({
+        company: row.company ?? undefined,
+        dateLong: etTodayLong(),
+      });
+      const stored = `${envId}-source.pdf`;
+      await writeFile(join(config.storageDir, stored), bytes);
+      await pool.query(
+        `update envelope set source_file = $1, pdf_file = $2, field_layout = $3 where id = $4`,
+        [stored, stored, JSON.stringify(layout), envId],
+      );
+      await pool.query(
+        `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'document_uploaded', $3)`,
+        [envId, id.email, "SLA template applied"],
+      );
+      return { ok: true, applied: true, pdf: stored };
+    }
+
     const TEMPLATE_FILES: Record<string, string> = { BAA: "axus-baa.pdf" };
     const base = TEMPLATE_FILES[type];
     if (!base) return { ok: true, applied: false, reason: "no template for this type" };
@@ -508,6 +529,11 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const type = (q.type ?? "").toUpperCase();
     if (type === "CERTIFICATE OF COMPLETION") {
       const { bytes } = await generateCocPdf({ company: q.company, dateLong: etTodayLong(), docNumber: q.doc_number });
+      reply.header("Content-Type", "application/pdf");
+      return reply.send(Buffer.from(bytes));
+    }
+    if (type === "SLA") {
+      const { bytes } = await generateSlaPdf({ company: q.company, dateLong: etTodayLong() });
       reply.header("Content-Type", "application/pdf");
       return reply.send(Buffer.from(bytes));
     }

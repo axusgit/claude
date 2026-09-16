@@ -80,6 +80,30 @@ const COC_LAYOUT: SignSlot[] = [
   },
 ];
 
+// SLA (After Hours On Call) has two signers (Client, then Axus Technologies) with
+// FIXED signature-block positions on a dedicated final page (page 4) — mirrors backend
+// slapdf.generateSlaPdf(). Add recipients IN THIS ORDER for auto-placement.
+const SLA_LAYOUT: SignSlot[] = [
+  {
+    role: "Client",
+    fields: [
+      { type: "signature", page: 4, x: 0.1889, y: 0.3965, w: 0.2589, h: 0.0189 },
+      { type: "name", page: 4, x: 0.2009, y: 0.4293, w: 0.2468, h: 0.0189 },
+      { type: "title", page: 4, x: 0.1498, y: 0.4621, w: 0.2979, h: 0.0189 },
+      { type: "date", page: 4, x: 0.1534, y: 0.4949, w: 0.2943, h: 0.0189 },
+    ],
+  },
+  {
+    role: "Axus Technologies",
+    fields: [
+      { type: "signature", page: 4, x: 0.5974, y: 0.3965, w: 0.2589, h: 0.0189 },
+      { type: "name", page: 4, x: 0.6094, y: 0.4293, w: 0.2468, h: 0.0189 },
+      { type: "title", page: 4, x: 0.5583, y: 0.4621, w: 0.2979, h: 0.0189 },
+      { type: "date", page: 4, x: 0.5619, y: 0.4949, w: 0.2943, h: 0.0189 },
+    ],
+  },
+];
+
 const TOOLS: { type: FieldType; label: string; icon: typeof PenLine }[] = [
   { type: "signature", label: "Signature", icon: PenLine },
   { type: "name", label: "Name", icon: User },
@@ -247,7 +271,9 @@ export function EnvelopeEditor() {
         ? BAA_LAYOUT
         : docType === "Certificate of Completion"
           ? COC_LAYOUT
-          : detail?.envelope.field_layout ?? detectedSlots;
+          : docType === "SLA"
+            ? SLA_LAYOUT
+            : detail?.envelope.field_layout ?? detectedSlots;
     return layout?.[index]?.fields;
   }
   function addRecipient(name: string, email: string) {

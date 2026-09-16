@@ -3,7 +3,7 @@ import { Archive, Download, RotateCcw, Search, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
 import { Card, Input, StatusBadge } from "@/components/ui";
 
-const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "Certificate of Completion", "Quote", "Others"];
+const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote", "Others"];
 
 // Days a document is kept in the bin before it's automatically purged.
 const RETENTION_DAYS = 90;

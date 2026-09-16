@@ -4,10 +4,10 @@ import { Archive, Check, Circle, Copy, Download, FilePen, FileSignature, HardDri
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
 
-const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "Certificate of Completion", "Quote"];
+const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote"];
 // Types that open a pre-filled template on creation (deferred until Save). BAA is a
-// stored file; Certificate of Completion is generated on the fly. Quotes are separate.
-const TEMPLATE_TYPES = ["BAA", "Certificate of Completion"];
+// stored file; SLA and Certificate of Completion are generated on the fly. Quotes are separate.
+const TEMPLATE_TYPES = ["BAA", "SLA", "Certificate of Completion"];
 
 function fmtBytes(n: number): string {
   if (!n) return "0 B";

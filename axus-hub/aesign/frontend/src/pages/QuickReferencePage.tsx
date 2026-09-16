@@ -42,6 +42,17 @@ const FLOWS: Flow[] = [
     ],
   },
   {
+    icon: FileSignature,
+    name: "SLA",
+    tag: "Template · deferred",
+    steps: [
+      "New document → SLA → pick the Company → Continue.",
+      "The After Hours On Call SLA opens PRE-FILLED: Effective Date = today, Client = the company, Governing Law = Florida.",
+      "Nothing is saved until you click Save (or Send) — back out and no draft is left behind.",
+      "Add the Client signer (then, if signing internally, Axus) and place the signature fields on the final page, then Save or Send.",
+    ],
+  },
+  {
     icon: Receipt,
     name: "Quote",
     tag: "Generated",
