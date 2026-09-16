@@ -191,6 +191,7 @@ export function EnvelopeEditor() {
   // Signature blocks auto-detected in an uploaded PDF (SOW/MSA/etc.).
   const [detectedSlots, setDetectedSlots] = useState<SignSlot[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const signedRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     if (isNew) {
@@ -421,6 +422,33 @@ export function EnvelopeEditor() {
       setRemindingId(null);
     }
   }
+  // Complete a document that was signed OFFLINE: staff upload the returned,
+  // manually signed PDF and it's marked Completed (On Call quotes flow back to
+  // On Call's Invoices, same as an e-signed completion).
+  const [uploadingSigned, setUploadingSigned] = useState(false);
+  async function onUploadSigned(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+    if (
+      !window.confirm(
+        "Mark this document Completed using the uploaded signed copy? This records it as signed offline and can't be undone.",
+      )
+    )
+      return;
+    setError(null);
+    setNotice(null);
+    setUploadingSigned(true);
+    try {
+      await api.uploadSignedCopy(id, file);
+      await load();
+      setNotice("Signed copy uploaded — document marked Completed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingSigned(false);
+    }
+  }
   async function cancelDoc() {
     if (!window.confirm("Cancel this document? Recipients will no longer be able to sign it.")) return;
     try {
@@ -486,6 +514,29 @@ export function EnvelopeEditor() {
               </Button>
             </a>
           )}
+          {(detail.envelope.status === "draft" ||
+            detail.envelope.status === "sent" ||
+            detail.envelope.status === "partially_completed") &&
+            !!detail.envelope.pdf_file && (
+              <>
+                <input
+                  ref={signedRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={onUploadSigned}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => signedRef.current?.click()}
+                  disabled={uploadingSigned}
+                  title="Completed offline? Upload the manually signed copy to mark this document Completed."
+                >
+                  <Check className="h-4 w-4" />
+                  {uploadingSigned ? "Uploading…" : "Upload signed copy"}
+                </Button>
+              </>
+            )}
           {(detail.envelope.status === "sent" ||
             detail.envelope.status === "partially_completed") && (
             <Button

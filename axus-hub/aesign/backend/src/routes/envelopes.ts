@@ -3,7 +3,7 @@ import { createReadStream, createWriteStream, existsSync } from "node:fs";
 import { readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { getIdentity, hasEsignAccess, type Identity } from "../identity.js";
@@ -12,6 +12,7 @@ import { generateBaaPdf, etTodayLong } from "../baapdf.js";
 import { generateCocPdf } from "../cocpdf.js";
 import { generateSlaPdf } from "../slapdf.js";
 import { envelopeDocName } from "../docname.js";
+import { isOnCallQuote, notifyOnCallQuoteCompleted } from "../oncall.js";
 import { logActivity, renameActivity } from "./activity.js";
 
 function requireStaff(req: FastifyRequest, reply: FastifyReply): Identity | null {
@@ -306,6 +307,79 @@ export async function envelopeRoutes(app: FastifyInstance) {
     );
     logActivity(id.email, "Cancelled document", r.rows[0].title, envId);
     return { ok: true };
+  });
+
+  // Complete a document from a MANUALLY signed copy. Used when a recipient signed
+  // OFFLINE (e.g. printed the quote PDF, wet-signed it, and returned it) rather
+  // than through the eSign link. The uploaded PDF becomes the sealed (final) copy,
+  // the envelope is marked completed, every non-declined recipient is recorded as
+  // signed, and — for an On Call-originated quote — On Call is notified so the
+  // signed quote appears under its Invoices, exactly like an e-signed completion.
+  app.post("/:id/upload-signed", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const env = await pool.query(
+      `select id, title, status, created_by, doc_type, company, quote_data from envelope where id = $1`,
+      [envId],
+    );
+    if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
+    const e = env.rows[0];
+    if (e.status === "completed") {
+      return reply.code(409).send({ error: "This document is already completed." });
+    }
+    if (e.status === "cancelled" || e.status === "declined") {
+      return reply.code(409).send({ error: `This document has been ${e.status} and can't be completed.` });
+    }
+
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "No file uploaded" });
+    const ext = (file.filename.split(".").pop() ?? "").toLowerCase();
+    if (ext !== "pdf") {
+      // Drain the stream so the request completes cleanly, then reject.
+      file.file.resume();
+      return reply.code(415).send({ error: "Please upload a PDF of the signed document." });
+    }
+    const stored = `${envId}-signed.pdf`;
+    await pipeline(file.file, createWriteStream(join(config.storageDir, stored)));
+
+    const bytes = await readFile(join(config.storageDir, stored));
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+
+    // The uploaded signed PDF is the final sealed copy.
+    await pool.query(
+      `update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`,
+      [stored, sha256, envId],
+    );
+    // Record every recipient (who hasn't declined) as signed offline.
+    await pool.query(
+      `update recipient set status = 'signed', signed_at = coalesce(signed_at, now())
+       where envelope_id = $1 and status <> 'declined'`,
+      [envId],
+    );
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'completed', $3)`,
+      [envId, id.email, `Manually signed copy uploaded (signed offline). SHA-256 ${sha256}`],
+    );
+    logActivity(id.email, "Completed document (manual signed copy)", e.title, envId);
+
+    // On Call-originated quote: notify On Call so it shows under Invoices, same as
+    // an e-signed completion. Fire-and-forget (the helper never throws).
+    if (isOnCallQuote(e)) {
+      const recs = await pool.query(
+        `select name, email,
+                to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
+         from recipient where envelope_id = $1 order by sign_order`,
+        [envId],
+      );
+      void notifyOnCallQuoteCompleted(
+        e,
+        bytes,
+        sha256,
+        recs.rows as { name: string; email: string; signed_at?: string | null }[],
+      );
+    }
+    return { ok: true, completed: true };
   });
 
   // Resend the signing link to everyone who hasn't signed or declined yet.

@@ -108,6 +108,21 @@ export const api = {
       },
     );
   },
+  // Complete a document from a manually (offline) signed copy — uploads the
+  // signed PDF, marks it Completed, and (for On Call quotes) notifies On Call.
+  uploadSignedCopy: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetch(`/api/envelopes/${id}/upload-signed`, { method: "POST", body: fd }).then(
+      async (res) => {
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error || `Upload failed (${res.status})`);
+        }
+        return res.json() as Promise<{ ok: boolean; completed: boolean }>;
+      },
+    );
+  },
   saveRecipients: (id: string, recipients: Recipient[]) =>
     req<{ recipients: Recipient[] }>(`/envelopes/${id}/recipients`, {
       method: "PUT",
