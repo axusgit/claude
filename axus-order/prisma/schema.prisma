@@ -74,6 +74,18 @@ model Visit {
   @@index([createdAt])
 }
 
+// Cached IP → geolocation (city/region/country/org), populated on demand by the
+// admin dashboard via a free GeoIP lookup so we never re-hit the network for a
+// known IP. Purely derived data; safe to wipe and rebuild.
+model IpGeo {
+  ip        String   @id
+  city      String?
+  region    String?
+  country   String?
+  org       String?
+  fetchedAt DateTime @default(now())
+}
+
 model QuoteLine {
   id               String       @id @default(cuid())
   quoteId          String

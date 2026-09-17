@@ -5,8 +5,29 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getEntitledIdentity } from "@/lib/auth";
+import { geoForIps, type Geo } from "@/lib/geoip";
 
 export const dynamic = "force-dynamic";
+
+// IPs to hide from the visitor list by default (yours/office). Override with the
+// ADMIN_HIDE_IPS env var (comma-separated). Shown when ?all=1.
+const HIDE_IPS = new Set(
+  (process.env.ADMIN_HIDE_IPS ?? "47.198.206.63")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+
+function isBot(ua: string | null): boolean {
+  return !!ua && /bot|crawl|spider|slurp|bingpreview|monitor|curl|wget|headless|python-requests|axios|node-fetch/i.test(ua);
+}
+
+function locationOf(g?: Geo): { main: string; sub: string } {
+  if (!g) return { main: "—", sub: "" };
+  const main = [g.city, g.region].filter(Boolean).join(", ") || g.country || "Unknown";
+  const sub = g.country && g.country !== "US" ? g.country : "";
+  return { main, sub };
+}
 
 const usd0 = (n: number) =>
   new Intl.NumberFormat("en-US", {
@@ -18,7 +39,43 @@ const usd0 = (n: number) =>
 const dt = (d: Date) =>
   new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(d);
 
-export default async function AdminDashboard() {
+// Lightweight user-agent parse — turns a raw UA into "Browser · OS · Device"
+// so the visits table is scannable at a glance (full UA stays on hover).
+function parseUA(ua: string | null): { summary: string; device: string } {
+  if (!ua) return { summary: "—", device: "" };
+
+  let browser = "Unknown";
+  if (/Edg\//.test(ua)) browser = "Edge";
+  else if (/OPR\/|Opera/.test(ua)) browser = "Opera";
+  else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) browser = "Chrome";
+  else if (/Firefox\//.test(ua)) browser = "Firefox";
+  else if (/Safari\//.test(ua) && /Version\//.test(ua)) browser = "Safari";
+  else if (/bot|crawl|spider|slurp|bingpreview/i.test(ua)) browser = "Bot";
+
+  let os = "Unknown";
+  if (/Windows NT 10/.test(ua)) os = "Windows";
+  else if (/Windows/.test(ua)) os = "Windows";
+  else if (/iPhone|iPad|iPod/.test(ua)) os = "iOS";
+  else if (/Android/.test(ua)) os = "Android";
+  else if (/Mac OS X/.test(ua)) os = "macOS";
+  else if (/Linux/.test(ua)) os = "Linux";
+
+  const device = /Mobile|iPhone|iPod|Android.*Mobile/.test(ua)
+    ? "Mobile"
+    : /iPad|Tablet/.test(ua)
+      ? "Tablet"
+      : "Desktop";
+
+  const summary = [browser, os].filter((s) => s !== "Unknown").join(" · ") || "Unknown";
+  return { summary, device };
+}
+
+export default async function AdminDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ all?: string }>;
+}) {
+  const showAll = (await searchParams)?.all === "1";
   const identity = await getEntitledIdentity();
   if (!identity) {
     return (
@@ -35,14 +92,50 @@ export default async function AdminDashboard() {
   }
 
   const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const [quoteCount, quotes7, visitCount, visits7, quotes, visits] = await Promise.all([
+  const [quoteCount, quotes7, visitCount, quotes, visitsRaw] = await Promise.all([
     prisma.quote.count(),
     prisma.quote.count({ where: { createdAt: { gte: since7 } } }),
     prisma.visit.count(),
-    prisma.visit.count({ where: { createdAt: { gte: since7 } } }),
     prisma.quote.findMany({ orderBy: { createdAt: "desc" }, take: 100 }),
-    prisma.visit.findMany({ orderBy: { createdAt: "desc" }, take: 200 }),
+    prisma.visit.findMany({ orderBy: { createdAt: "desc" }, take: 2000 }),
   ]);
+
+  // Collapse the raw hit-log into one row per visitor (IP): where they are,
+  // how many times they came, whether they opened a quote, first/last seen.
+  type Visit = (typeof visitsRaw)[number];
+  const byIp = new Map<string, Visit[]>();
+  for (const v of visitsRaw) {
+    const ip = v.ip ?? "unknown";
+    (byIp.get(ip) ?? byIp.set(ip, []).get(ip)!).push(v);
+  }
+
+  let visitors = Array.from(byIp.entries()).map(([ip, vs]) => {
+    // vs is newest-first (query order preserved).
+    const last = vs[0];
+    const first = vs[vs.length - 1];
+    const paths = Array.from(new Set(vs.map((v) => v.path)));
+    const quoteHit = vs.find((v) => v.path.startsWith("/quote/"));
+    const bot = isBot(last.userAgent);
+    return {
+      ip,
+      count: vs.length,
+      pageCount: paths.length,
+      openedQuote: !!quoteHit,
+      quoteId: quoteHit ? quoteHit.path.split("/")[2] ?? null : null,
+      firstSeen: first.createdAt,
+      lastSeen: last.createdAt,
+      userAgent: last.userAgent,
+      hidden: HIDE_IPS.has(ip) || bot,
+    };
+  });
+
+  const hiddenCount = visitors.filter((v) => v.hidden).length;
+  const uniqueExternal = visitors.filter((v) => !v.hidden).length;
+  if (!showAll) visitors = visitors.filter((v) => !v.hidden);
+  visitors.sort((a, b) => b.lastSeen.getTime() - a.lastSeen.getTime());
+  visitors = visitors.slice(0, 200);
+
+  const geo = await geoForIps(visitors.map((v) => v.ip));
 
   return (
     <div className="pb-16">
@@ -68,7 +161,7 @@ export default async function AdminDashboard() {
         <Stat label="Quotes (total)" value={quoteCount} />
         <Stat label="Quotes (7 days)" value={quotes7} accent />
         <Stat label="Visits (total)" value={visitCount} />
-        <Stat label="Visits (7 days)" value={visits7} accent />
+        <Stat label="Unique visitors" value={uniqueExternal} accent />
       </div>
 
       {/* Recent quotes */}
@@ -127,44 +220,99 @@ export default async function AdminDashboard() {
         </div>
       </section>
 
-      {/* Recent visits */}
+      {/* Recent visitors — one row per IP, geo-located, own/bot traffic hidden */}
       <section className="mt-9">
-        <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-[0.15em] text-cyan">
-          Recent visits
-        </h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-sm font-semibold uppercase tracking-[0.15em] text-cyan">
+            Recent visitors
+          </h2>
+          {hiddenCount > 0 && (
+            <Link
+              href={showAll ? "/admin" : "/admin?all=1"}
+              className="text-[11px] text-faint hover:text-accent hover:underline"
+            >
+              {showAll
+                ? "← Hide your own IP & bots"
+                : `Showing external visitors · ${hiddenCount} hidden (your IP + bots) — show all →`}
+            </Link>
+          )}
+        </div>
         <div className="glass overflow-hidden rounded-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-faint">
-                  <th className="px-4 py-3 font-medium">Time</th>
-                  <th className="px-4 py-3 font-medium">Path</th>
-                  <th className="px-4 py-3 font-medium">IP</th>
-                  <th className="px-4 py-3 font-medium">User agent</th>
+                  <th className="px-4 py-3 font-medium">Visitor</th>
+                  <th className="px-4 py-3 font-medium">Location</th>
+                  <th className="px-4 py-3 font-medium">ISP / Org</th>
+                  <th className="px-4 py-3 text-right font-medium">Visits</th>
+                  <th className="px-4 py-3 font-medium">Quote?</th>
+                  <th className="px-4 py-3 font-medium">Last seen</th>
+                  <th className="px-4 py-3 font-medium">Device</th>
                 </tr>
               </thead>
               <tbody>
-                {visits.length === 0 && (
+                {visitors.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-muted">
-                      No visits recorded yet.
+                    <td colSpan={7} className="px-4 py-6 text-center text-muted">
+                      No external visitors recorded yet.
                     </td>
                   </tr>
                 )}
-                {visits.map((v) => (
-                  <tr key={v.id} className="border-b border-line/70 last:border-0">
-                    <td className="whitespace-nowrap px-4 py-2.5 text-muted">{dt(v.createdAt)}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink">{v.path}</td>
-                    <td className="px-4 py-2.5 font-mono text-[11px] text-faint">{v.ip ?? "—"}</td>
-                    <td className="max-w-[22rem] truncate px-4 py-2.5 text-[11px] text-faint">
-                      {v.userAgent ?? "—"}
-                    </td>
-                  </tr>
-                ))}
+                {visitors.map((v) => {
+                  const ua = parseUA(v.userAgent);
+                  const loc = locationOf(geo.get(v.ip));
+                  return (
+                    <tr key={v.ip} className="border-b border-line/70 last:border-0">
+                      <td className="px-4 py-2.5">
+                        <div className="font-mono text-[11px] text-ink">{v.ip}</div>
+                        {v.hidden && (
+                          <div className="text-[10px] text-faint">your IP / bot</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="text-ink">{loc.main}</div>
+                        {loc.sub && <div className="text-[10px] text-faint">{loc.sub}</div>}
+                      </td>
+                      <td className="max-w-[16rem] truncate px-4 py-2.5 text-[11px] text-muted">
+                        {geo.get(v.ip)?.org ?? "—"}
+                      </td>
+                      <td className="tabular px-4 py-2.5 text-right text-ink">
+                        {v.count}
+                        <span className="ml-1 text-[10px] text-faint">
+                          / {v.pageCount} page{v.pageCount === 1 ? "" : "s"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-[11px]">
+                        {v.openedQuote && v.quoteId ? (
+                          <Link
+                            href={`/quote/${v.quoteId}?review=1`}
+                            className="text-cyan hover:underline"
+                          >
+                            ✓ opened
+                          </Link>
+                        ) : (
+                          <span className="text-faint">—</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-[11px] text-muted">
+                        <div className="text-ink">{dt(v.lastSeen)}</div>
+                        <div className="text-[10px] text-faint">first {dt(v.firstSeen)}</div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-[11px] text-muted">
+                        <div className="text-ink">{ua.summary}</div>
+                        {ua.device && <div className="text-[10px] text-faint">{ua.device}</div>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
+        <p className="mt-2 text-[11px] text-faint">
+          Grouped by IP · location from a cached GeoIP lookup · newest first.
+        </p>
       </section>
     </div>
   );

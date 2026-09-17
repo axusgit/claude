@@ -41,11 +41,18 @@ class UserUpdateIn(BaseModel):
 
 
 @router.get("/", response_model=List[UserOut])
-def list_users(role: Optional[str] = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    """List users. Pass ?role=technician to get assignable staff only."""
+def list_users(role: Optional[str] = None, include_inactive: bool = False,
+               db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """List users. Pass ?role=technician to get assignable staff only.
+
+    Deactivated users (e.g. deleted in Xcitium and soft-deleted by the sync) are
+    hidden by default; pass ?include_inactive=true to see them.
+    """
     q = db.query(User)
     if role:
         q = q.filter(User.role == role)
+    if not include_inactive:
+        q = q.filter(User.is_active == True)  # noqa: E712
     return q.order_by(User.full_name).all()
 
 
