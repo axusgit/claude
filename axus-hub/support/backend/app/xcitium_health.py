@@ -18,7 +18,7 @@ import time
 import smtplib
 import ssl
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from email.message import EmailMessage
 
 import httpx
@@ -84,6 +84,14 @@ def _row(db) -> XcitiumHealth:
         db.commit()
         db.refresh(h)
     return h
+
+
+def _as_aware(dt):
+    """Treat a naive datetime as UTC so it can be compared with tz-aware ones (the
+    DB timestamptz columns come back aware)."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _fmt_duration(delta) -> str:
@@ -154,6 +162,7 @@ def _alert_down(detail, now):
 
 
 def _alert_up(down_since, now):
+    down_since = _as_aware(down_since)
     dur = _fmt_duration(now - down_since) if down_since else "unknown"
     _send(
         "✅ Xcitium Service Desk recovered",
@@ -176,7 +185,7 @@ def check_once():
     db = SessionLocal()
     try:
         h = _row(db)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         prev = h.state
         h.last_checked_at = now
         transition = None

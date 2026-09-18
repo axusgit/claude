@@ -85,6 +85,7 @@ def _process_one(db, msg):
         client_id=client_id, contact_id=contact_id, created_by_id=sys_user.id,
         board_id=default_board_id(db),
         email_conversation_id=conv, ticket_type=TicketType.standard,
+        origin="client_email",
     )
     db.add(ticket)
     from app.routers.tickets import generate_ticket_reference

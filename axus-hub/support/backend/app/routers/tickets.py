@@ -7,7 +7,10 @@ from uuid import uuid4
 import os
 import random
 from app.database import get_db
-from app.models.ticket import Ticket, TimeEntry, TicketComment, TicketActivity, TicketStatus, TicketType
+from app.models.ticket import (
+    Ticket, TimeEntry, TicketComment, TicketActivity, TicketStatus, TicketType,
+    TICKET_ORIGINS,
+)
 from app.models.ticket_watcher import TicketWatcher
 from app.models.attachment import Attachment
 from app.auth import get_current_user, require_staff
@@ -17,6 +20,21 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
 STANDARD_HOUR_LIMIT = 8.0
+
+
+def _validate_origin(origin: Optional[str]) -> None:
+    if origin is not None and origin not in TICKET_ORIGINS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid origin '{origin}'. Allowed: {', '.join(TICKET_ORIGINS)}",
+        )
+
+
+def _default_origin(user: User) -> str:
+    """A ticket with no explicit origin is attributed by who created it: a client
+    logging in is coming through the portal; staff are opening it themselves."""
+    role = user.role.value if hasattr(user.role, "value") else user.role
+    return "client_portal" if role == "client" else "axus_tech"
 
 
 def _unique_ticket_number(db: Session) -> int:
@@ -69,6 +87,7 @@ class TicketIn(BaseModel):
     reporter_user_id: Optional[int] = None  # business user who reported it
     assigned_to_id: Optional[int] = None
     project_id: Optional[int] = None        # parent project (a ticket of type sow)
+    origin: Optional[str] = None            # where it came from; defaults by creator role
 
 
 class TicketUpdate(BaseModel):
@@ -82,6 +101,7 @@ class TicketUpdate(BaseModel):
     reporter_user_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
     project_id: Optional[int] = None
+    origin: Optional[str] = None
 
 
 class TimeEntryIn(BaseModel):
@@ -159,6 +179,7 @@ AUDITED_FIELDS = {
     "priority": "Priority",
     "assigned_to_id": "Assignee",
     "category": "Category",
+    "origin": "Origin",
 }
 
 
@@ -171,6 +192,7 @@ class TicketOut(BaseModel):
     status: str
     priority: str
     ticket_type: str
+    origin: Optional[str] = None
     client_id: int
     board_id: Optional[int]
     contact_id: Optional[int]
@@ -216,6 +238,7 @@ def _xcitium_row(xt) -> TicketOut:
         status=_XCITIUM_STATUS.get((xt.status or "").lower(), "open"),
         priority=_XCITIUM_PRIORITY.get((xt.priority or "").lower(), "medium"),
         ticket_type="standard",
+        origin=None,   # unknown for legacy mirrored rows
         client_id=0, board_id=None, contact_id=None, reporter_user_id=None,
         assigned_to_id=None, project_id=None, created_by_id=0,
         total_hours=0.0, invoiced=False,
@@ -271,8 +294,11 @@ def list_tickets(
 def create_ticket(data: TicketIn, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from app.models.board import default_board_id
     _validate_project_parent(db, data.project_id)
+    _validate_origin(data.origin)
+    payload = data.model_dump()
+    payload["origin"] = data.origin or _default_origin(current_user)
     ticket = Ticket(
-        **data.model_dump(),
+        **payload,
         created_by_id=current_user.id,
         ticket_type=TicketType.standard,
     )
@@ -344,6 +370,7 @@ def update_ticket(ticket_id: int, data: TicketUpdate, db: Session = Depends(get_
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     _validate_project_parent(db, data.project_id, self_id=ticket_id)
+    _validate_origin(data.origin)
 
     changes = data.model_dump(exclude_none=True)
     # Snapshot audited fields before applying, so we can log what actually changed.

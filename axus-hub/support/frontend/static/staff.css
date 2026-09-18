@@ -227,6 +227,24 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
 .pm-danger:hover { background: rgba(229,72,77,.1); color: #e5484d; }
 .pm-danger:hover .pm-ico { color: #e5484d; }
 
+/* Sidebar Business/Users dropdown: click the label to reveal View / ＋ New …
+   (the "New" action lives here instead of a top-right button that overlapped the
+   profile menu). The menu expands in place under the label. */
+.nav-dd { position: relative; }
+.nav-dd-btn { width: 100%; display: flex; align-items: center; gap: 8px; }
+.nav-dd-caret { margin-left: auto; color: var(--muted); font-size: 11px; }
+.nav-dd-btn:hover .nav-dd-caret { color: var(--orange); }
+.nav-dd-menu {
+  margin: 3px 0 6px 12px; padding: 4px; display: flex; flex-direction: column; gap: 2px;
+  border-left: 2px solid var(--border);
+}
+.nav-dd-item {
+  text-align: left; background: none; border: none; cursor: pointer; font: inherit;
+  color: var(--text); padding: 7px 10px; border-radius: 8px; font-size: 13.5px;
+}
+.nav-dd-item:hover { background: var(--surface-2); color: var(--orange); }
+.nav-dd-plus { color: var(--orange); font-weight: 700; }
+
 /* ===================== Reset portal password ===================== */
 .btn-xs { padding: 4px 10px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
 .pwr-row { display: flex; gap: 8px; align-items: stretch; }

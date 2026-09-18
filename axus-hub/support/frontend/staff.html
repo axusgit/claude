@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=35" />
-  <link rel="stylesheet" href="/static/staff.css?v=35" />
+  <link rel="stylesheet" href="/static/styles.css?v=42" />
+  <link rel="stylesheet" href="/static/staff.css?v=45" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -80,8 +80,18 @@
           <div class="nav-group" data-group="manage">
             <button type="button" class="side-label" data-toggle>Manage <span class="side-caret">▾</span></button>
             <div class="nav-group-body">
-              <a data-section="customers" class="nav-item">Business <span class="nav-count" id="c-customers"></span></a>
-              <a data-section="users" class="nav-item">Users <span class="nav-count" id="c-users"></span></a>
+              <div class="nav-dd">
+                <button type="button" class="nav-item nav-dd-btn" id="business-dd-btn" aria-haspopup="true">Business <span class="nav-count" id="c-customers"></span><span class="nav-dd-caret">▾</span></button>
+                <div class="nav-dd-menu hidden" id="business-dd-menu" role="menu">
+                  <button type="button" class="nav-dd-item" id="new-customer-btn" role="menuitem"><span class="nav-dd-plus">＋</span> New Business</button>
+                </div>
+              </div>
+              <div class="nav-dd">
+                <button type="button" class="nav-item nav-dd-btn" id="users-dd-btn" aria-haspopup="true">Users <span class="nav-count" id="c-users"></span><span class="nav-dd-caret">▾</span></button>
+                <div class="nav-dd-menu hidden" id="users-dd-menu" role="menu">
+                  <button type="button" class="nav-dd-item" id="new-user-btn" role="menuitem"><span class="nav-dd-plus">＋</span> New User</button>
+                </div>
+              </div>
             </div>
           </div>
         </nav>
@@ -140,6 +150,16 @@
               </label>
               <label class="ctl">Board
                 <select id="d-board"><option value="">— None —</option></select>
+              </label>
+              <label class="ctl">Origin
+                <select id="d-origin">
+                  <option value="">— Unknown —</option>
+                  <option value="client_portal">Client · Portal</option>
+                  <option value="client_email">Client · Email</option>
+                  <option value="client_phone">Client · Phone</option>
+                  <option value="axus_tech">Axus Tech</option>
+                  <option value="monitoring">Monitoring / Alert</option>
+                </select>
               </label>
             </div>
           </div>
@@ -220,7 +240,6 @@
         <section id="customers-view" class="hidden">
           <div class="page-head">
             <div><h2>Business</h2><p class="muted" id="cust-summary"></p></div>
-            <button class="btn btn-primary" id="new-customer-btn">+ New Business</button>
           </div>
           <div class="toolbar"><input type="search" id="cust-search" placeholder="Search business…" class="search-box" /></div>
           <div class="table-wrap">
@@ -271,7 +290,6 @@
         <section id="users-view" class="hidden">
           <div class="page-head">
             <div><h2>Users</h2><p class="muted" id="users-summary"></p></div>
-            <button class="btn btn-primary" id="new-user-btn">+ New User</button>
           </div>
           <div class="toolbar">
             <input type="search" id="user-search" placeholder="Search users…" class="search-box" />
@@ -378,7 +396,16 @@
           <label>Category<select id="nt-category"><option value="">— Select —</option><option>Network</option><option>Wireless</option><option>Cloud</option><option>Security</option><option>Email</option><option>Hardware</option><option>Software</option><option>Other</option></select></label>
           <label>Priority<select id="nt-priority"><option value="low">Low</option><option value="medium" selected>Normal</option><option value="high">High</option><option value="critical">Critical</option></select></label>
         </div>
-        <label>Assignee<select id="nt-assignee"><option value="">Unassigned</option></select></label>
+        <div class="form-row">
+          <label>Assignee<select id="nt-assignee"><option value="">Unassigned</option></select></label>
+          <label>Origin<select id="nt-origin">
+            <option value="axus_tech" selected>Axus Tech</option>
+            <option value="client_portal">Client · Portal</option>
+            <option value="client_email">Client · Email</option>
+            <option value="client_phone">Client · Phone</option>
+            <option value="monitoring">Monitoring / Alert</option>
+          </select></label>
+        </div>
         <div id="nt-error" class="form-error"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="nt-cancel">Cancel</button><button type="submit" class="btn btn-primary" id="nt-submit">Create ticket</button></div>
       </form>
@@ -407,6 +434,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=35"></script>
+  <script src="/static/staff.js?v=46"></script>
 </body>
 </html>

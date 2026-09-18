@@ -24,6 +24,27 @@ class TicketType(str, enum.Enum):
     sow = "sow"             # >= 8 hours / project work
 
 
+class TicketOrigin(str, enum.Enum):
+    """Where the ticket came from. The reporter_user_id still records *which* client
+    person it's for; this records the channel/who originated it -- so a ticket an Axus
+    tech opens proactively is distinguishable from one the client raised."""
+    client_portal = "client_portal"   # client submitted it via the portal
+    client_email = "client_email"     # arrived by email
+    client_phone = "client_phone"     # phoned in, logged by a tech
+    axus_tech = "axus_tech"           # Axus-initiated / proactive
+    monitoring = "monitoring"         # raised from a monitoring alert
+
+
+# Allowed origin values (stored as plain strings) and their display labels.
+TICKET_ORIGINS = {
+    "client_portal": "Client · Portal",
+    "client_email": "Client · Email",
+    "client_phone": "Client · Phone",
+    "axus_tech": "Axus Tech",
+    "monitoring": "Monitoring / Alert",
+}
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
 
@@ -38,6 +59,9 @@ class Ticket(Base):
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
     priority = Column(Enum(TicketPriority), default=TicketPriority.medium, nullable=False)
     ticket_type = Column(Enum(TicketType), default=TicketType.standard, nullable=False)
+    # Where the ticket came from (see TicketOrigin). Stored as a plain string so the
+    # option set can evolve without a DB enum migration. Null for pre-existing rows.
+    origin = Column(String, nullable=True)
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     board_id = Column(Integer, ForeignKey("boards.id"), nullable=True)       # service board / queue

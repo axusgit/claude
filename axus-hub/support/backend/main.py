@@ -117,10 +117,16 @@ if os.path.isdir(frontend_path):
     if os.path.isdir(static_path):
         app.mount("/static", StaticFiles(directory=static_path), name="static")
 
+    # The HTML shells carry versioned (?v=NN) references to the JS/CSS, so the HTML
+    # itself must always be revalidated -- otherwise a browser can keep serving a
+    # cached page that still points at old assets, and updates never appear. The
+    # versioned static files under /static may cache freely.
+    _NO_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
+
     @app.get("/staff")
     def staff_console():
-        return FileResponse(os.path.join(frontend_path, "staff.html"))
+        return FileResponse(os.path.join(frontend_path, "staff.html"), headers=_NO_CACHE)
 
     @app.get("/{full_path:path}")
     def serve_frontend(full_path: str):
-        return FileResponse(os.path.join(frontend_path, "index.html"))
+        return FileResponse(os.path.join(frontend_path, "index.html"), headers=_NO_CACHE)

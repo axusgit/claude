@@ -92,6 +92,7 @@ def submit_ticket(
         client_id=user.client_id,        # forced to the user's own company
         created_by_id=user.id,
         ticket_type=TicketType.standard,
+        origin="client_portal",
     )
     from app.models.board import default_board_id
     ticket.board_id = default_board_id(db)

@@ -44,6 +44,48 @@ const Staff = (() => {
   const $ = id => document.getElementById(id);
   const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const initials = n => (n || "?").split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+  // Distinct HUES (not shades of one color) so participants are easy to tell apart:
+  // red, orange, yellow, green, teal, blue, indigo, violet, pink, brown.
+  const AVATAR_COLORS = [
+    "#E03131", // red
+    "#F76707", // orange
+    "#F5B800", // yellow
+    "#2F9E44", // green
+    "#0CA678", // teal
+    "#1C7ED6", // blue
+    "#4263EB", // indigo
+    "#7950F2", // violet
+    "#E64980", // pink
+    "#A9622F", // brown
+  ];
+  const _hashIndex = key => {
+    const s = (key || "?").toLowerCase().trim();
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % AVATAR_COLORS.length;
+  };
+  const avatarColor = key => AVATAR_COLORS[_hashIndex(key)];
+  // Bright hues (e.g. yellow) need dark text; darker ones need white. Pick per color.
+  const textOn = hex => {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#1a1a1a" : "#fff";
+  };
+  const avatarStyle = hex => `background:${hex};color:${textOn(hex)}`;
+  // Assign DISTINCT colors to the participants of one conversation. Each person's
+  // color is seeded from their name (so it stays roughly consistent elsewhere), but
+  // if two people would land on the same color we probe to the next free one — so no
+  // two contributors on the same ticket ever share a color (up to the palette size).
+  // items: [{ key, base }]  key = the unique identity, base = string to seed color.
+  const conversationColors = items => {
+    const N = AVATAR_COLORS.length, used = new Set(), map = new Map();
+    for (const { key, base } of items) {
+      if (map.has(key)) continue;
+      let idx = _hashIndex(base), tries = 0;
+      while (used.has(idx) && tries < N) { idx = (idx + 1) % N; tries++; }
+      used.add(idx); map.set(key, AVATAR_COLORS[idx]);
+    }
+    return map;
+  };
   const cap = s => (s || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
   function fmtDate(s) { if (!s) return ""; return new Date(s).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
   function fileSize(b) { if (b < 1024) return b + " B"; if (b < 1048576) return (b / 1024).toFixed(0) + " KB"; return (b / 1048576).toFixed(1) + " MB"; }
@@ -79,12 +121,15 @@ const Staff = (() => {
     $("who-name").textContent = me.full_name;
     $("who-role").textContent = cap(me.role);
     $("profile-av").textContent = initials(me.full_name);
+    const _meColor = avatarColor(me.full_name);
+    $("profile-av").style.background = _meColor;
+    $("profile-av").style.color = textOn(_meColor);
     $("pm-name").textContent = me.full_name;
     $("pm-email").textContent = me.email;
     // Only admins may change system configuration (users/access). Technicians get
     // everything else; the config UI is hidden for them.
     const isAdmin = me.role === "admin";
-    const usersNav = document.querySelector('[data-section="users"]');
+    const usersNav = $("users-dd-btn") ? $("users-dd-btn").closest(".nav-dd") : null;
     if (usersNav) usersNav.style.display = isAdmin ? "" : "none";
     if ($("cd-adduser-btn")) $("cd-adduser-btn").style.display = isAdmin ? "" : "none";
     const [cl, us, bd] = await Promise.all([api("/api/clients/"), api("/api/users/"), api("/api/boards/")]);
@@ -191,7 +236,7 @@ const Staff = (() => {
         <td class="col-priority"><span class="prio-dot prio ${t.priority}">${cap(t.priority)}</span></td>
         <td class="col-status"><span class="badge ${t.status}">${cap(t.status)}</span></td>
         <td class="col-assignee">${aName
-          ? `<span class="assignee-pill"><span class="mini-avatar">${initials(aName)}</span>${esc(aName)}</span>`
+          ? `<span class="assignee-pill"><span class="mini-avatar" style="${avatarStyle(avatarColor(aName))}">${initials(aName)}</span>${esc(aName)}</span>`
           : `<span class="assignee-pill"><span class="mini-avatar none">?</span><span class="cell-muted">Unassigned</span></span>`}</td>
         <td class="cell-muted col-updated">${fmtDate(t.updated_at || t.created_at)}</td>`;
       tbody.appendChild(tr);
@@ -269,9 +314,11 @@ const Staff = (() => {
     $("p-created").textContent = fmtDate(t.created);
     // render the conversation read-only
     const el = $("thread");
+    const xKey = th => th.poster || t.user || "?";
+    const xColors = conversationColors((t.threads || []).map(th => ({ key: xKey(th), base: xKey(th) })));
     el.innerHTML = (t.threads && t.threads.length)
       ? t.threads.map(th => `<div class="msg them">
-          <div class="msg-avatar">${initials(th.poster || t.user || "?")}</div>
+          <div class="msg-avatar" style="${avatarStyle(xColors.get(xKey(th)))}">${initials(xKey(th))}</div>
           <div class="msg-bubble"><div class="msg-meta">${esc(th.poster || "—")} · ${fmtDate(th.created)}</div>
           <div class="msg-body">${esc(htmlToText(th.body)).replace(/\n/g, "<br>")}</div></div></div>`).join("")
       : `<div class="thread-empty">No messages.</div>`;
@@ -289,6 +336,7 @@ const Staff = (() => {
     $("d-priority").value = current.priority;
     $("d-assignee").value = current.assigned_to_id || "";
     $("d-board").value = current.board_id || "";
+    $("d-origin").value = current.origin || "";
     $("p-company").textContent = clientMap[current.client_id] || "—";
     $("p-category").textContent = current.category || "Uncategorized";
     const isProject = current.ticket_type === "sow";
@@ -426,12 +474,16 @@ const Staff = (() => {
     const comments = await api(`/api/tickets/${id}/comments`);
     const el = $("thread");
     if (!comments.length) { el.innerHTML = `<div class="thread-empty">No replies yet.</div>`; return; }
+    const cColors = conversationColors(comments.map(c => ({
+      key: String(c.author_id),
+      base: userMap[c.author_id] || (c.author_id === me.id ? "You" : "User"),
+    })));
     el.innerHTML = comments.map(c => {
       const mine = c.author_id === me.id;
       const who = userMap[c.author_id] || (mine ? "You" : "User");
       const canEdit = me.role === "admin" || c.author_id === me.id;
       return `<div class="msg ${mine ? "me" : "them"} ${c.is_internal ? "internal" : ""}">
-        <div class="msg-avatar">${initials(who)}</div>
+        <div class="msg-avatar" style="${avatarStyle(cColors.get(String(c.author_id)))}">${initials(who)}</div>
         <div class="msg-bubble">
           <div class="msg-meta">${esc(who)} · ${fmtDate(c.created_at)} ${c.is_internal ? '<span class="internal-tag">Internal</span>' : ""}
             ${canEdit ? `<span class="msg-actions"><a class="msg-edit" data-cid="${c.id}">Edit</a><a class="msg-del" data-cid="${c.id}">Delete</a></span>` : ""}</div>
@@ -891,6 +943,7 @@ const Staff = (() => {
     $("nt-category").value = t.category || "";
     $("nt-priority").value = t.priority;
     $("nt-assignee").value = t.assigned_to_id ? String(t.assigned_to_id) : "";
+    $("nt-origin").value = t.origin || "axus_tech";
     $("new-modal").classList.remove("hidden");
     // load the business's users, then select the current reporter
     await loadUsersInto($("nt-contact"), String(t.client_id));
@@ -963,7 +1016,7 @@ const Staff = (() => {
 
     // customers
     $("cust-search").oninput = renderCustomers;
-    $("new-customer-btn").onclick = () => showCustModal(null);
+    $("new-customer-btn").onclick = () => { $("business-dd-menu").classList.add("hidden"); showCustModal(null); };
     $("cust-modal-close").onclick = closeCustModal; $("cf-cancel").onclick = closeCustModal;
     $("cust-back-btn").onclick = () => { showCustomers(); renderCustomers(); };
     $("cd-edit-btn").onclick = () => showCustModal(currentCustomer);
@@ -984,7 +1037,7 @@ const Staff = (() => {
     // users
     $("user-search").oninput = renderUsers;
     $("uf-role").onchange = renderUsers;
-    $("new-user-btn").onclick = () => showUserModal(null);
+    $("new-user-btn").onclick = () => { $("users-dd-menu").classList.add("hidden"); showUserModal(null); };
     $("um-close").onclick = closeUserModal; $("uf-cancel").onclick = closeUserModal;
     $("user-form").onsubmit = async e => { e.preventDefault(); $("uf-error").textContent = ""; try { await saveUser(); } catch (err) { $("uf-error").textContent = err.message; } };
 
@@ -1008,11 +1061,28 @@ const Staff = (() => {
     $("cols-menu").onclick = e => e.stopPropagation();
     document.addEventListener("click", () => $("cols-menu").classList.add("hidden"));
 
+    // sidebar Business/Users: clicking the label shows the existing list on the right
+    // AND opens the "＋ New …" dropdown underneath it.
+    const wireNavDD = (btnId, menuId, showList) => {
+      $(btnId).onclick = e => {
+        e.stopPropagation();
+        document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+        $(btnId).classList.add("active");
+        showList();                              // render the existing rows on the right
+        $(menuId).classList.toggle("hidden");    // reveal ＋ New …
+      };
+      $(menuId).onclick = e => e.stopPropagation();
+      document.addEventListener("click", () => $(menuId).classList.add("hidden"));
+    };
+    wireNavDD("business-dd-btn", "business-dd-menu", () => { showCustomers(); renderCustomers(); });
+    wireNavDD("users-dd-btn", "users-dd-menu", () => { showUsers(); renderUsers(); });
+
     // detail controls
     $("d-status").onchange = e => patch("status", e.target.value);
     $("d-priority").onchange = e => patch("priority", e.target.value);
     $("d-assignee").onchange = e => { if (e.target.value) patch("assigned_to_id", parseInt(e.target.value)); };
     $("d-board").onchange = e => patch("board_id", e.target.value ? parseInt(e.target.value) : null);
+    $("d-origin").onchange = e => { if (e.target.value) patch("origin", e.target.value); };
 
     $("reply-internal").onchange = e => $("reply-form").classList.toggle("internal-mode", e.target.checked);
     $("reply-form").onsubmit = async e => {
@@ -1048,6 +1118,7 @@ const Staff = (() => {
       const ct = $("nt-contact").value; if (ct) payload.reporter_user_id = parseInt(ct);
       const bd = $("nt-board").value; if (bd) payload.board_id = parseInt(bd);
       const pj = $("nt-project").value; if (pj) payload.project_id = parseInt(pj);
+      const og = $("nt-origin").value; if (og) payload.origin = og;
       try {
         if (ticketEditId) {
           await api(`/api/tickets/${ticketEditId}`, { method: "PUT", body: payload });
