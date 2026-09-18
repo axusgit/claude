@@ -890,11 +890,16 @@ const Staff = (() => {
   function renderUsers() {
     const q = ($("user-search").value || "").toLowerCase();
     const fr = $("uf-role").value;
+    const roleMatch = u => !fr ? true
+      : fr === "staff" ? (u.role === "admin" || u.role === "technician")
+      : u.role === fr;
     const rows = usersData
-      .filter(u => !fr || u.role === fr)
+      .filter(roleMatch)
       .filter(u => !q || `${u.full_name} ${u.email}`.toLowerCase().includes(q))
       .sort((a, b) => a.full_name.localeCompare(b.full_name));
-    $("users-summary").textContent = `${usersData.length} user${usersData.length === 1 ? "" : "s"}`;
+    const label = fr === "staff" ? "staff" : fr ? fr : "user";
+    $("users-summary").textContent =
+      `${rows.length} ${label}${rows.length === 1 ? "" : "s"} · ${usersData.length} total`;
     const tbody = $("user-rows"); tbody.innerHTML = "";
     $("users-empty").classList.toggle("hidden", rows.length > 0);
     for (const u of rows) {
