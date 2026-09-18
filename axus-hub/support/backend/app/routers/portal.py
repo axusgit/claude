@@ -3,7 +3,7 @@
 Every endpoint is scoped to the logged-in client user's own company (client_id)
 and only ever exposes public conversation (internal staff notes are never returned).
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -123,7 +123,9 @@ def ticket_comments(ticket_id: int, db: Session = Depends(get_db), user: User = 
 
 
 @router.post("/tickets/{ticket_id}/comments", response_model=CommentOut)
-def reply(ticket_id: int, data: PortalReplyIn, db: Session = Depends(get_db), user: User = Depends(require_client_user)):
+def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
+          db: Session = Depends(get_db), user: User = Depends(require_client_user)):
+    from app import notify
     _owned_ticket(db, ticket_id, user)
     comment = TicketComment(
         ticket_id=ticket_id,
@@ -135,6 +137,7 @@ def reply(ticket_id: int, data: PortalReplyIn, db: Session = Depends(get_db), us
     _log_activity(db, ticket_id, user.id, "comment_added", "Client replied via portal")
     db.commit()
     db.refresh(comment)
+    background.add_task(notify.notify_customer_reply, ticket_id)  # tell staff a customer replied
     return comment
 
 

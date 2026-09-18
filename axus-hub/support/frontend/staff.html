@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=42" />
-  <link rel="stylesheet" href="/static/staff.css?v=45" />
+  <link rel="stylesheet" href="/static/staff.css?v=47" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -59,13 +59,14 @@
       <!-- SIDEBAR -->
       <aside class="sidebar">
         <nav class="side-nav" id="side-nav">
+          <a class="nav-item side-home active" id="nav-dashboard">Dashboard</a>
           <div class="nav-group" data-group="tickets">
             <button type="button" class="side-label" data-toggle>Tickets <span class="side-caret">▾</span></button>
             <div class="nav-group-body">
               <button class="nav-item nav-action" id="new-ticket-btn">New Ticket</button>
               <a data-filter="all" class="nav-item">All Tickets <span class="nav-count" id="c-all"></span></a>
               <a data-filter="mine" class="nav-item">My Tickets <span class="nav-count" id="c-mine"></span></a>
-              <a data-filter="open" class="nav-item active">Open <span class="nav-count" id="c-open"></span></a>
+              <a data-filter="open" class="nav-item">Open <span class="nav-count" id="c-open"></span></a>
               <a data-filter="assigned" class="nav-item">Assigned <span class="nav-count" id="c-assigned"></span></a>
               <a data-filter="unassigned" class="nav-item">Unassigned <span class="nav-count" id="c-unassigned"></span></a>
               <a data-filter="closed" class="nav-item">Closed <span class="nav-count" id="c-closed"></span></a>
@@ -99,6 +100,26 @@
 
       <!-- CONTENT -->
       <main class="content">
+        <!-- DASHBOARD -->
+        <section id="dashboard-view" class="hidden">
+          <div class="page-head"><div><h2>Dashboard</h2><p class="muted" id="dash-sub"></p></div></div>
+          <div class="dash-tiles" id="dash-tiles"></div>
+          <div class="dash-grid">
+            <div class="card">
+              <h3 class="card-title">My open tickets <span class="muted" id="dash-mine-count"></span></h3>
+              <div id="dash-mine" class="dash-list"></div>
+            </div>
+            <div class="card">
+              <h3 class="card-title">Unassigned <span class="muted" id="dash-unassigned-count"></span></h3>
+              <div id="dash-unassigned" class="dash-list"></div>
+            </div>
+            <div class="card dash-team-card">
+              <h3 class="card-title">Team workload</h3>
+              <div id="dash-team" class="dash-team"></div>
+            </div>
+          </div>
+        </section>
+
         <!-- QUEUE -->
         <section id="queue-view">
           <div class="stats-row" id="stats-row"></div>
@@ -434,6 +455,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=46"></script>
+  <script src="/static/staff.js?v=47"></script>
 </body>
 </html>

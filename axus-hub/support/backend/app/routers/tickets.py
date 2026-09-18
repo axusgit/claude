@@ -291,8 +291,10 @@ def list_tickets(
 
 
 @router.post("/", response_model=TicketOut)
-def create_ticket(data: TicketIn, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_ticket(data: TicketIn, background: BackgroundTasks, db: Session = Depends(get_db),
+                  current_user: User = Depends(get_current_user)):
     from app.models.board import default_board_id
+    from app import notify
     _validate_project_parent(db, data.project_id)
     _validate_origin(data.origin)
     payload = data.model_dump()
@@ -311,6 +313,8 @@ def create_ticket(data: TicketIn, db: Session = Depends(get_db), current_user: U
     _log_activity(db, ticket.id, current_user.id, "created", f"Ticket created: {ticket.title}")
     db.commit()
     db.refresh(ticket)
+    # Email staff: the assignee if pre-assigned, else the whole team (never the creator).
+    background.add_task(notify.notify_new_ticket, ticket.id, current_user.id)
     return ticket
 
 
@@ -365,7 +369,9 @@ def list_project_attachments(ticket_id: int, db: Session = Depends(get_db), _=De
 
 
 @router.put("/{ticket_id}", response_model=TicketOut)
-def update_ticket(ticket_id: int, data: TicketUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def update_ticket(ticket_id: int, data: TicketUpdate, background: BackgroundTasks,
+                  db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app import notify
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -399,6 +405,11 @@ def update_ticket(ticket_id: int, data: TicketUpdate, db: Session = Depends(get_
 
     db.commit()
     db.refresh(ticket)
+    # Notify the newly-assigned staff member (not if you assigned it to yourself).
+    if "assigned_to_id" in changes and changes["assigned_to_id"] and \
+            changes["assigned_to_id"] != old.get("assigned_to_id"):
+        background.add_task(notify.notify_assignment, ticket.id,
+                            changes["assigned_to_id"], current_user.id)
     return ticket
 
 

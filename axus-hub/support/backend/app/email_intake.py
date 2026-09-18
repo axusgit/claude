@@ -75,6 +75,11 @@ def _process_one(db, msg):
         db.add(TicketActivity(ticket_id=ticket.id, user_id=sys_user.id,
                               action="comment_added", detail="Reply received by email"))
         db.commit()
+        try:
+            from app import notify
+            notify.notify_customer_reply(ticket.id)  # tell staff a customer replied
+        except Exception:
+            pass
         return "reply"
 
     client_id, contact_id = _resolve_sender(db, email, name)

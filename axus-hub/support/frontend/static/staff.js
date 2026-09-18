@@ -95,8 +95,9 @@ const Staff = (() => {
   /* ---------- Views ---------- */
   const showLogin = () => { $("login-view").classList.remove("hidden"); $("app-view").classList.add("hidden"); };
   const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); };
-  const VIEWS = ["queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view"];
+  const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view"];
   const hideViews = () => VIEWS.forEach(id => $(id).classList.add("hidden"));
+  const showDashboard = () => { hideViews(); $("dashboard-view").classList.remove("hidden"); renderDashboard(); };
   const showQueue = () => { hideViews(); $("queue-view").classList.remove("hidden"); };
   const showDetail = () => { hideViews(); $("detail-view").classList.remove("hidden"); };
   const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); };
@@ -156,7 +157,70 @@ const Staff = (() => {
       pairs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("");
   }
 
-  async function loadTickets() { tickets = await api("/api/tickets/"); renderCounts(); renderStats(); renderQueue(); }
+  async function loadTickets() { tickets = await api("/api/tickets/"); renderCounts(); renderStats(); renderQueue(); renderDashboard(); }
+
+  /* ---------- Dashboard ---------- */
+  function renderDashboard() {
+    if (!me) return;
+    const native = tickets.filter(t => t.source !== "xcitium");
+    const active = native.filter(t => ACTIVE.includes(t.status));
+    const unassigned = active.filter(t => !t.assigned_to_id);
+    const mine = active.filter(t => t.assigned_to_id === me.id);
+    const waiting = native.filter(t => t.status === "waiting").length;
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const closedToday = native.filter(t => t.status === "closed" && t.closed_at && new Date(t.closed_at) >= midnight).length;
+    const imported = tickets.filter(t => t.source === "xcitium" && ACTIVE.includes(t.status)).length;
+
+    const tile = (n, label, cls, flt) =>
+      `<button class="stat-card dash-tile ${cls}" data-flt="${flt || ""}"><div class="stat-num">${n}</div><div class="stat-label">${label}</div></button>`;
+    $("dash-tiles").innerHTML =
+      tile(active.length, "Open", "accent", "open") +
+      tile(unassigned.length, "Unassigned", unassigned.length ? "danger" : "", "unassigned") +
+      tile(mine.length, "My open", "", "mine") +
+      tile(waiting, "Waiting on client", "", "waiting") +
+      tile(closedToday, "Closed today", "good", "closed");
+    $("dash-tiles").querySelectorAll(".dash-tile").forEach(b => {
+      b.onclick = () => {
+        const f = b.dataset.flt; if (!f) return;
+        filter = f;
+        document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+        const nav = document.querySelector(`.nav-item[data-filter="${f}"]`); if (nav) nav.classList.add("active");
+        showQueue(); renderQueue();
+      };
+    });
+
+    const rowHtml = t => `<div class="dash-row" data-id="${t.id}">
+        <span class="dash-ref">${esc(t.reference || "")}</span>
+        <span class="dash-title">${esc(t.title)}</span>
+        <span class="badge ${t.status}">${cap(t.status)}</span>
+        <span class="dash-co cell-muted">${esc(t.client_name || clientMap[t.client_id] || "—")}</span>
+      </div>`;
+    const fill = (elId, rows, empty) => {
+      const el = $(elId);
+      el.innerHTML = rows.length ? rows.slice(0, 12).map(rowHtml).join("") : `<div class="muted dash-empty">${empty}</div>`;
+      el.querySelectorAll(".dash-row").forEach(r => r.onclick = () => openTicket(parseInt(r.dataset.id)));
+    };
+    fill("dash-mine", mine, "Nothing assigned to you.");
+    fill("dash-unassigned", unassigned, "No unassigned tickets.");
+    $("dash-mine-count").textContent = `(${mine.length})`;
+    $("dash-unassigned-count").textContent = `(${unassigned.length})`;
+
+    const load = {};
+    staffUsers.forEach(u => load[u.id] = 0);
+    active.forEach(t => { if (t.assigned_to_id != null && load[t.assigned_to_id] != null) load[t.assigned_to_id]++; });
+    const maxLoad = Math.max(1, ...Object.values(load));
+    const team = staffUsers.map(u => ({ u, n: load[u.id] || 0 })).sort((a, b) => b.n - a.n);
+    $("dash-team").innerHTML = team.length ? team.map(({ u, n }) => `
+      <div class="dash-team-row">
+        <span class="mini-avatar" style="${avatarStyle(avatarColor(u.full_name))}">${initials(u.full_name)}</span>
+        <span class="dash-team-name">${esc(u.full_name)}</span>
+        <span class="dash-team-bar"><span style="width:${Math.round((n / maxLoad) * 100)}%"></span></span>
+        <span class="dash-team-n">${n}</span>
+      </div>`).join("") : `<div class="muted">No staff yet.</div>`;
+
+    $("dash-sub").textContent = `${active.length} open · ${unassigned.length} unassigned`
+      + (imported ? ` · ${imported} imported (read-only)` : "");
+  }
 
   /* ---------- Queue ---------- */
   function matchesFilter(t) {
@@ -1041,6 +1105,12 @@ const Staff = (() => {
     $("um-close").onclick = closeUserModal; $("uf-cancel").onclick = closeUserModal;
     $("user-form").onsubmit = async e => { e.preventDefault(); $("uf-error").textContent = ""; try { await saveUser(); } catch (err) { $("uf-error").textContent = err.message; } };
 
+    // Dashboard (landing view)
+    $("nav-dashboard").onclick = () => {
+      document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+      $("nav-dashboard").classList.add("active");
+      showDashboard();
+    };
     // sidebar nav (ticket queues + manage sections) — only real nav links, not action buttons
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-section]").forEach(item => {
       item.onclick = () => {
@@ -1134,7 +1204,7 @@ const Staff = (() => {
     // central mode); fall back to the login screen.
     try { await enter(); } catch (e) { showLogin(); }
   }
-  async function enter() { await loadAll(); showApp(); showQueue(); }
+  async function enter() { await loadAll(); showApp(); showDashboard(); }
 
   return { start };
 })();
