@@ -94,3 +94,22 @@ class XcitiumSyncState(Base):
     last_run_at = Column(DateTime(timezone=True), nullable=True)
     last_run_status = Column(String, nullable=True)
     last_full_backfill_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class XcitiumHealth(Base):
+    """Single-row health state for the Xcitium clientapi (id is always 1).
+
+    The Xcitium (Comodo) hosted backend fails often -- its app periodically can't
+    reach its own MySQL host and returns an HTML PDOException instead of JSON. This
+    row lets the background monitor (app/xcitium_health.py) persist the last observed
+    state across restarts so it emails on state *transitions* only (up<->down), never
+    on every check and never twice for the same outage.
+    """
+    __tablename__ = "xcitium_health"
+
+    id = Column(Integer, primary_key=True)
+    state = Column(String, nullable=True)              # 'up' | 'down' | None (never checked)
+    since = Column(DateTime(timezone=True), nullable=True)          # when the current state began
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
+    last_error = Column(String, nullable=True)         # short reason while down
+    consecutive_fails = Column(Integer, default=0)     # debounce before declaring DOWN

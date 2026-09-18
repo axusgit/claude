@@ -70,6 +70,22 @@ def start_xcitium_sync():
 
 
 @app.on_event("startup")
+def start_xcitium_health_monitor():
+    """Watch the Xcitium clientapi forever and email on every up<->down transition.
+
+    Xcitium's Comodo-hosted backend fails often; this gives Andy a heads-up when it
+    goes down and a recovery notice when it's back. Runs whenever the API key is
+    configured -- independent of the ticket-mirror sync toggle. Disable with
+    XCITIUM_HEALTH_ENABLED=0.
+    """
+    import os
+    from app import xcitium, xcitium_health
+    if os.getenv("XCITIUM_HEALTH_ENABLED", "1") != "1" or not xcitium.is_configured():
+        return
+    xcitium_health.start_monitor_thread()
+
+
+@app.on_event("startup")
 def seed_default_boards():
     """Create the default service boards once, if none exist."""
     from app.database import SessionLocal

@@ -169,6 +169,17 @@ services:
       # infra/.env. Initial backfill on first start, then hourly (top of the hour).
       XCITIUM_SYNC_ENABLED: ${XCITIUM_SYNC_ENABLED:-0}
       XCITIUM_API_KEY: ${XCITIUM_API_KEY:-}
+      # Xcitium clientapi health monitor: emails on every up<->down transition
+      # (the Comodo backend fails often). Reuses the platform O365 SMTP relay
+      # (the AUTHENTIK_EMAIL__* creds) so no new secrets are needed.
+      XCITIUM_ALERT_EMAIL: ${XCITIUM_ALERT_EMAIL:-acarr@axustechnologies.com}
+      SMTP_HOST: ${AUTHENTIK_EMAIL__HOST:-}
+      SMTP_PORT: ${AUTHENTIK_EMAIL__PORT:-587}
+      SMTP_USER: ${AUTHENTIK_EMAIL__USERNAME:-}
+      SMTP_PASSWORD: ${AUTHENTIK_EMAIL__PASSWORD:-}
+      SMTP_FROM: ${AUTHENTIK_EMAIL__FROM:-}
+      SMTP_USE_TLS: ${AUTHENTIK_EMAIL__USE_TLS:-true}
+      SMTP_USE_SSL: ${AUTHENTIK_EMAIL__USE_SSL:-false}
     volumes:
       # Ticket attachments must survive image rebuilds (`up -d --build`); without
       # this named volume every routine update wipes them. Migrate the legacy
