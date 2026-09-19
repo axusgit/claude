@@ -127,18 +127,20 @@ export async function runReminders(): Promise<number> {
     }
 
     const recs = await pool.query(
-      `select name, email, sign_token from recipient where envelope_id = $1 and status <> 'signed'`,
+      `select id, name, email, sign_token from recipient where envelope_id = $1 and status <> 'signed'`,
       [env.id],
     );
     for (const r of recs.rows) {
       if (!r.sign_token) continue;
-      const ok = await sendPendingReminder({
+      const res = await sendPendingReminder({
         to: r.email,
         recipientName: r.name,
         title: env.title,
         url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+        envelopeId: env.id,
+        recipientId: r.id,
       });
-      if (ok) sent++;
+      if (res.success) sent++;
     }
     await pool.query(`update envelope set last_reminded_at = now() where id = $1`, [env.id]);
   }

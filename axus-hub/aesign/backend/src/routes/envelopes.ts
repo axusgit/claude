@@ -394,20 +394,22 @@ export async function envelopeRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: "Only documents out for signature can be resent." });
     }
     const recs = await pool.query(
-      `select name, email, sign_token, status from recipient where envelope_id = $1 order by sign_order`,
+      `select id, name, email, sign_token, status from recipient where envelope_id = $1 order by sign_order`,
       [envId],
     );
     let sent = 0;
     for (const r of recs.rows) {
       if (!r.sign_token || r.status === "signed" || r.status === "declined") continue;
-      const ok = await sendSigningInvite({
+      const res = await sendSigningInvite({
         to: r.email,
         recipientName: r.name,
         senderName: id.name,
         title: env.title,
         url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+        envelopeId: envId,
+        recipientId: r.id,
       });
-      if (ok) sent++;
+      if (res.success) sent++;
     }
     await pool.query(
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'reminded', $3)`,
@@ -425,8 +427,23 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const env = await pool.query(`select * from envelope where id = $1`, [envId]);
     if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
     const recipients = await pool.query(
-      `select id, envelope_id, name, email, role, sign_order, status, signed_at, decline_reason
-       from recipient where envelope_id = $1 order by sign_order`,
+      // Left-join each recipient's most recent send attempt so the UI can show a
+      // per-recipient delivery indicator (accepted by the mail server / failed).
+      `select r.id, r.envelope_id, r.name, r.email, r.role, r.sign_order, r.status,
+              r.signed_at, r.decline_reason,
+              el.success  as last_send_ok,
+              el.error    as last_send_error,
+              el.smtp_response as last_send_response,
+              el.at       as last_send_at
+       from recipient r
+       left join lateral (
+         select success, error, smtp_response, at
+         from email_log
+         where recipient_id = r.id
+         order by at desc
+         limit 1
+       ) el on true
+       where r.envelope_id = $1 order by r.sign_order`,
       [envId],
     );
     const fields = await pool.query(`select * from field where envelope_id = $1`, [envId]);
@@ -434,11 +451,17 @@ export async function envelopeRoutes(app: FastifyInstance) {
       `select actor, type, detail, ip, at from event where envelope_id = $1 order by at`,
       [envId],
     );
+    const emailLog = await pool.query(
+      `select recipient_id, to_email, kind, success, message_id, smtp_response, error, at
+       from email_log where envelope_id = $1 order by at`,
+      [envId],
+    );
     return {
       envelope: env.rows[0],
       recipients: recipients.rows,
       fields: fields.rows,
       events: events.rows,
+      emailLog: emailLog.rows,
     };
   });
 
@@ -820,6 +843,8 @@ export async function envelopeRoutes(app: FastifyInstance) {
         senderName: id.name,
         title: env.title,
         url: `${config.publicBaseUrl}/sign/${tokens.get(r.id)}`,
+        envelopeId: envId,
+        recipientId: r.id,
       });
 
     if (env.sequential) {
@@ -832,14 +857,14 @@ export async function envelopeRoutes(app: FastifyInstance) {
           r.id,
         ]);
       }
-      results.push({ email: recips.rows[0].email, sent: await invite(recips.rows[0]) });
+      results.push({ email: recips.rows[0].email, sent: (await invite(recips.rows[0])).success });
     } else {
       for (const r of recips.rows) {
         await pool.query(`update recipient set sign_token = $1, status = 'sent' where id = $2`, [
           tokens.get(r.id),
           r.id,
         ]);
-        results.push({ email: r.email, sent: await invite(r) });
+        results.push({ email: r.email, sent: (await invite(r)).success });
       }
     }
     await pool.query(`update envelope set status = 'sent', sent_at = now() where id = $1`, [envId]);
@@ -880,13 +905,15 @@ export async function envelopeRoutes(app: FastifyInstance) {
         .code(409)
         .send({ error: `It isn't ${r.name}'s turn to sign yet.` });
     }
-    const ok = await sendPendingReminder({
+    const res = await sendPendingReminder({
       to: r.email,
       recipientName: r.name,
       title: env.title,
       url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+      envelopeId: envId,
+      recipientId: r.id,
     });
-    if (!ok) return reply.code(502).send({ error: "The reminder email could not be sent." });
+    if (!res.success) return reply.code(502).send({ error: "The reminder email could not be sent." });
     await pool.query(
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'reminded', $3)`,
       [envId, id.email, `Reminder sent to ${r.name} <${r.email}>`],

@@ -134,12 +134,14 @@ export async function externalRoutes(app: FastifyInstance) {
         [envId, createdBy, `Sent to ${recipEmail}`],
       );
       signUrl = `${config.publicBaseUrl}/sign/${token}`;
-      const sent = await sendSigningInvite({
+      const res = await sendSigningInvite({
         to: recipEmail,
         recipientName: recipName,
         senderName,
         title,
         url: signUrl,
+        envelopeId: envId,
+        recipientId,
       });
       logActivity(createdBy, "Sent for signature", `${title} → ${recipEmail}`, envId);
       return reply.code(201).send({
@@ -147,7 +149,7 @@ export async function externalRoutes(app: FastifyInstance) {
         quoteNumber: q.quote_number,
         recipientId,
         status: "sent",
-        emailSent: sent,
+        emailSent: res.success,
         signUrl,
       });
     }

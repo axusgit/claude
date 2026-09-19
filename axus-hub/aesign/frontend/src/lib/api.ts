@@ -46,6 +46,23 @@ export interface Recipient {
   sign_order: number;
   status?: string;
   decline_reason?: string | null;
+  // Most-recent outbound email outcome for this recipient (from email_log).
+  // last_send_ok === true means the mail server accepted the submission.
+  last_send_ok?: boolean | null;
+  last_send_error?: string | null;
+  last_send_response?: string | null;
+  last_send_at?: string | null;
+}
+
+export interface EmailLogEntry {
+  recipient_id: string | null;
+  to_email: string;
+  kind: string; // invite | reminder | completed | progress | declined
+  success: boolean;
+  message_id: string | null;
+  smtp_response: string | null;
+  error: string | null;
+  at: string;
 }
 
 export type FieldType = "signature" | "name" | "title" | "initials" | "date" | "text";
@@ -68,6 +85,7 @@ export interface EnvelopeDetail {
   recipients: Recipient[];
   fields: Field[];
   events: { actor: string; type: string; detail: string | null; ip?: string | null; at: string }[];
+  emailLog?: EmailLogEntry[];
 }
 
 async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {

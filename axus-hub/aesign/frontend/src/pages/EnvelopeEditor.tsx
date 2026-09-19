@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowLeft,
   Bell,
   Briefcase,
@@ -8,6 +9,7 @@ import {
   Check,
   Download,
   History,
+  MailCheck,
   PenLine,
   Pencil,
   Plus,
@@ -23,6 +25,7 @@ import {
   api,
   contactsApi,
   type Contact,
+  type EmailLogEntry,
   type EnvelopeDetail,
   type Field,
   type FieldType,
@@ -164,6 +167,65 @@ function HistoryCard({ events }: { events: EnvelopeDetail["events"] }) {
   );
 }
 
+const EMAIL_KIND_LABELS: Record<string, string> = {
+  invite: "Signing invite",
+  reminder: "Reminder",
+  completed: "Completed copy",
+  progress: "Progress update",
+  declined: "Declined notice",
+};
+
+// Outbound email delivery log — shows, per attempt, whether the mail server
+// accepted the message (with its SMTP response) or rejected it (with the error).
+// "Accepted by mail server" is the strongest proof SMTP submission gives; it is
+// not proof of inbox delivery (that needs a mailbox message trace).
+function DeliveryCard({ log }: { log: EmailLogEntry[] }) {
+  if (!log.length) return null;
+  return (
+    <Card className="p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+        <MailCheck className="h-3.5 w-3.5" /> Email delivery
+      </div>
+      <ol className="space-y-2.5">
+        {log.map((m, i) => (
+          <li key={i} className="relative pl-4 text-xs">
+            <span
+              className={
+                "absolute left-0 top-1 h-1.5 w-1.5 rounded-full " +
+                (m.success ? "bg-green-500" : "bg-red-500")
+              }
+            />
+            <div className="font-medium">
+              {EMAIL_KIND_LABELS[m.kind] ?? m.kind}
+              <span className="ml-1.5 font-normal text-muted">{new Date(m.at).toLocaleString()}</span>
+            </div>
+            <div className="break-words text-muted">to {m.to_email}</div>
+            {m.success ? (
+              <div className="mt-0.5 flex items-start gap-1 text-green-600">
+                <Check className="mt-0.5 h-3 w-3 shrink-0" />
+                <span className="break-words">
+                  Accepted by mail server
+                  {m.smtp_response ? ` · ${m.smtp_response}` : ""}
+                </span>
+              </div>
+            ) : (
+              <div className="mt-0.5 flex items-start gap-1 text-red-600">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                <span className="break-words">Send failed{m.error ? ` · ${m.error}` : ""}</span>
+              </div>
+            )}
+          </li>
+        ))}
+      </ol>
+      <p className="mt-2 border-t border-line pt-2 text-[11px] leading-snug text-muted/80">
+        "Accepted by mail server" confirms the message left Axus eSign and was taken by Office 365 — not
+        that it reached the recipient's inbox. For inbox/spam/bounce status, run a message trace on the
+        sending mailbox.
+      </p>
+    </Card>
+  );
+}
+
 export function EnvelopeEditor() {
   const { id = "" } = useParams();
   const nav = useNavigate();
@@ -209,6 +271,7 @@ export function EnvelopeEditor() {
         recipients: [],
         fields: [],
         events: [],
+        emailLog: [],
       });
       return;
     }
@@ -666,6 +729,7 @@ export function EnvelopeEditor() {
                 This document has been sent — it can no longer be edited.
               </Card>
             )}
+            <DeliveryCard log={detail.emailLog ?? []} />
             <HistoryCard events={detail.events} />
           </div>
 
@@ -931,6 +995,24 @@ function RecipientsPanel({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{r.name}</span>
                   <span className="block truncate text-xs text-muted">{r.email}</span>
+                  {r.last_send_ok === false ? (
+                    <span
+                      className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-red-600"
+                      title={r.last_send_error ?? "The last email to this recipient failed to send."}
+                    >
+                      <AlertTriangle className="h-3 w-3 shrink-0" /> Email failed to send
+                    </span>
+                  ) : r.last_send_ok === true ? (
+                    <span
+                      className="mt-0.5 flex items-center gap-1 text-[11px] text-green-600"
+                      title={
+                        (r.last_send_response ?? "Accepted by the mail server") +
+                        (r.last_send_at ? ` · ${new Date(r.last_send_at).toLocaleString()}` : "")
+                      }
+                    >
+                      <MailCheck className="h-3 w-3 shrink-0" /> Sent · accepted by mail server
+                    </span>
+                  ) : null}
                 </span>
               </button>
               {outForSignature &&
