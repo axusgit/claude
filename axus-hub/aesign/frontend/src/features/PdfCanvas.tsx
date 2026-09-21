@@ -199,22 +199,35 @@ function detectFields(runs: Run[], rules: Rule[], pageNumber: number): SignField
   return out;
 }
 
-// Group detected fields into signer slots. A new slot starts at each
-// "Signature:"; date/name/title after it belong to that block. Slots without a
-// signature are dropped (avoids stray "Effective Date:" etc.).
+// Group detected fields into signer slots — one per "Signature:". Each
+// date/name/title is assigned to the signature it belongs to by COLUMN (nearest
+// in x) preferring the signature above it, so side-by-side two-signer blocks
+// (Customer | Axus) group correctly instead of the earlier vertical-only scan
+// that lumped a whole second column onto one signer. Slots are ordered
+// left-to-right so signer 1 = leftmost block.
 function assembleSlots(all: SignField[]): SignSlot[] {
-  const sorted = [...all].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
-  const slots: SignSlot[] = [];
-  let cur: SignField[] | null = null;
-  for (const f of sorted) {
-    if (f.type === "signature") {
-      cur = [f];
-      slots.push({ role: `Signer ${slots.length + 1}`, fields: cur });
-    } else if (cur) {
-      cur.push(f);
+  const sigs = all
+    .filter((f) => f.type === "signature")
+    .sort((a, b) => a.page - b.page || a.x - b.x || a.y - b.y);
+  if (!sigs.length) return [];
+  const slots = sigs.map((s) => ({ sig: s, fields: [s] as SignField[] }));
+  for (const f of all) {
+    if (f.type === "signature") continue;
+    let best: (typeof slots)[number] | null = null;
+    let bd = Infinity;
+    for (const slot of slots) {
+      if (slot.sig.page !== f.page) continue;
+      const colDist = Math.abs(slot.sig.x - f.x);
+      const above = f.y >= slot.sig.y - 0.005; // signature sits above the field
+      const d = colDist + (above ? f.y - slot.sig.y : 5);
+      if (d < bd) {
+        bd = d;
+        best = slot;
+      }
     }
+    (best ?? slots[0]).fields.push(f);
   }
-  return slots.filter((s) => s.fields.some((f) => f.type === "signature"));
+  return slots.map((s, i) => ({ role: `Signer ${i + 1}`, fields: s.fields }));
 }
 
 interface PdfCanvasProps {
