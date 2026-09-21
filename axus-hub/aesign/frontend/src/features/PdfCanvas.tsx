@@ -28,6 +28,92 @@ interface Run {
   str: string;
 }
 
+// A drawn horizontal rule (the blank "line" you sign on), normalized coords.
+// Many templates draw the fill-in line as a graphic (not text underscores), so
+// we read the page's vector ops to find them and snap fields onto them.
+interface Rule {
+  y: number;
+  x0: number;
+  x1: number;
+}
+
+// Extract horizontal rule lines from a page's drawing operators, tracking the
+// CTM through save/restore/transform so path coordinates map to device space.
+async function detectRules(
+  page: { getOperatorList: () => Promise<{ fnArray: number[]; argsArray: unknown[] }> },
+  viewport: { transform: number[]; width: number; height: number; scale: number },
+): Promise<Rule[]> {
+  const W = viewport.width;
+  const H = viewport.height;
+  let ops: { fnArray: number[]; argsArray: unknown[] };
+  try {
+    ops = await page.getOperatorList();
+  } catch {
+    return [];
+  }
+  let ctm = viewport.transform.slice();
+  const stack: number[][] = [];
+  const segs: Rule[] = [];
+  const dev = (x: number, y: number) => pdfjsLib.Util.applyTransform([x, y], ctm);
+  const OPS = pdfjsLib.OPS;
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    const fn = ops.fnArray[i];
+    if (fn === OPS.save) stack.push(ctm.slice());
+    else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
+    else if (fn === OPS.transform) ctm = pdfjsLib.Util.transform(ctm, ops.argsArray[i] as number[]);
+    else if (fn === OPS.constructPath) {
+      const a = ops.argsArray[i] as [number[], number[]];
+      const pathOps = a[0];
+      const co = a[1];
+      let cx = 0;
+      let cy = 0;
+      let k = 0;
+      for (const op of pathOps) {
+        if (op === OPS.moveTo) {
+          cx = co[k++];
+          cy = co[k++];
+        } else if (op === OPS.lineTo) {
+          const nx = co[k++];
+          const ny = co[k++];
+          if (Math.abs(ny - cy) < 1.5 && Math.abs(nx - cx) > 15) {
+            const p0 = dev(cx, cy);
+            const p1 = dev(nx, ny);
+            segs.push({ y: p0[1] / H, x0: Math.min(p0[0], p1[0]) / W, x1: Math.max(p0[0], p1[0]) / W });
+          }
+          cx = nx;
+          cy = ny;
+        } else if (op === OPS.rectangle) {
+          const rx = co[k++];
+          const ry = co[k++];
+          const rw = co[k++];
+          const rh = co[k++];
+          if (Math.abs(rh) < 2 && Math.abs(rw) > 15) {
+            const p = dev(rx, ry);
+            segs.push({ y: p[1] / H, x0: p[0] / W, x1: (p[0] + rw * viewport.scale) / W });
+          }
+        } else {
+          k += 2;
+        }
+      }
+    }
+  }
+  // Merge collinear segments (dashed / split rules) into contiguous lines.
+  segs.sort((a, b) => a.y - b.y || a.x0 - b.x0);
+  const rules: Rule[] = [];
+  for (const s of segs) {
+    const r = rules.find(
+      (r) => Math.abs(r.y - s.y) < 0.004 && s.x0 <= r.x1 + 0.02 && s.x1 >= r.x0 - 0.02,
+    );
+    if (r) {
+      r.x0 = Math.min(r.x0, s.x0);
+      r.x1 = Math.max(r.x1, s.x1);
+    } else {
+      rules.push({ y: s.y, x0: s.x0, x1: s.x1 });
+    }
+  }
+  return rules;
+}
+
 function computeRuns(
   tc: { items: unknown[] },
   viewport: { transform: number[]; width: number; height: number; scale: number },
@@ -54,7 +140,7 @@ function computeRuns(
 // Detect signature-block fields on one page from its text runs — the same
 // blank-after-label logic as click-to-place, applied to standard labels
 // (Signature / Date / Printed Name / Title). Used to AUTO-PLACE on uploads.
-function detectFields(runs: Run[], pageNumber: number): SignField[] {
+function detectFields(runs: Run[], rules: Rule[], pageNumber: number): SignField[] {
   const out: SignField[] = [];
   const mk = (type: SignField["type"], startFrac: number, endFrac: number, r: Run): SignField => {
     const runW = r.x1 - r.x0;
@@ -67,6 +153,32 @@ function detectFields(runs: Run[], pageNumber: number): SignField[] {
     const y = Math.min(Math.max(r.baseline - h, 0), 1 - h);
     return { type, page: pageNumber, x, y, w, h };
   };
+  // Preferred: snap the field onto the drawn underline rule that sits at the
+  // label's baseline and extends to its right (label + separate-graphic line —
+  // the common Word/PDF signature block). Returns null when no rule fits, so
+  // templates whose blanks are text underscores fall back to mk().
+  const onRule = (type: SignField["type"], r: Run): SignField | null => {
+    let best: Rule | null = null;
+    let bd = Infinity;
+    for (const rl of rules) {
+      const dy = rl.y - r.baseline; // rule at (just below) the label baseline
+      if (dy < -0.006 || dy > 0.02) continue;
+      if (rl.x1 < r.x1 + 0.01) continue; // must extend right of the label
+      const d = Math.abs(dy) + Math.max(0, rl.x0 - r.x1) * 0.1;
+      if (d < bd) {
+        bd = d;
+        best = rl;
+      }
+    }
+    if (!best) return null;
+    const x = Math.max(r.x1 + 0.008, best.x0);
+    const w = Math.max(best.x1 - x, 0.05);
+    const h = Math.min(r.height * 1.5, 0.03);
+    const y = Math.min(Math.max(best.y - h, 0), 1 - h);
+    return { type, page: pageNumber, x, y, w, h };
+  };
+  const place = (type: SignField["type"], startFrac: number, endFrac: number, r: Run) =>
+    onRule(type, r) ?? mk(type, startFrac, endFrac, r);
   for (const r of runs) {
     const s = r.str;
     const len = s.length || 1;
@@ -78,11 +190,11 @@ function detectFields(runs: Run[], pageNumber: number): SignField[] {
     if (sig) {
       const start = (sig.index ?? 0) + sig[0].length;
       const end = date && (date.index ?? 0) > (sig.index ?? 0) ? (date.index ?? len) : len;
-      out.push(mk("signature", start / len, end / len, r));
+      out.push(place("signature", start / len, end / len, r));
     }
-    if (date) out.push(mk("date", ((date.index ?? 0) + date[0].length) / len, 1, r));
-    if (name) out.push(mk("name", ((name.index ?? 0) + name[0].length) / len, 1, r));
-    if (title) out.push(mk("title", ((title.index ?? 0) + title[0].length) / len, 1, r));
+    if (date) out.push(place("date", ((date.index ?? 0) + date[0].length) / len, 1, r));
+    if (name) out.push(place("name", ((name.index ?? 0) + name[0].length) / len, 1, r));
+    if (title) out.push(place("title", ((title.index ?? 0) + title[0].length) / len, 1, r));
   }
   return out;
 }
@@ -210,11 +322,11 @@ function PdfPage({
       }
       try {
         const tc = await page.getTextContent();
-        if (!cancelled) {
-          const rs = computeRuns(tc, viewport);
-          setRuns(rs);
-          onPageDetected(pageNumber, detectFields(rs, pageNumber));
-        }
+        if (cancelled) return;
+        const rs = computeRuns(tc, viewport);
+        setRuns(rs);
+        const rules = await detectRules(page, viewport);
+        if (!cancelled) onPageDetected(pageNumber, detectFields(rs, rules, pageNumber));
       } catch {
         /* no text layer */
       }
