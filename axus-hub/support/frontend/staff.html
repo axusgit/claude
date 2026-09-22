@@ -318,7 +318,7 @@
           </div>
           <div class="table-wrap">
             <table class="ticket-table">
-              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Business</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Business</th><th>Tickets</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="user-rows"></tbody>
             </table>
             <div id="users-empty" class="empty hidden"><div class="empty-emoji">👥</div><h3>No users</h3><p class="muted">Add a staff member or portal user.</p></div>
@@ -377,6 +377,17 @@
         <div id="pwr-error" class="form-error"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="pwr-cancel">Cancel</button><button type="submit" class="btn btn-primary">Reset password</button></div>
       </form>
+    </div>
+  </div>
+
+  <!-- TRANSFER-AND-DELETE MODAL -->
+  <div id="xfer-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2>Transfer &amp; delete</h2><button class="modal-x" id="xfer-close">×</button></div>
+      <p class="muted" id="xfer-msg" style="margin:-6px 0 14px"></p>
+      <label>Transfer ticket history to<select id="xfer-select"></select></label>
+      <div id="xfer-error" class="form-error"></div>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" id="xfer-cancel">Cancel</button><button type="button" class="btn btn-primary" id="xfer-confirm">Transfer &amp; delete</button></div>
     </div>
   </div>
 
@@ -455,6 +466,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=49"></script>
+  <script src="/static/staff.js?v=51"></script>
 </body>
 </html>

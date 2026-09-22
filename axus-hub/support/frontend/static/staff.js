@@ -34,7 +34,7 @@ const Staff = (() => {
     if (!res.ok) {
       let d = res.statusText;
       try { const j = await res.json(); d = typeof j.detail === "string" ? j.detail : d; } catch (e) {}
-      throw new Error(d);
+      const err = new Error(d); err.status = res.status; throw err;
     }
     const ct = res.headers.get("content-type") || "";
     return ct.includes("application/json") ? res.json() : res;
@@ -142,15 +142,26 @@ const Staff = (() => {
     $("c-customers").textContent = cl.length;
     $("c-users").textContent = us.length;
     // populate company + assignee + board selects
-    fillSelect($("f-client"), cl.map(c => [c.id, c.company_name]), "All companies");
-    fillSelect($("nt-client"), cl.map(c => [c.id, c.company_name]), null);
+    fillClientSelects();
     fillSelect($("nt-assignee"), staffUsers.map(u => [u.id, u.full_name]), "Unassigned");
     fillSelect($("d-assignee"), staffUsers.map(u => [u.id, u.full_name]), "Unassigned");
-    fillSelect($("uf-client"), cl.map(c => [c.id, c.company_name]), "— None —");
     fillSelect($("nt-board"), bd.map(b => [b.id, b.name]), "— None —");
     fillSelect($("d-board"), bd.map(b => [b.id, b.name]), "— None —");
     renderBoardNav();
     await loadTickets();
+  }
+
+  // (Re)populate every business dropdown from clientsData, preserving the current
+  // selection. Called at startup AND whenever a business is added/edited, so a new
+  // business shows up immediately without a page reload.
+  function fillClientSelects() {
+    const pairs = clientsData.map(c => [c.id, c.company_name]);
+    [["f-client", "All companies"], ["nt-client", null], ["uf-client", "— None —"]].forEach(([id, ph]) => {
+      const el = $(id); if (!el) return;
+      const prev = el.value;
+      fillSelect(el, pairs, ph);
+      if (prev) el.value = prev;
+    });
   }
   function fillSelect(sel, pairs, placeholder) {
     sel.innerHTML = (placeholder !== null ? `<option value="">${placeholder}</option>` : "") +
@@ -742,6 +753,7 @@ const Staff = (() => {
     clientsData = await api("/api/clients/");
     clientMap = {}; clientsData.forEach(c => clientMap[c.id] = c.company_name);
     $("c-customers").textContent = clientsData.length;
+    fillClientSelects();   // keep the business dropdowns current (new business shows up)
   }
 
   function renderCustomers() {
@@ -911,6 +923,7 @@ const Staff = (() => {
         <td class="cell-muted">${esc(u.phone || "—")}</td>
         <td><span class="badge ${roleBadge[u.role] || "closed"}">${cap(u.role)}</span></td>
         <td class="cell-muted">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
+        <td class="cell-muted">${u.assigned_tickets || 0}</td>
         <td><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>
         <td class="user-actions"><button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button>${u.id === me.id ? "" : `<button class="btn btn-ghost btn-xs btn-danger" data-del-user="${u.id}" data-del-name="${esc(u.full_name)}">Delete</button>`}</td>`;
       const rb = tr.querySelector("[data-reset-pw]");
@@ -921,12 +934,27 @@ const Staff = (() => {
         if (!confirm(`Delete ${del.dataset.delName}?\n\nThey will not be re-created when Xcitium syncs.`)) return;
         try {
           const r = await api(`/api/users/${del.dataset.delUser}`, { method: "DELETE" });
-          toast(r.status === "deactivated" ? "User had ticket history — deactivated & hidden" : "User deleted");
-          await refreshUsers(); renderUsers();
-        } catch (err) { toast(err.message); }
+          toast("User deleted"); await refreshUsers(); renderUsers();
+        } catch (err) {
+          if (err.status === 409) openXferModal(parseInt(del.dataset.delUser), del.dataset.delName);
+          else toast(err.message);
+        }
       };
       tbody.appendChild(tr);
     }
+  }
+
+  let xferUserId = null;
+  function openXferModal(userId, userName) {
+    xferUserId = userId;
+    $("xfer-msg").textContent = `${userName} has ticket history. Choose an active user to receive it — then this user is deleted.`;
+    const opts = usersData
+      .filter(u => u.is_active && u.id !== userId)
+      .sort((a, b) => a.full_name.localeCompare(b.full_name))
+      .map(u => `<option value="${u.id}">${esc(u.full_name)} · ${esc(cap(u.role))}</option>`).join("");
+    $("xfer-select").innerHTML = opts || `<option value="">No other active users</option>`;
+    $("xfer-error").textContent = "";
+    $("xfer-modal").classList.remove("hidden");
   }
 
   function showUserModal(u) {
@@ -1112,6 +1140,20 @@ const Staff = (() => {
 
     // ticket form: load users when business changes
     $("nt-client").onchange = () => loadUsersInto($("nt-contact"), $("nt-client").value);
+
+    // transfer-and-delete modal
+    $("xfer-close").onclick = () => $("xfer-modal").classList.add("hidden");
+    $("xfer-cancel").onclick = () => $("xfer-modal").classList.add("hidden");
+    $("xfer-confirm").onclick = async () => {
+      const target = $("xfer-select").value;
+      if (!target) { $("xfer-error").textContent = "Pick a user to transfer to."; return; }
+      try {
+        const r = await api(`/api/users/${xferUserId}?transfer_to=${target}`, { method: "DELETE" });
+        $("xfer-modal").classList.add("hidden");
+        toast(`Transferred ${r.transferred} item${r.transferred === 1 ? "" : "s"} and deleted the user`);
+        await refreshUsers(); renderUsers();
+      } catch (err) { $("xfer-error").textContent = err.message; }
+    };
 
     // users
     $("user-search").oninput = renderUsers;

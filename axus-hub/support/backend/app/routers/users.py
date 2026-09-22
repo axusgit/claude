@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from app.database import get_db
 from app.models.user import User, UserRole
@@ -36,6 +37,7 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     client_id: Optional[int]
+    assigned_tickets: int = 0   # native tickets currently assigned to this user
 
     class Config:
         from_attributes = True
@@ -72,7 +74,14 @@ def list_users(role: Optional[str] = None, include_inactive: bool = False,
         q = q.filter(User.role == role)
     if not include_inactive:
         q = q.filter(User.is_active == True)  # noqa: E712
-    return q.order_by(User.full_name).all()
+    users = q.order_by(User.full_name).all()
+    # one aggregate query for the assigned-ticket count column
+    counts = dict(db.query(Ticket.assigned_to_id, func.count(Ticket.id))
+                  .filter(Ticket.assigned_to_id.isnot(None))
+                  .group_by(Ticket.assigned_to_id).all())
+    for u in users:
+        u.assigned_tickets = counts.get(u.id, 0)
+    return users
 
 
 @router.post("/", response_model=UserOut)
@@ -129,28 +138,53 @@ def update_user(user_id: int, data: UserUpdateIn, db: Session = Depends(get_db),
     return user
 
 
+def _transfer_user_refs(db: Session, old_id: int, new_id: int):
+    """Repoint every ticket-history reference from old_id to new_id."""
+    for model, field in ((Ticket, "created_by_id"), (Ticket, "assigned_to_id"),
+                         (Ticket, "reporter_user_id"), (TicketComment, "author_id"),
+                         (TicketActivity, "user_id"), (TimeEntry, "user_id"),
+                         (Attachment, "uploaded_by_id")):
+        col = getattr(model, field)
+        db.query(model).filter(col == old_id).update({col: new_id}, synchronize_session=False)
+    # watchers carry a unique (ticket_id, user_id) — avoid duplicates on transfer
+    new_tickets = {w.ticket_id for w in db.query(TicketWatcher).filter(TicketWatcher.user_id == new_id).all()}
+    for w in db.query(TicketWatcher).filter(TicketWatcher.user_id == old_id).all():
+        if w.ticket_id in new_tickets:
+            db.delete(w)
+        else:
+            w.user_id = new_id
+
+
 @router.delete("/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
-    """Delete a user. The identity is TOMBSTONED so the Xcitium directory sync can
-    never re-create it. Users with ticket history are deactivated + hidden instead of
-    hard-deleted, so their history stays intact."""
+def delete_user(user_id: int, transfer_to: Optional[int] = None,
+                db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """Delete a user. Their identity is TOMBSTONED so the Xcitium directory sync can
+    never re-create it. A user with ticket history can only be deleted once that
+    history is transferred to an active user (pass ?transfer_to=<id>); we return 409
+    to prompt for a target when one is needed."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="You can't delete your own account")
 
+    refs = _user_ref_count(db, user.id)
+    if refs > 0:
+        if not transfer_to:
+            raise HTTPException(status_code=409,
+                                detail="This user has ticket history. Choose an active user to transfer it to.")
+        target = db.query(User).filter(User.id == transfer_to, User.is_active == True).first()  # noqa: E712
+        if not target or target.id == user.id:
+            raise HTTPException(status_code=400, detail="Pick a valid active user to transfer the history to.")
+        _transfer_user_refs(db, user.id, target.id)
+
     email = (user.email or "").strip().lower()
     if email and not db.query(XcitiumDirectoryTombstone).filter(
             XcitiumDirectoryTombstone.email == email).first():
         db.add(XcitiumDirectoryTombstone(email=email, xcitium_user_id=user.xcitium_user_id))
-    # transient rows that would otherwise block a hard delete
     db.query(PortalMagicToken).filter(PortalMagicToken.user_id == user.id).delete()
 
-    if _user_ref_count(db, user.id) > 0:
-        user.is_active = False          # keep the row for ticket history, but hide it
-        db.commit()
-        return {"status": "deactivated", "id": user_id, "reason": "has ticket history"}
     db.delete(user)
     db.commit()
-    return {"status": "deleted", "id": user_id}
+    return {"status": "deleted", "id": user_id, "transferred": refs,
+            "transferred_to": transfer_to if refs else None}
