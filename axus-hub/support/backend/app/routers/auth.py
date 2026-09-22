@@ -4,10 +4,19 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.auth import verify_password, create_access_token, get_current_user, hash_password
+from axus_auth import AUTH_MODE
 from typing import Optional
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+@router.get("/config")
+def auth_config():
+    """Public: tells the login screen how staff authenticate. In production
+    (central) staff go through Authentik SSO — the email+password form is only
+    used by the standalone 'local' dev fallback."""
+    return {"auth_mode": AUTH_MODE}
 
 
 class UserOut(BaseModel):

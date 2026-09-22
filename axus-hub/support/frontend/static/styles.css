@@ -120,6 +120,7 @@ h1, h2, h3 { font-family: "Space Grotesk", "Poppins", "Inter", sans-serif; margi
 html[data-theme="dark"] .login-logo { filter: brightness(0) invert(1) drop-shadow(0 0 0 #fff); }
 .login-card h1 { font-size: 24px; }
 .login-sub { color: var(--muted); margin: 6px 0 22px; font-size: 14px; }
+.login-sso-note { margin: 12px 0 0; color: var(--muted); font-size: 12.5px; }
 .login-foot { margin-top: 22px; color: var(--muted); font-size: 13px; letter-spacing: .5px; }
 .login-foot span { color: var(--orange); font-weight: 700; }
 

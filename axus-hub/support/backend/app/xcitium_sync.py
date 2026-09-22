@@ -46,6 +46,7 @@ EMAIL_REMAP = {
     "acarrazana@axustechnologies.com": "acarr@axustechnologies.com",
     "abos@hcnetwork.org": "asabor@hcnetwork.org",
     "hrubin@hcnetwork.org": "asabor@hcnetwork.org",
+    "kgriggs@hcnetwork.org": "asabor@hcnetwork.org",
     "imccartney@healthcarewithinreach.org": "smorris@healthcarewithinreach.org",
     "imccartney@chnwf.org": "smorris@healthcarewithinreach.org",
 }

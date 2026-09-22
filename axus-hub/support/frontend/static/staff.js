@@ -93,7 +93,15 @@ const Staff = (() => {
   const ACTIVE = ["open", "in_progress", "waiting"];
 
   /* ---------- Views ---------- */
-  const showLogin = () => { $("login-view").classList.remove("hidden"); $("app-view").classList.add("hidden"); };
+  const showLogin = async () => {
+    $("login-view").classList.remove("hidden"); $("app-view").classList.add("hidden");
+    // Staff use Authentik SSO in production (central). The email+password form is
+    // only for the standalone 'local' dev fallback — reveal it just for that.
+    let local = false;
+    try { const r = await fetch("/api/auth/config"); if (r.ok) local = (await r.json()).auth_mode === "local"; } catch (e) {}
+    $("login-form").classList.toggle("hidden", !local);
+    $("login-sso").classList.toggle("hidden", local);
+  };
   const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); };
   const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view"];
   const hideViews = () => VIEWS.forEach(id => $(id).classList.add("hidden"));
@@ -1117,6 +1125,9 @@ const Staff = (() => {
       catch (err) { $("login-error").textContent = err.message; }
       finally { $("login-btn").disabled = false; $("login-btn").textContent = "Sign in"; }
     };
+    // SSO button (central mode): re-hitting /staff sends the browser back through
+    // Traefik's Authentik forward-auth, which redirects to single sign-on.
+    $("sso-btn").onclick = () => { location.reload(); };
     $("logout-btn").onclick = logout;
     // Collapsible sidebar sections (click a header to expand / collapse; state remembered)
     const COLLAPSE_KEY = "axus-staff-collapsed-groups";

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=42" />
+  <link rel="stylesheet" href="/static/styles.css?v=43" />
   <link rel="stylesheet" href="/static/staff.css?v=54" />
 </head>
 <body>
@@ -19,9 +19,16 @@
       <img class="login-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus Technologies" />
       <h1>Service Desk</h1>
       <p class="login-sub">Staff sign-in</p>
-      <form id="login-form">
-        <label>Email<input type="email" id="login-email" required autocomplete="username" placeholder="you@axustechnologies.com" /></label>
-        <label>Password<input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" /></label>
+      <!-- Production: staff authenticate through Authentik SSO. Shown by default so
+           the password box never flashes in central mode. -->
+      <div id="login-sso">
+        <button type="button" class="btn btn-primary btn-block" id="sso-btn">Sign in with SSO</button>
+        <p class="login-sso-note">You'll be redirected to Axus single sign-on.</p>
+      </div>
+      <!-- Local dev fallback only (AUTH_MODE=local): revealed by JS when SSO is off. -->
+      <form id="login-form" class="hidden">
+        <label>Email<input type="email" id="login-email" autocomplete="username" placeholder="you@axustechnologies.com" /></label>
+        <label>Password<input type="password" id="login-password" autocomplete="current-password" placeholder="••••••••" /></label>
         <div id="login-error" class="form-error"></div>
         <button type="submit" class="btn btn-primary btn-block" id="login-btn">Sign in</button>
       </form>
@@ -458,6 +465,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=56"></script>
+  <script src="/static/staff.js?v=57"></script>
 </body>
 </html>
