@@ -272,6 +272,13 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
 .btn-xs { padding: 4px 10px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
 .user-actions { display: flex; gap: 8px; }
 .btn-danger:hover { color: #e5484d; border-color: rgba(229,72,77,.5); }
+
+/* Drag-resizable columns (Business + Users): a delimiter on each header's right edge */
+.col-resize { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 2; }
+.col-resize:hover { background: var(--orange); opacity: .45; }
+#customer-table th, #customer-table td, #user-table th, #user-table td {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .pwr-row { display: flex; gap: 8px; align-items: stretch; }
 .pwr-row input { margin-top: 6px; }
 .pwr-row .btn { margin-top: 6px; white-space: nowrap; }

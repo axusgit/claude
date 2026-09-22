@@ -100,9 +100,9 @@ const Staff = (() => {
   const showDashboard = () => { hideViews(); $("dashboard-view").classList.remove("hidden"); renderDashboard(); };
   const showQueue = () => { hideViews(); $("queue-view").classList.remove("hidden"); };
   const showDetail = () => { hideViews(); $("detail-view").classList.remove("hidden"); };
-  const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); };
+  const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); requestAnimationFrame(() => makeResizable("#customer-table", "axus-biz-widths")); };
   const showCustomerDetail = () => { hideViews(); $("customer-detail-view").classList.remove("hidden"); };
-  const showUsers = () => { hideViews(); $("users-view").classList.remove("hidden"); };
+  const showUsers = () => { hideViews(); $("users-view").classList.remove("hidden"); requestAnimationFrame(() => makeResizable("#user-table", "axus-usr-widths")); };
 
   /* ---------- Auth ---------- */
   async function login(email, password) {
@@ -367,6 +367,46 @@ const Staff = (() => {
     $(menuId).onclick = e => e.stopPropagation();
     document.addEventListener("click", () => $(menuId).classList.add("hidden"));
     return apply;
+  }
+
+  // Make a table's columns drag-resizable (a delimiter on each header's right edge).
+  // Runs once per table; widths persist per-user. The last column is left flexible so
+  // the table always fills the width. Must run while the table is visible.
+  function makeResizable(tableSel, storageKey) {
+    const table = document.querySelector(tableSel);
+    if (!table || table.dataset.resizable) return;
+    const ths = [...table.querySelectorAll("thead th")];
+    if (!ths.length || !ths[0].offsetWidth) return;   // hidden/not laid out yet — retry on next show
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(storageKey) || "{}"); } catch (e) {}
+    ths.forEach((th, i) => {
+      if (i < ths.length - 1) th.style.width = (saved[i] || th.offsetWidth) + "px";
+      th.style.position = "relative";
+    });
+    table.style.tableLayout = "fixed";
+    ths.forEach((th, i) => {
+      if (i === ths.length - 1) return;   // last column flexes; no handle
+      const h = document.createElement("span");
+      h.className = "col-resize";
+      th.appendChild(h);
+      h.addEventListener("click", e => e.stopPropagation());
+      h.addEventListener("mousedown", e => {
+        e.preventDefault();
+        const startX = e.pageX, startW = th.offsetWidth;
+        document.body.style.userSelect = "none";
+        const move = ev => { th.style.width = Math.max(48, startW + ev.pageX - startX) + "px"; };
+        const up = () => {
+          document.removeEventListener("mousemove", move);
+          document.removeEventListener("mouseup", up);
+          document.body.style.userSelect = "";
+          saved[i] = th.offsetWidth;
+          try { localStorage.setItem(storageKey, JSON.stringify(saved)); } catch (e) {}
+        };
+        document.addEventListener("mousemove", move);
+        document.addEventListener("mouseup", up);
+      });
+    });
+    table.dataset.resizable = "1";
   }
 
   /* ---------- Detail ---------- */
