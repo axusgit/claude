@@ -84,7 +84,7 @@ def update_client(client_id: int, data: ClientIn, db: Session = Depends(get_db),
 class PortalUserIn(BaseModel):
     email: EmailStr
     full_name: str
-    password: str
+    password: Optional[str] = None   # unused: portal users sign in via magic link
 
 
 class PortalUserOut(BaseModel):
@@ -115,7 +115,7 @@ def create_portal_user(
     user = User(
         email=data.email,
         full_name=data.full_name,
-        hashed_password=hash_password(data.password),
+        hashed_password=hash_password(data.password) if data.password else "",
         role=UserRole.client,
         client_id=client_id,
     )

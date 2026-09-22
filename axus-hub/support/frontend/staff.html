@@ -365,7 +365,6 @@
       <form id="pu-form">
         <label>Full name<input type="text" id="pu-name" required /></label>
         <label>Email<input type="email" id="pu-email" required /></label>
-        <label>Temporary password<input type="text" id="pu-password" required placeholder="At least 8 characters" /></label>
         <div id="pu-error" class="form-error"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="pu-cancel">Cancel</button><button type="submit" class="btn btn-primary">Create user</button></div>
       </form>
@@ -373,22 +372,6 @@
   </div>
 
   <!-- RESET PORTAL PASSWORD MODAL -->
-  <div id="pwreset-modal" class="modal-overlay hidden">
-    <div class="modal">
-      <div class="modal-head"><h2>Reset Password</h2><button class="modal-x" id="pwr-close">×</button></div>
-      <p class="muted" style="margin:-6px 0 14px">Set a new password for <strong id="pwr-who"></strong>. Share it securely; they can change it after signing in.</p>
-      <form id="pwr-form">
-        <label>New password
-          <div class="pwr-row">
-            <input type="text" id="pwr-password" required placeholder="At least 8 characters" autocomplete="new-password" />
-            <button type="button" class="btn btn-ghost" id="pwr-gen" title="Generate a strong password">Generate</button>
-          </div>
-        </label>
-        <div id="pwr-error" class="form-error"></div>
-        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="pwr-cancel">Cancel</button><button type="submit" class="btn btn-primary">Reset password</button></div>
-      </form>
-    </div>
-  </div>
 
   <!-- TRANSFER-AND-DELETE MODAL -->
   <div id="xfer-modal" class="modal-overlay hidden">
@@ -416,7 +399,6 @@
           <label>Status<select id="uf-active"><option value="true">Active</option><option value="false">Inactive</option></select></label>
         </div>
         <label id="uf-client-wrap">Business <span class="muted">(for portal users)</span><select id="uf-client"><option value="">— None —</option></select></label>
-        <label id="uf-pw-wrap">Password<input type="text" id="uf-password" placeholder="Set a password" /></label>
         <div id="uf-error" class="form-error"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="uf-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
       </form>
@@ -476,6 +458,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=53"></script>
+  <script src="/static/staff.js?v=56"></script>
 </body>
 </html>

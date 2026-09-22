@@ -875,12 +875,8 @@ const Staff = (() => {
     showCustomerDetail();
     const users = await api(`/api/clients/${id}/portal-users`);
     $("cd-users").innerHTML = users.length
-      ? users.map(u => `<div class="time-item"><span>${esc(u.full_name)}<br><span class="cell-muted">${esc(u.email)}</span></span>` +
-          `<button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button></div>`).join("")
+      ? users.map(u => `<div class="time-item"><span>${esc(u.full_name)}<br><span class="cell-muted">${esc(u.email)}</span></span></div>`).join("")
       : `<div class="muted">No users yet.</div>`;
-    $("cd-users").querySelectorAll("[data-reset-pw]").forEach(b => {
-      b.onclick = () => showPwReset(`/api/clients/${currentCustomer.id}/portal-users/${b.dataset.resetPw}/password`, b.dataset.resetName);
-    });
   }
 
   function showCustModal(c) {
@@ -923,35 +919,11 @@ const Staff = (() => {
   async function addPortalUser() {
     await api(`/api/clients/${currentCustomer.id}/portal-users`, {
       method: "POST",
-      body: { full_name: $("pu-name").value.trim(), email: $("pu-email").value.trim(), password: $("pu-password").value },
+      body: { full_name: $("pu-name").value.trim(), email: $("pu-email").value.trim() },
     });
     $("puser-modal").classList.add("hidden"); $("pu-form").reset();
     await openCustomer(currentCustomer.id);
     toast("User created");
-  }
-
-  /* ---------- Reset password (works for business users and staff users) ---------- */
-  let pwResetUrl = null;
-  function genPassword() {
-    const a = "ABCDEFGHJKLMNPQRSTUVWXYZ", b = "abcdefghijkmnpqrstuvwxyz", n = "23456789", s = "!@#$%&*";
-    const all = a + b + n + s; const rnd = x => x[Math.floor(Math.random() * x.length)];
-    let out = [rnd(a), rnd(b), rnd(n), rnd(s)];
-    for (let i = 0; i < 8; i++) out.push(rnd(all));
-    return out.sort(() => Math.random() - 0.5).join("");
-  }
-  function showPwReset(url, name) {
-    pwResetUrl = url;
-    $("pwr-who").textContent = name;
-    $("pwr-password").value = ""; $("pwr-error").textContent = "";
-    $("pwreset-modal").classList.remove("hidden");
-    $("pwr-password").focus();
-  }
-  async function submitPwReset() {
-    const pw = $("pwr-password").value.trim();
-    if (pw.length < 8) { $("pwr-error").textContent = "Password must be at least 8 characters"; return; }
-    await api(pwResetUrl, { method: "PUT", body: { password: pw } });
-    $("pwreset-modal").classList.add("hidden");
-    toast("Password reset");
   }
 
   /* ---------- Users ---------- */
@@ -991,9 +963,7 @@ const Staff = (() => {
         <td class="cell-muted col-business">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
         <td class="cell-muted col-tickets">${u.assigned_tickets || 0}</td>
         <td class="col-status"><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>
-        <td class="user-actions col-actions"><button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button>${u.id === me.id ? "" : `<button class="btn btn-ghost btn-xs btn-danger" data-del-user="${u.id}" data-del-name="${esc(u.full_name)}">Delete</button>`}</td>`;
-      const rb = tr.querySelector("[data-reset-pw]");
-      rb.onclick = (e) => { e.stopPropagation(); showPwReset(`/api/users/${rb.dataset.resetPw}/password`, rb.dataset.resetName); };
+        <td class="user-actions col-actions">${u.id === me.id ? "<span class=\"cell-muted\">—</span>" : `<button class="btn btn-ghost btn-xs btn-danger" data-del-user="${u.id}" data-del-name="${esc(u.full_name)}">Delete</button>`}</td>`;
       const del = tr.querySelector("[data-del-user]");
       if (del) del.onclick = async (e) => {
         e.stopPropagation();
@@ -1032,11 +1002,9 @@ const Staff = (() => {
       $("uf-phone").value = u.phone || ""; $("uf-roleSel").value = u.role;
       $("uf-active").value = String(u.is_active); $("uf-client").value = u.client_id || "";
       userEditId = u.id;
-      $("uf-pw-wrap").style.display = "none";   // no password change on edit
     } else {
       $("user-modal-title").textContent = "New User";
       $("user-form").reset(); userEditId = null;
-      $("uf-pw-wrap").style.display = "";
     }
     $("user-modal").classList.remove("hidden");
   }
@@ -1054,9 +1022,7 @@ const Staff = (() => {
     if (userEditId) {
       await api(`/api/users/${userEditId}`, { method: "PUT", body: { ...base, is_active: $("uf-active").value === "true" } });
     } else {
-      const pw = $("uf-password").value;
-      if (!pw) { $("uf-error").textContent = "Password is required for a new user"; return; }
-      await api("/api/users/", { method: "POST", body: { ...base, password: pw } });
+      await api("/api/users/", { method: "POST", body: base });
     }
     closeUserModal();
     await Promise.all([refreshUsers(), refreshClients()]);
@@ -1200,10 +1166,6 @@ const Staff = (() => {
     $("pu-cancel").onclick = () => $("puser-modal").classList.add("hidden");
     $("pu-form").onsubmit = async e => { e.preventDefault(); $("pu-error").textContent = ""; try { await addPortalUser(); } catch (err) { $("pu-error").textContent = err.message; } };
     // reset portal password
-    $("pwr-close").onclick = () => $("pwreset-modal").classList.add("hidden");
-    $("pwr-cancel").onclick = () => $("pwreset-modal").classList.add("hidden");
-    $("pwr-gen").onclick = () => { $("pwr-password").value = genPassword(); };
-    $("pwr-form").onsubmit = async e => { e.preventDefault(); $("pwr-error").textContent = ""; try { await submitPwReset(); } catch (err) { $("pwr-error").textContent = err.message; } };
 
     // ticket form: load users when business changes
     $("nt-client").onchange = () => loadUsersInto($("nt-contact"), $("nt-client").value);

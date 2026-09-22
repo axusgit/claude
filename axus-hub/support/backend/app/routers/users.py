@@ -46,7 +46,7 @@ class UserOut(BaseModel):
 class UserCreateIn(BaseModel):
     full_name: str
     email: EmailStr
-    password: str
+    password: Optional[str] = None   # unused: clients use magic-link, staff use SSO
     role: str = "technician"
     phone: Optional[str] = None
     client_id: Optional[int] = None
@@ -96,7 +96,7 @@ def create_user(data: UserCreateIn, db: Session = Depends(get_db), _=Depends(req
     user = User(
         full_name=data.full_name,
         email=data.email,
-        hashed_password=hash_password(data.password),
+        hashed_password=hash_password(data.password) if data.password else "",
         role=data.role,
         phone=data.phone,
         client_id=data.client_id,
