@@ -3,10 +3,29 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
 from app.models.user import User, UserRole
+from app.models.ticket import Ticket, TicketComment, TicketActivity, TimeEntry
+from app.models.ticket_watcher import TicketWatcher
+from app.models.attachment import Attachment
+from app.models.magic_token import PortalMagicToken
+from app.models.xcitium import XcitiumDirectoryTombstone
 from app.auth import get_current_user, hash_password, require_admin
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+def _user_ref_count(db: Session, uid: int) -> int:
+    """How many content rows reference this user (deleting is unsafe when > 0)."""
+    return (
+        db.query(Ticket).filter(
+            (Ticket.created_by_id == uid) | (Ticket.assigned_to_id == uid) | (Ticket.reporter_user_id == uid)
+        ).count()
+        + db.query(TicketComment).filter(TicketComment.author_id == uid).count()
+        + db.query(TicketActivity).filter(TicketActivity.user_id == uid).count()
+        + db.query(TimeEntry).filter(TimeEntry.user_id == uid).count()
+        + db.query(TicketWatcher).filter(TicketWatcher.user_id == uid).count()
+        + db.query(Attachment).filter(Attachment.uploaded_by_id == uid).count()
+    )
 
 
 class UserOut(BaseModel):
@@ -108,3 +127,30 @@ def update_user(user_id: int, data: UserUpdateIn, db: Session = Depends(get_db),
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.delete("/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """Delete a user. The identity is TOMBSTONED so the Xcitium directory sync can
+    never re-create it. Users with ticket history are deactivated + hidden instead of
+    hard-deleted, so their history stays intact."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You can't delete your own account")
+
+    email = (user.email or "").strip().lower()
+    if email and not db.query(XcitiumDirectoryTombstone).filter(
+            XcitiumDirectoryTombstone.email == email).first():
+        db.add(XcitiumDirectoryTombstone(email=email, xcitium_user_id=user.xcitium_user_id))
+    # transient rows that would otherwise block a hard delete
+    db.query(PortalMagicToken).filter(PortalMagicToken.user_id == user.id).delete()
+
+    if _user_ref_count(db, user.id) > 0:
+        user.is_active = False          # keep the row for ticket history, but hide it
+        db.commit()
+        return {"status": "deactivated", "id": user_id, "reason": "has ticket history"}
+    db.delete(user)
+    db.commit()
+    return {"status": "deleted", "id": user_id}

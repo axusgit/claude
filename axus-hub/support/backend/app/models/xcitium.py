@@ -96,6 +96,18 @@ class XcitiumSyncState(Base):
     last_full_backfill_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class XcitiumDirectoryTombstone(Base):
+    """A user deleted in the Axus Service Desk. The Xcitium directory import checks
+    this list and NEVER re-creates a tombstoned identity (matched by email or the
+    Xcitium user id), so local deletes are permanent."""
+    __tablename__ = "xcitium_dir_tombstones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)   # lower-cased
+    xcitium_user_id = Column(String, index=True, nullable=True)
+    deleted_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class XcitiumHealth(Base):
     """Single-row health state for the Xcitium clientapi (id is always 1).
 

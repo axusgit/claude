@@ -912,9 +912,19 @@ const Staff = (() => {
         <td><span class="badge ${roleBadge[u.role] || "closed"}">${cap(u.role)}</span></td>
         <td class="cell-muted">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
         <td><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>
-        <td><button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button></td>`;
+        <td class="user-actions"><button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button>${u.id === me.id ? "" : `<button class="btn btn-ghost btn-xs btn-danger" data-del-user="${u.id}" data-del-name="${esc(u.full_name)}">Delete</button>`}</td>`;
       const rb = tr.querySelector("[data-reset-pw]");
       rb.onclick = (e) => { e.stopPropagation(); showPwReset(`/api/users/${rb.dataset.resetPw}/password`, rb.dataset.resetName); };
+      const del = tr.querySelector("[data-del-user]");
+      if (del) del.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete ${del.dataset.delName}?\n\nThey will not be re-created when Xcitium syncs.`)) return;
+        try {
+          const r = await api(`/api/users/${del.dataset.delUser}`, { method: "DELETE" });
+          toast(r.status === "deactivated" ? "User had ticket history — deactivated & hidden" : "User deleted");
+          await refreshUsers(); renderUsers();
+        } catch (err) { toast(err.message); }
+      };
       tbody.appendChild(tr);
     }
   }

@@ -270,6 +270,8 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
 
 /* ===================== Reset portal password ===================== */
 .btn-xs { padding: 4px 10px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+.user-actions { display: flex; gap: 8px; }
+.btn-danger:hover { color: #e5484d; border-color: rgba(229,72,77,.5); }
 .pwr-row { display: flex; gap: 8px; align-items: stretch; }
 .pwr-row input { margin-top: 6px; }
 .pwr-row .btn { margin-top: 6px; white-space: nowrap; }

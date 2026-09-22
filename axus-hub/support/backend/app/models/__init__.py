@@ -10,6 +10,6 @@ from app.models.contact import Contact
 from app.models.board import Board
 from app.models.xcitium import (
     XcitiumCustomer, XcitiumUser, XcitiumTicket, XcitiumThread, XcitiumSyncState,
-    XcitiumHealth,
+    XcitiumHealth, XcitiumDirectoryTombstone,
 )
 from app.models.magic_token import PortalMagicToken

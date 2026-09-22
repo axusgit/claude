@@ -25,6 +25,7 @@ from sqlalchemy import func
 from app.database import SessionLocal
 from app.models.xcitium import (
     XcitiumCustomer, XcitiumUser, XcitiumTicket, XcitiumThread, XcitiumSyncState,
+    XcitiumDirectoryTombstone,
 )
 from app import xcitium
 
@@ -56,6 +57,25 @@ def _remap_email(email):
     if not email:
         return email
     return EMAIL_REMAP.get(email.strip().lower(), email)
+
+
+# Rename Xcitium organizations to their Axus business name on import, so mirrored
+# tickets + auto-created clients use the current name and the old name is never
+# re-created. Keys are lower-case. Extend via env XCITIUM_ORG_REMAP="old=new,...".
+ORG_REMAP = {
+    "chcp": "Evara Health",
+}
+for _pair in os.getenv("XCITIUM_ORG_REMAP", "").split(","):
+    if "=" in _pair:
+        _o, _n = _pair.split("=", 1)
+        if _o.strip() and _n.strip():
+            ORG_REMAP[_o.strip().lower()] = _n.strip()
+
+
+def _remap_org(org):
+    if not org:
+        return org
+    return ORG_REMAP.get(org.strip().lower(), org)
 
 
 # ---------- helpers ----------
@@ -114,7 +134,7 @@ def _import_ticket(db, data) -> None:
     """Upsert one XcitiumTicket + replace its threads from a viewticket payload."""
     ext = int(data["ticketId"])
     user = data.get("user") or {}
-    org = (user.get("organizationName") or "").strip() or None
+    org = _remap_org((user.get("organizationName") or "").strip() or None)
     threads = data.get("threads") or []
 
     t = db.query(XcitiumTicket).filter(XcitiumTicket.external_id == ext).first()
@@ -391,7 +411,7 @@ def import_directory():
                          .filter(XcitiumTicket.user_external_id.isnot(None),
                                  XcitiumTicket.organization_name.isnot(None)).distinct().all()):
             if uid and (org or "").strip():
-                org_by_uid[str(uid)] = org.strip()
+                org_by_uid[str(uid)] = _remap_org(org.strip())
 
         # email-domain -> customer, learned from ticket-linked users (for the
         # ticketless users that have no org of their own)
@@ -422,8 +442,16 @@ def import_directory():
                 continue
             _filtered.append(u)
         users = _filtered
-        seen_uids = {str(u.get("id")).strip() for u in users if u.get("id")}
-        created = updated = linked = unassigned = skipped = domain_linked = 0
+        # Tombstones: identities deleted in the Axus Service Desk are authoritative
+        # and must never be re-created here (matched by email or Xcitium user id).
+        tomb_emails = {r[0] for r in db.query(XcitiumDirectoryTombstone.email).all()}
+        tomb_uids = {r[0] for r in db.query(XcitiumDirectoryTombstone.xcitium_user_id)
+                     .filter(XcitiumDirectoryTombstone.xcitium_user_id.isnot(None)).all()}
+
+        # ADDITIVE-ONLY: create genuinely new customers; never modify or deactivate an
+        # existing native record (name / company / role / active are managed in Axus,
+        # not synced from Xcitium), and never resurrect a tombstoned (deleted) one.
+        created = existing = tombstoned = skipped = linked = 0
         for u in users:
             email = _remap_email((u.get("address") or "").strip()).lower()  # retire dead emails
             uid = str(u.get("id") or "").strip()
@@ -431,70 +459,28 @@ def import_directory():
             if not email:
                 skipped += 1
                 continue
-            org = org_by_uid.get(uid)
-            if not org:  # no ticket of their own -> fall back to email domain
-                org = org_by_domain.get(_domain_of(email))
-                if org:
-                    domain_linked += 1
+            if email in tomb_emails or (uid and uid in tomb_uids):
+                tombstoned += 1
+                continue
+            if db.query(User).filter(User.email == email).first():
+                existing += 1
+                continue
+            org = org_by_uid.get(uid) or org_by_domain.get(_domain_of(email))
             client_id = client_id_by_org.get(org) if org else None
             linked += 1 if client_id else 0
-            unassigned += 0 if client_id else 1
-
-            existing = db.query(User).filter(User.email == email).first()
-            if existing:
-                if not existing.xcitium_user_id:
-                    existing.xcitium_user_id = uid
-                # only manage imported CLIENT rows; never touch native users or
-                # anyone promoted to staff (admin/technician) -- otherwise the
-                # hourly run would re-link a staff member to a customer.
-                role = existing.role.value if hasattr(existing.role, "value") else existing.role
-                if existing.source == "xcitium" and role == "client":
-                    existing.full_name = name
-                    if client_id and existing.client_id != client_id:
-                        existing.client_id = client_id
-                updated += 1
-            else:
-                db.add(User(email=email, full_name=name, hashed_password="",
-                            role="client", client_id=client_id,
-                            source="xcitium", xcitium_user_id=uid))
-                db.flush(); created += 1
-            if (created + updated) % 100 == 0:
+            db.add(User(email=email, full_name=name, hashed_password="",
+                        role="client", client_id=client_id,
+                        source="xcitium", xcitium_user_id=uid))
+            db.flush(); created += 1
+            if created % 100 == 0:
                 db.commit()
         db.commit()
 
-        # Deletion reconciliation (soft-delete): a user removed from Xcitium drops
-        # out of getUsers, so we deactivate + hide the mirror row here. Reversible --
-        # if the user reappears in Xcitium they are reactivated. Only source='xcitium'
-        # CLIENT rows are touched (never staff/native, and never rows without an
-        # xcitium id). SAFETY GUARD: Xcitium's getUsers has been flaky (errored
-        # 2026-09-14); a truncated/empty response must not mass-deactivate everyone,
-        # so we skip the pass unless the response is plausibly complete.
-        existing_xc = (db.query(User)
-                       .filter(User.source == "xcitium", User.role == UserRole.client).count())
-        reconcile_ok = bool(seen_uids) and (existing_xc == 0 or len(seen_uids) >= 0.5 * existing_xc)
-        deactivated = reactivated = 0
-        if reconcile_ok:
-            for row in (db.query(User)
-                        .filter(User.source == "xcitium", User.role == UserRole.client).all()):
-                if not row.xcitium_user_id:
-                    continue  # can't match -> leave alone
-                present = row.xcitium_user_id in seen_uids
-                if not present and row.is_active:
-                    row.is_active = False; deactivated += 1
-                elif present and not row.is_active:
-                    row.is_active = True; reactivated += 1
-            db.commit()
-        else:
-            print(f"[xcitium] deletion reconciliation SKIPPED (guard): "
-                  f"getUsers returned {len(seen_uids)} vs {existing_xc} known", flush=True)
-
         result = {"configured": True, "clients_created": clients_created,
-                  "users_seen": len(users), "created": created, "updated": updated,
-                  "linked": linked, "linked_by_domain": domain_linked,
-                  "unassigned": unassigned, "skipped_no_email": skipped,
+                  "users_seen": len(users), "created": created,
+                  "existing_untouched": existing, "tombstoned_skipped": tombstoned,
+                  "linked_new": linked, "skipped_no_email": skipped,
                   "excluded_names": excluded_names,
-                  "deactivated": deactivated, "reactivated": reactivated,
-                  "reconcile_skipped": not reconcile_ok,
                   "ambiguous_domains": ambiguous_domains}
         print(f"[xcitium] directory import: {result}", flush=True)
         return result
@@ -527,6 +513,51 @@ def apply_email_remap():
         db.close()
 
 
+def apply_org_remap():
+    """Rename Xcitium orgs to their Axus business name per ORG_REMAP: the native
+    Client (repointing users/tickets and merging if the target name already exists),
+    the mirrored ticket orgs, and the xcitium_customers dimension. Idempotent."""
+    from app.models.client import Client
+    from app.models.user import User
+    from app.models.ticket import Ticket
+    db = SessionLocal()
+    total = 0
+    try:
+        for old, new in ORG_REMAP.items():
+            new_client = (db.query(Client)
+                          .filter(func.lower(Client.company_name) == new.lower()).first())
+            old_clients = (db.query(Client)
+                           .filter(func.lower(Client.company_name) == old).all())
+            for oc in old_clients:
+                if new_client and oc.id != new_client.id:
+                    # merge into the existing target business
+                    db.query(User).filter(User.client_id == oc.id).update(
+                        {User.client_id: new_client.id}, synchronize_session=False)
+                    db.query(Ticket).filter(Ticket.client_id == oc.id).update(
+                        {Ticket.client_id: new_client.id}, synchronize_session=False)
+                    db.delete(oc)
+                else:
+                    oc.company_name = new
+                    new_client = oc
+                total += 1
+            t = (db.query(XcitiumTicket).filter(func.lower(XcitiumTicket.organization_name) == old)
+                 .update({XcitiumTicket.organization_name: new}, synchronize_session=False))
+            # xcitium_customers.name is unique: drop the old row if the target exists
+            if db.query(XcitiumCustomer).filter(func.lower(XcitiumCustomer.name) == new.lower()).first():
+                db.query(XcitiumCustomer).filter(func.lower(XcitiumCustomer.name) == old).delete(
+                    synchronize_session=False)
+            else:
+                db.query(XcitiumCustomer).filter(func.lower(XcitiumCustomer.name) == old).update(
+                    {XcitiumCustomer.name: new}, synchronize_session=False)
+            if t:
+                print(f"[xcitium] org remap {old} -> {new}: {t} tickets", flush=True)
+            total += t
+        db.commit()
+        return {"remapped_rows": total, "map": ORG_REMAP}
+    finally:
+        db.close()
+
+
 # ---------- top-of-hour scheduler ----------
 
 def _seconds_to_next_hour() -> float:
@@ -540,6 +571,7 @@ def run_scheduler():
     (e.g. the Xcitium API being down, as it was on 2026-09-14)."""
     try:
         apply_email_remap()   # keep requester-email remaps applied across restarts
+        apply_org_remap()     # keep business renames applied across restarts
     except Exception as e:
         print(f"[xcitium] email remap failed: {e}", flush=True)
     try:
@@ -580,5 +612,7 @@ if __name__ == "__main__":
         print(json.dumps(status(), indent=2))
     elif cmd == "remap":
         print(json.dumps(apply_email_remap(), indent=2))
+    elif cmd == "org-remap":
+        print(json.dumps(apply_org_remap(), indent=2))
     else:
-        print("usage: python -m app.xcitium_sync {backfill|incremental|directory|status|remap}")
+        print("usage: python -m app.xcitium_sync {backfill|incremental|directory|status|remap|org-remap}")
