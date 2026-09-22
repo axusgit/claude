@@ -108,6 +108,15 @@ class XcitiumDirectoryTombstone(Base):
     deleted_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class XcitiumTicketTombstone(Base):
+    """A mirrored ticket deleted in the Axus Service Desk. The importer skips these
+    external ids forever, so a re-sync or full backfill can never resurrect them."""
+    __tablename__ = "xcitium_ticket_tombstones"
+
+    external_id = Column(Integer, primary_key=True)   # Xcitium ticketId
+    deleted_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class XcitiumHealth(Base):
     """Single-row health state for the Xcitium clientapi (id is always 1).
 

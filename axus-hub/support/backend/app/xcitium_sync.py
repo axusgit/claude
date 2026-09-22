@@ -25,7 +25,7 @@ from sqlalchemy import func
 from app.database import SessionLocal
 from app.models.xcitium import (
     XcitiumCustomer, XcitiumUser, XcitiumTicket, XcitiumThread, XcitiumSyncState,
-    XcitiumDirectoryTombstone,
+    XcitiumDirectoryTombstone, XcitiumTicketTombstone,
 )
 from app import xcitium
 
@@ -183,6 +183,9 @@ def _import_ticket(db, data) -> None:
 
 def _sync_one(db, tid) -> str:
     """Return 'imported' | 'missing' | 'error' for a single ticket id."""
+    if db.query(XcitiumTicketTombstone.external_id).filter(
+            XcitiumTicketTombstone.external_id == tid).first():
+        return "missing"   # deleted in Axus -> never re-import (any sync path)
     try:
         data = xcitium.viewticket(tid)
     except xcitium.XcitiumError as e:
@@ -557,6 +560,22 @@ def apply_org_remap():
             total += t
         db.commit()
         return {"remapped_rows": total, "map": ORG_REMAP}
+    finally:
+        db.close()
+
+
+def delete_ticket(external_id: int):
+    """Permanently delete one mirrored ticket (+ its threads) and tombstone its id so
+    the importer never brings it back."""
+    db = SessionLocal()
+    try:
+        db.query(XcitiumThread).filter(XcitiumThread.ticket_external_id == external_id).delete()
+        n = db.query(XcitiumTicket).filter(XcitiumTicket.external_id == external_id).delete()
+        if not db.query(XcitiumTicketTombstone).filter(
+                XcitiumTicketTombstone.external_id == external_id).first():
+            db.add(XcitiumTicketTombstone(external_id=external_id))
+        db.commit()
+        return {"external_id": external_id, "deleted": n}
     finally:
         db.close()
 
