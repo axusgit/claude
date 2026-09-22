@@ -43,6 +43,7 @@ EXCLUDED_USER_NAMES = {"patch management agent"}
 # Extend via env XCITIUM_EMAIL_REMAP="old1=new1,old2=new2". Re-applied every sync.
 EMAIL_REMAP = {
     "acarrazana@axustechnologies.com": "acarr@axustechnologies.com",
+    "abos@hcnetwork.org": "asabor@hcnetwork.org",
 }
 for _pair in os.getenv("XCITIUM_EMAIL_REMAP", "").split(","):
     if "=" in _pair:
@@ -424,7 +425,7 @@ def import_directory():
         seen_uids = {str(u.get("id")).strip() for u in users if u.get("id")}
         created = updated = linked = unassigned = skipped = domain_linked = 0
         for u in users:
-            email = (u.get("address") or "").strip().lower()
+            email = _remap_email((u.get("address") or "").strip()).lower()  # retire dead emails
             uid = str(u.get("id") or "").strip()
             name = (u.get("name") or "").strip() or email or "Unknown"
             if not email:
