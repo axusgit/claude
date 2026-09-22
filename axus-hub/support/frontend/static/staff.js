@@ -498,6 +498,7 @@ const Staff = (() => {
       catch (e) { $("p-contact").textContent = "—"; }
     } else { $("p-contact").textContent = "—"; }
     $("reply-internal").checked = false; $("reply-form").classList.remove("internal-mode");
+    initTimer(id);
     showDetail();
     await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id), loadWatchers(id), loadProjectLinks(current)]);
   }
@@ -815,6 +816,46 @@ const Staff = (() => {
       me.signature_logo = u.signature_logo || "";
       $("sig-modal").classList.add("hidden"); toast("Signature saved");
     } catch (e) { toast(e.message); }
+  }
+  /* ---------- Per-ticket work timer (staff-only stopwatch) ---------- */
+  let timerTick = null;                       // setInterval handle while running
+  const timerKey = id => `axus-timer-${id}`;  // stores the start epoch (ms) per ticket
+  const fmtElapsed = ms => {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const h = String(Math.floor(s / 3600)).padStart(2, "0");
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    return `${h}:${m}:${ss}`;
+  };
+  function timerStartMs(id) { try { return parseInt(localStorage.getItem(timerKey(id)) || "0", 10) || 0; } catch (e) { return 0; } }
+  function renderTimer() {
+    if (!current) return;
+    const start = timerStartMs(current.id);
+    const running = start > 0;
+    $("timer-display").textContent = running ? fmtElapsed(Date.now() - start) : "00:00:00";
+    $("timer-btn").textContent = running ? "⏹ Stop & log" : "▶ Start timer";
+    $("timer-btn").classList.toggle("btn-danger", running);
+  }
+  function initTimer(id) {
+    if (timerTick) { clearInterval(timerTick); timerTick = null; }
+    renderTimer();
+    if (timerStartMs(id) > 0) timerTick = setInterval(renderTimer, 1000);
+  }
+  async function toggleTimer() {
+    const id = current.id;
+    const start = timerStartMs(id);
+    if (start > 0) {
+      // stop: clear, then log the elapsed time (rounded to 1/100th of an hour)
+      try { localStorage.removeItem(timerKey(id)); } catch (e) {}
+      if (timerTick) { clearInterval(timerTick); timerTick = null; }
+      const hours = Math.max(0.01, Math.round(((Date.now() - start) / 3600000) * 100) / 100);
+      renderTimer();
+      try { await logTime(hours, "Tracked via timer"); }
+      catch (e) { toast(e.message); }
+    } else {
+      try { localStorage.setItem(timerKey(id), String(Date.now())); } catch (e) {}
+      initTimer(id);
+    }
   }
   async function logTime(hours, notes) {
     await api(`/api/tickets/${current.id}/time`, { method: "POST", body: { hours, notes: notes || null } });
@@ -1189,6 +1230,7 @@ const Staff = (() => {
     $("edit-ticket-btn").onclick = () => showEditTicket();
     $("convert-project-btn").onclick = convertToProject;
     $("delete-ticket-btn").onclick = deleteTicket;
+    $("timer-btn").onclick = toggleTimer;
     $("pt-add-btn").onclick = newTicketInProject;
     $("modal-close").onclick = closeNew; $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showQueue(); };
