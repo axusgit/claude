@@ -742,12 +742,17 @@ const Staff = (() => {
     if (field === "status") { current = await api(`/api/tickets/${current.id}`); }
     toast(cap(field) + " updated");
   }
-  async function postReply(bodyText, internal) {
+  async function postReply(bodyText, internal, files) {
     // public replies (visible to the customer) get the staff member's signature appended
     let body = bodyText;
     if (!internal && me.signature) body += "\n\n" + me.signature;
     await api(`/api/tickets/${current.id}/comments`, { method: "POST", body: { body, is_internal: internal } });
-    await Promise.all([loadThread(current.id), loadActivity(current.id)]);
+    for (const f of (files || [])) {
+      const fd = new FormData(); fd.append("file", f);
+      try { await api(`/api/tickets/${current.id}/attachments`, { method: "POST", form: fd }); }
+      catch (e) { toast(`Couldn't attach ${f.name}: ${e.message}`); }
+    }
+    await Promise.all([loadThread(current.id), loadActivity(current.id), loadAttachments(current.id)]);
     toast(internal ? "Internal note added" : "Reply posted");
   }
   /* ---------- Signature ---------- */
@@ -1298,12 +1303,18 @@ const Staff = (() => {
     $("d-origin").onchange = e => { if (e.target.value) patch("origin", e.target.value); };
 
     $("reply-internal").onchange = e => $("reply-form").classList.toggle("internal-mode", e.target.checked);
+    $("reply-files").onchange = () => {
+      const n = $("reply-files").files.length;
+      $("reply-files-label").textContent = n ? `${n} file${n > 1 ? "s" : ""}` : "Attach";
+    };
     $("reply-form").onsubmit = async e => {
       e.preventDefault(); const b = $("reply-body").value.trim(); if (!b) return;
       const internal = $("reply-internal").checked;
+      const files = Array.from($("reply-files").files || []);
       $("reply-body").value = ""; $("reply-internal").checked = false;
       $("reply-form").classList.remove("internal-mode");
-      try { await postReply(b, internal); } catch (err) { toast(err.message); }
+      $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
+      try { await postReply(b, internal, files); } catch (err) { toast(err.message); }
     };
     $("time-form").onsubmit = async e => {
       e.preventDefault(); const h = parseFloat($("time-hours").value); if (!h) return;

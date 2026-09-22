@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=48" />
+  <link rel="stylesheet" href="/static/styles.css?v=49" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
     .login-sent { text-align: center; }
@@ -104,6 +104,8 @@
               <form id="reply-form" class="reply-form">
                 <textarea id="reply-body" rows="3" placeholder="Write a reply to our team…" required></textarea>
                 <div class="reply-actions">
+                  <label class="reply-attach" title="Attach files"><input type="file" id="reply-files" multiple hidden
+                    accept=".doc,.pdf,.jpg,.jpeg,.gif,.png,.xls,.docx,.xlsx,.txt,.pcapng,.eml,.pcap,.wav,.csv,.mp4,.mp3,.heic" />📎 <span id="reply-files-label">Attach</span></label>
                   <button type="submit" class="btn btn-primary">Send reply</button>
                 </div>
               </form>
@@ -197,6 +199,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=20"></script>
+  <script src="/static/app.js?v=21"></script>
 </body>
 </html>

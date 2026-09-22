@@ -145,13 +145,13 @@ def _portal_url() -> str:
     return f"https://support.{domain}/portal" if domain else ""
 
 
-def _reply_html(recipient_name, author_name, t, body, link) -> str:
+def _participant_html(recipient_name, lead, block, t, link) -> str:
     import html as _h
     rn = _h.escape(recipient_name or "there")
-    an = _h.escape(author_name or "The Axus team")
+    ld = _h.escape(lead or "")
     ref = _h.escape(t.reference or "")
     title = _h.escape(t.title or "")
-    msg = _h.escape((body or "").strip()).replace("\n", "<br>")
+    msg = _h.escape((block or "").strip()).replace("\n", "<br>")
     lk = _h.escape(link or "", quote=True)
     btn = (f'<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
            f'<td style="border-radius:8px;background:#f26722;">'
@@ -167,7 +167,7 @@ def _reply_html(recipient_name, author_name, t, body, link) -> str:
     <tr><td style="padding:6px 32px 0;">
       <p style="margin:10px 0 2px;font-size:12px;color:#9aa1ac;letter-spacing:.4px;">TICKET {ref}</p>
       <h1 style="margin:2px 0 4px;font-size:18px;color:#1f2430;">{title}</h1>
-      <p style="margin:14px 0 4px;font-size:14px;line-height:1.55;color:#3a4150;">Hi {rn}, {an} added a new reply:</p>
+      <p style="margin:14px 0 4px;font-size:14px;line-height:1.55;color:#3a4150;">Hi {rn}, {ld}</p>
       <div style="margin:10px 0 20px;padding:14px 16px;background:#f7f8fa;border-left:3px solid #f26722;border-radius:6px;font-size:14px;line-height:1.55;color:#1f2430;">{msg}</div>
       {btn}
       <p style="margin:22px 0 0;font-size:12px;line-height:1.5;color:#9aa1ac;">You're receiving this because you're a participant on this ticket.</p>
@@ -178,9 +178,10 @@ def _reply_html(recipient_name, author_name, t, body, link) -> str:
 </body></html>"""
 
 
-def notify_participants_reply(ticket_id: int, body: str, author_id=None, author_name=None):
+def _notify_participants(ticket_id, author_id, subject_word, lead, block):
     """Email everyone on a ticket — reporter, added participants, and staff
-    (assignee + creator) — when a public reply is posted, except the author."""
+    (assignee + creator) — except the author. `lead` is the sentence after the
+    greeting; `block` is the highlighted content (reply text or change summary)."""
     if not _participants_enabled():
         return
     from app.models.ticket_watcher import TicketWatcher
@@ -190,8 +191,7 @@ def notify_participants_reply(ticket_id: int, body: str, author_id=None, author_
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not t:
             return
-        # Skip imported Xcitium history (references starting with "X") so notification
-        # testing only happens on new native tickets.
+        # Skip imported Xcitium history (references starting with "X").
         if (t.reference or "").strip().upper().startswith("X"):
             return
         staff_url, portal_url = _ticket_url(), _portal_url()
@@ -203,35 +203,43 @@ def notify_participants_reply(ticket_id: int, body: str, author_id=None, author_
             if em in seen or em in SYS_EMAILS or u.id == author_id:
                 return
             seen.add(em)
-            is_staff = _v(u.role) in ("admin", "technician")
-            recips.append((u.full_name, u.email, is_staff))
-        # participants
+            recips.append((u.full_name, u.email, _v(u.role) in ("admin", "technician")))
         if t.reporter_user_id:
             add(db.query(User).filter(User.id == t.reporter_user_id).first())
         for u in (db.query(User).join(TicketWatcher, TicketWatcher.user_id == User.id)
                   .filter(TicketWatcher.ticket_id == ticket_id).all()):
             add(u)
-        # staff on the ticket
         if t.assigned_to_id:
             add(db.query(User).filter(User.id == t.assigned_to_id).first())
         if t.created_by_id:
             add(db.query(User).filter(User.id == t.created_by_id).first())
-        # legacy email-intake contact (treated as a client recipient)
         if t.contact_id:
             c = db.query(Contact).filter(Contact.id == t.contact_id).first()
             if c and c.email and c.email.lower() not in seen and c.email.lower() not in SYS_EMAILS:
-                recips.append((c.full_name if hasattr(c, "full_name") else None, c.email, False))
-        subject = f"[{t.reference}] New reply · {t.title}"
+                recips.append((getattr(c, "full_name", None), c.email, False))
+        subject = f"[{t.reference}] {subject_word} · {t.title}"
         for name, email, is_staff in recips:
             link = staff_url if is_staff else portal_url
-            text = (f"Hi {name or 'there'},\n\n{author_name or 'The Axus team'} added a new reply on "
-                    f"ticket {t.reference} ({t.title}):\n\n{(body or '').strip()}\n\n"
+            text = (f"Hi {name or 'there'}, {lead}\n\n{(block or '').strip()}\n\n"
+                    f"Ticket {t.reference} — {t.title}\n"
                     + (f"View it: {link}\n" if link else "")
                     + "\nYou're receiving this because you're a participant on this ticket.\n")
-            html = _reply_html(name, author_name, t, body, link)
-            # transactional: always to the real participant (never the staff soft-launch redirect)
+            html = _participant_html(name, lead, block, t, link)
+            # transactional: always to the real participant (never the soft-launch redirect)
             mailer.send_email([email], subject, text, html)
     except Exception as e:
-        print(f"[notify] participants_reply failed: {e}", flush=True)
+        print(f"[notify] participants ({subject_word}) failed: {e}", flush=True)
     finally:
         db.close()
+
+
+def notify_participants_reply(ticket_id: int, body: str, author_id=None, author_name=None):
+    """Notify everyone on a ticket of a new public reply."""
+    lead = f"{author_name or 'The Axus team'} added a new reply:"
+    _notify_participants(ticket_id, author_id, "New reply", lead, body)
+
+
+def notify_participants_update(ticket_id: int, summary: str, author_id=None, author_name=None):
+    """Notify everyone on a ticket that it was updated (status/priority/etc.)."""
+    lead = f"{author_name or 'The Axus team'} updated this ticket:"
+    _notify_participants(ticket_id, author_id, "Updated", lead, summary)

@@ -244,9 +244,14 @@ const App = (() => {
   }
 
   /* ---------- Actions ---------- */
-  async function reply(bodyText) {
+  async function reply(bodyText, files) {
     await api(`/api/portal/tickets/${currentTicket}/comments`, { method: "POST", body: { body: bodyText } });
-    await loadThread(currentTicket);
+    for (const f of (files || [])) {
+      const fd = new FormData(); fd.append("file", f);
+      try { await api(`/api/portal/tickets/${currentTicket}/attachments`, { method: "POST", form: fd }); }
+      catch (e) { toast(`Couldn't attach ${f.name}: ${e.message}`); }
+    }
+    await Promise.all([loadThread(currentTicket), loadAttachments(currentTicket)]);
     toast("Reply sent");
   }
   async function uploadFile(file) {
@@ -322,11 +327,17 @@ const App = (() => {
     $("participant-email-btn").onclick = addParticipantEmail;
     $("participant-email").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addParticipantEmail(); } };
 
+    $("reply-files").onchange = () => {
+      const n = $("reply-files").files.length;
+      $("reply-files-label").textContent = n ? `${n} file${n > 1 ? "s" : ""}` : "Attach";
+    };
     $("reply-form").onsubmit = async e => {
       e.preventDefault();
       const body = $("reply-body").value.trim(); if (!body) return;
+      const files = Array.from($("reply-files").files || []);
       $("reply-body").value = "";
-      try { await reply(body); } catch (err) { toast(err.message); }
+      $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
+      try { await reply(body, files); } catch (err) { toast(err.message); }
     };
     $("attach-input").onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
