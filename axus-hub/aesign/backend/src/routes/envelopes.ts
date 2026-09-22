@@ -382,7 +382,9 @@ export async function envelopeRoutes(app: FastifyInstance) {
     return { ok: true, completed: true };
   });
 
-  // Resend the signing link to everyone who hasn't signed or declined yet.
+  // Resend the signing link to everyone whose turn it is to sign. Skips signers
+  // who already signed/declined AND — for a sequential document — anyone still
+  // 'pending' (waiting their turn), so only the next signer is re-emailed.
   app.post("/:id/resend", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;
@@ -399,7 +401,8 @@ export async function envelopeRoutes(app: FastifyInstance) {
     );
     let sent = 0;
     for (const r of recs.rows) {
-      if (!r.sign_token || r.status === "signed" || r.status === "declined") continue;
+      if (!r.sign_token || r.status === "signed" || r.status === "declined" || r.status === "pending")
+        continue;
       const res = await sendSigningInvite({
         to: r.email,
         recipientName: r.name,

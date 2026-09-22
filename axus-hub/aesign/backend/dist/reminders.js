@@ -104,17 +104,24 @@ export async function runReminders() {
         if (env.last_reminded_at && etParts(new Date(env.last_reminded_at)).dateKey === et.dateKey) {
             continue; // already reminded today
         }
-        const recs = await pool.query(`select name, email, sign_token from recipient where envelope_id = $1 and status <> 'signed'`, [env.id]);
+        // Only remind recipients whose turn it actually is: status 'sent'. In
+        // sequential mode the not-yet-their-turn signer sits at 'pending' (holding a
+        // token but not yet active), so this skips them and reminds only the next
+        // signer. In parallel mode every unsigned recipient is 'sent', so all still
+        // get reminded. ('signed'/'declined' are excluded either way.)
+        const recs = await pool.query(`select id, name, email, sign_token from recipient where envelope_id = $1 and status = 'sent'`, [env.id]);
         for (const r of recs.rows) {
             if (!r.sign_token)
                 continue;
-            const ok = await sendPendingReminder({
+            const res = await sendPendingReminder({
                 to: r.email,
                 recipientName: r.name,
                 title: env.title,
                 url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+                envelopeId: env.id,
+                recipientId: r.id,
             });
-            if (ok)
+            if (res.success)
                 sent++;
         }
         await pool.query(`update envelope set last_reminded_at = now() where id = $1`, [env.id]);

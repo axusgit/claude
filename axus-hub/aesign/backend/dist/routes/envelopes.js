@@ -319,7 +319,9 @@ export async function envelopeRoutes(app) {
         }
         return { ok: true, completed: true };
     });
-    // Resend the signing link to everyone who hasn't signed or declined yet.
+    // Resend the signing link to everyone whose turn it is to sign. Skips signers
+    // who already signed/declined AND — for a sequential document — anyone still
+    // 'pending' (waiting their turn), so only the next signer is re-emailed.
     app.post("/:id/resend", async (req, reply) => {
         const id = requireStaff(req, reply);
         if (!id)
@@ -332,19 +334,21 @@ export async function envelopeRoutes(app) {
         if (env.status !== "sent" && env.status !== "partially_completed") {
             return reply.code(409).send({ error: "Only documents out for signature can be resent." });
         }
-        const recs = await pool.query(`select name, email, sign_token, status from recipient where envelope_id = $1 order by sign_order`, [envId]);
+        const recs = await pool.query(`select id, name, email, sign_token, status from recipient where envelope_id = $1 order by sign_order`, [envId]);
         let sent = 0;
         for (const r of recs.rows) {
-            if (!r.sign_token || r.status === "signed" || r.status === "declined")
+            if (!r.sign_token || r.status === "signed" || r.status === "declined" || r.status === "pending")
                 continue;
-            const ok = await sendSigningInvite({
+            const res = await sendSigningInvite({
                 to: r.email,
                 recipientName: r.name,
                 senderName: id.name,
                 title: env.title,
                 url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+                envelopeId: envId,
+                recipientId: r.id,
             });
-            if (ok)
+            if (res.success)
                 sent++;
         }
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'reminded', $3)`, [envId, id.email, `Resent signing link to ${sent} recipient(s)`]);
@@ -360,15 +364,34 @@ export async function envelopeRoutes(app) {
         const env = await pool.query(`select * from envelope where id = $1`, [envId]);
         if (!env.rowCount)
             return reply.code(404).send({ error: "Not found" });
-        const recipients = await pool.query(`select id, envelope_id, name, email, role, sign_order, status, signed_at, decline_reason
-       from recipient where envelope_id = $1 order by sign_order`, [envId]);
+        const recipients = await pool.query(
+        // Left-join each recipient's most recent send attempt so the UI can show a
+        // per-recipient delivery indicator (accepted by the mail server / failed).
+        `select r.id, r.envelope_id, r.name, r.email, r.role, r.sign_order, r.status,
+              r.signed_at, r.decline_reason,
+              el.success  as last_send_ok,
+              el.error    as last_send_error,
+              el.smtp_response as last_send_response,
+              el.at       as last_send_at
+       from recipient r
+       left join lateral (
+         select success, error, smtp_response, at
+         from email_log
+         where recipient_id = r.id
+         order by at desc
+         limit 1
+       ) el on true
+       where r.envelope_id = $1 order by r.sign_order`, [envId]);
         const fields = await pool.query(`select * from field where envelope_id = $1`, [envId]);
         const events = await pool.query(`select actor, type, detail, ip, at from event where envelope_id = $1 order by at`, [envId]);
+        const emailLog = await pool.query(`select recipient_id, to_email, kind, success, message_id, smtp_response, error, at
+       from email_log where envelope_id = $1 order by at`, [envId]);
         return {
             envelope: env.rows[0],
             recipients: recipients.rows,
             fields: fields.rows,
             events: events.rows,
+            emailLog: emailLog.rows,
         };
     });
     // Upload the source document (PDF now; Word→PDF conversion via Gotenberg in Wk3).
@@ -680,6 +703,8 @@ export async function envelopeRoutes(app) {
             senderName: id.name,
             title: env.title,
             url: `${config.publicBaseUrl}/sign/${tokens.get(r.id)}`,
+            envelopeId: envId,
+            recipientId: r.id,
         });
         if (env.sequential) {
             // Only the first recipient is emailed now; the rest advance as each signs.
@@ -691,7 +716,7 @@ export async function envelopeRoutes(app) {
                     r.id,
                 ]);
             }
-            results.push({ email: recips.rows[0].email, sent: await invite(recips.rows[0]) });
+            results.push({ email: recips.rows[0].email, sent: (await invite(recips.rows[0])).success });
         }
         else {
             for (const r of recips.rows) {
@@ -699,7 +724,7 @@ export async function envelopeRoutes(app) {
                     tokens.get(r.id),
                     r.id,
                 ]);
-                results.push({ email: r.email, sent: await invite(r) });
+                results.push({ email: r.email, sent: (await invite(r)).success });
             }
         }
         await pool.query(`update envelope set status = 'sent', sent_at = now() where id = $1`, [envId]);
@@ -736,13 +761,15 @@ export async function envelopeRoutes(app) {
                 .code(409)
                 .send({ error: `It isn't ${r.name}'s turn to sign yet.` });
         }
-        const ok = await sendPendingReminder({
+        const res = await sendPendingReminder({
             to: r.email,
             recipientName: r.name,
             title: env.title,
             url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+            envelopeId: envId,
+            recipientId: r.id,
         });
-        if (!ok)
+        if (!res.success)
             return reply.code(502).send({ error: "The reminder email could not be sent." });
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'reminded', $3)`, [envId, id.email, `Reminder sent to ${r.name} <${r.email}>`]);
         // Suppress the automatic reminder for the rest of today so the recipient

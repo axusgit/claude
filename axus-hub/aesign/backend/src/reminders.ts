@@ -126,8 +126,13 @@ export async function runReminders(): Promise<number> {
       continue; // already reminded today
     }
 
+    // Only remind recipients whose turn it actually is: status 'sent'. In
+    // sequential mode the not-yet-their-turn signer sits at 'pending' (holding a
+    // token but not yet active), so this skips them and reminds only the next
+    // signer. In parallel mode every unsigned recipient is 'sent', so all still
+    // get reminded. ('signed'/'declined' are excluded either way.)
     const recs = await pool.query(
-      `select id, name, email, sign_token from recipient where envelope_id = $1 and status <> 'signed'`,
+      `select id, name, email, sign_token from recipient where envelope_id = $1 and status = 'sent'`,
       [env.id],
     );
     for (const r of recs.rows) {
