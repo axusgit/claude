@@ -8,7 +8,7 @@ from app.models.ticket import Ticket, TicketComment, TicketActivity, TimeEntry
 from app.models.ticket_watcher import TicketWatcher
 from app.models.attachment import Attachment
 from app.models.magic_token import PortalMagicToken
-from app.models.xcitium import XcitiumDirectoryTombstone
+from app.models.xcitium import XcitiumDirectoryTombstone, XcitiumTicket
 from app.auth import get_current_user, hash_password, require_admin
 from pydantic import BaseModel, EmailStr
 
@@ -75,12 +75,17 @@ def list_users(role: Optional[str] = None, include_inactive: bool = False,
     if not include_inactive:
         q = q.filter(User.is_active == True)  # noqa: E712
     users = q.order_by(User.full_name).all()
-    # one aggregate query for the assigned-ticket count column
-    counts = dict(db.query(Ticket.assigned_to_id, func.count(Ticket.id))
+    # Ticket count per user. Native tickets link by user id; the Xcitium mirror (where
+    # essentially all history lives, with no assignee) links by requester email, so we
+    # match those to the user's email. Sum both.
+    native = dict(db.query(Ticket.assigned_to_id, func.count(Ticket.id))
                   .filter(Ticket.assigned_to_id.isnot(None))
                   .group_by(Ticket.assigned_to_id).all())
+    xc = dict(db.query(func.lower(XcitiumTicket.user_email), func.count(XcitiumTicket.id))
+              .filter(XcitiumTicket.user_email.isnot(None))
+              .group_by(func.lower(XcitiumTicket.user_email)).all())
     for u in users:
-        u.assigned_tickets = counts.get(u.id, 0)
+        u.assigned_tickets = native.get(u.id, 0) + xc.get((u.email or "").lower(), 0)
     return users
 
 

@@ -332,7 +332,7 @@ const Staff = (() => {
   function applyColumns() {
     COLUMNS.forEach(c => {
       const hide = hiddenCols.has(c.key);
-      document.querySelectorAll(`.ticket-table .col-${c.key}`).forEach(el => el.style.display = hide ? "none" : "");
+      document.querySelectorAll(`#ticket-table .col-${c.key}`).forEach(el => el.style.display = hide ? "none" : "");
     });
   }
   function renderColsMenu() {
@@ -343,6 +343,30 @@ const Staff = (() => {
       localStorage.setItem(COLS_KEY, JSON.stringify([...hiddenCols]));
       applyColumns();
     });
+  }
+
+  // Reusable show/hide-columns chooser (Business + Users), scoped by table id so the
+  // tables don't clash on shared column keys. Selection persists per-user via storage.
+  let applyBizCols = () => {};
+  let applyUsrCols = () => {};
+  function setupColumnChooser({ tableSel, columns, storageKey, btnId, menuId }) {
+    let hidden = new Set();
+    try { hidden = new Set(JSON.parse(localStorage.getItem(storageKey) || "[]")); } catch (e) {}
+    const apply = () => columns.forEach(c => {
+      const hide = hidden.has(c.key);
+      document.querySelectorAll(`${tableSel} .col-${c.key}`).forEach(el => el.style.display = hide ? "none" : "");
+    });
+    $(menuId).innerHTML = columns.map(c =>
+      `<label class="col-opt"><input type="checkbox" data-col="${c.key}" ${hidden.has(c.key) ? "" : "checked"} /> ${c.label}</label>`).join("");
+    $(menuId).querySelectorAll("input").forEach(i => i.onchange = () => {
+      if (i.checked) hidden.delete(i.dataset.col); else hidden.add(i.dataset.col);
+      try { localStorage.setItem(storageKey, JSON.stringify([...hidden])); } catch (e) {}
+      apply();
+    });
+    $(btnId).onclick = e => { e.stopPropagation(); $(menuId).classList.toggle("hidden"); };
+    $(menuId).onclick = e => e.stopPropagation();
+    document.addEventListener("click", () => $(menuId).classList.add("hidden"));
+    return apply;
   }
 
   /* ---------- Detail ---------- */
@@ -765,18 +789,20 @@ const Staff = (() => {
     const tbody = $("customer-rows"); tbody.innerHTML = "";
     $("customers-empty").classList.toggle("hidden", rows.length > 0);
     for (const c of rows) {
-      const tcount = tickets.filter(t => t.client_id === c.id).length;
+      const tcount = tickets.filter(t => t.client_id === c.id
+        || (t.source === "xcitium" && (t.client_name || "") === c.company_name)).length;
       const tr = document.createElement("tr");
       tr.onclick = () => openCustomer(c.id);
       tr.innerHTML = `
-        <td class="cell-subject">${esc(c.company_name)}</td>
-        <td class="cell-muted">${esc(c.location || "—")}</td>
-        <td class="cell-muted">${esc(c.phone || "—")}${c.ext ? " x" + esc(c.ext) : ""}</td>
-        <td class="cell-muted">${esc(c.website || "—")}</td>
-        <td>${tcount}</td>
-        <td class="cell-muted">${c.created_at ? fmtDate(c.created_at) : "—"}</td>`;
+        <td class="cell-subject col-name">${esc(c.company_name)}</td>
+        <td class="cell-muted col-location">${esc(c.location || "—")}</td>
+        <td class="cell-muted col-phone">${esc(c.phone || "—")}${c.ext ? " x" + esc(c.ext) : ""}</td>
+        <td class="cell-muted col-website">${esc(c.website || "—")}</td>
+        <td class="col-tickets">${tcount}</td>
+        <td class="cell-muted col-added">${c.created_at ? fmtDate(c.created_at) : "—"}</td>`;
       tbody.appendChild(tr);
     }
+    applyBizCols();
   }
 
   async function openCustomer(id) {
@@ -918,14 +944,14 @@ const Staff = (() => {
       const tr = document.createElement("tr");
       tr.onclick = () => showUserModal(u);
       tr.innerHTML = `
-        <td class="cell-subject">${esc(u.full_name)}</td>
-        <td class="cell-muted">${esc(u.email)}</td>
-        <td class="cell-muted">${esc(u.phone || "—")}</td>
-        <td><span class="badge ${roleBadge[u.role] || "closed"}">${cap(u.role)}</span></td>
-        <td class="cell-muted">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
-        <td class="cell-muted">${u.assigned_tickets || 0}</td>
-        <td><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>
-        <td class="user-actions"><button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button>${u.id === me.id ? "" : `<button class="btn btn-ghost btn-xs btn-danger" data-del-user="${u.id}" data-del-name="${esc(u.full_name)}">Delete</button>`}</td>`;
+        <td class="cell-subject col-name">${esc(u.full_name)}</td>
+        <td class="cell-muted col-email">${esc(u.email)}</td>
+        <td class="cell-muted col-phone">${esc(u.phone || "—")}</td>
+        <td class="col-role"><span class="badge ${roleBadge[u.role] || "closed"}">${cap(u.role)}</span></td>
+        <td class="cell-muted col-business">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
+        <td class="cell-muted col-tickets">${u.assigned_tickets || 0}</td>
+        <td class="col-status"><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>
+        <td class="user-actions col-actions"><button class="btn btn-ghost btn-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.full_name)}">Reset password</button>${u.id === me.id ? "" : `<button class="btn btn-ghost btn-xs btn-danger" data-del-user="${u.id}" data-del-name="${esc(u.full_name)}">Delete</button>`}</td>`;
       const rb = tr.querySelector("[data-reset-pw]");
       rb.onclick = (e) => { e.stopPropagation(); showPwReset(`/api/users/${rb.dataset.resetPw}/password`, rb.dataset.resetName); };
       const del = tr.querySelector("[data-del-user]");
@@ -942,6 +968,7 @@ const Staff = (() => {
       };
       tbody.appendChild(tr);
     }
+    applyUsrCols();
   }
 
   let xferUserId = null;
@@ -1182,11 +1209,26 @@ const Staff = (() => {
     $("search").oninput = renderQueue;
     $("f-priority").onchange = renderQueue;
     $("f-client").onchange = renderQueue;
-    // column chooser
+    // column choosers
     renderColsMenu();
     $("cols-btn").onclick = e => { e.stopPropagation(); $("cols-menu").classList.toggle("hidden"); };
     $("cols-menu").onclick = e => e.stopPropagation();
     document.addEventListener("click", () => $("cols-menu").classList.add("hidden"));
+    applyBizCols = setupColumnChooser({
+      tableSel: "#customer-table", storageKey: "axus-biz-cols",
+      btnId: "biz-cols-btn", menuId: "biz-cols-menu",
+      columns: [{ key: "name", label: "Business Name" }, { key: "location", label: "Location" },
+                { key: "phone", label: "Phone" }, { key: "website", label: "Website" },
+                { key: "tickets", label: "Tickets" }, { key: "added", label: "Added" }],
+    });
+    applyUsrCols = setupColumnChooser({
+      tableSel: "#user-table", storageKey: "axus-usr-cols",
+      btnId: "usr-cols-btn", menuId: "usr-cols-menu",
+      columns: [{ key: "name", label: "Name" }, { key: "email", label: "Email" },
+                { key: "phone", label: "Phone" }, { key: "role", label: "Role" },
+                { key: "business", label: "Business" }, { key: "tickets", label: "Tickets" },
+                { key: "status", label: "Status" }, { key: "actions", label: "Actions" }],
+    });
 
     // sidebar Business/Users: clicking the label shows the existing list on the right
     // AND opens the "＋ New …" dropdown underneath it.

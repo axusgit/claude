@@ -134,7 +134,7 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table class="ticket-table">
+            <table class="ticket-table" id="ticket-table">
               <thead><tr>
                 <th class="col-ref">Ref</th><th class="col-subject">Subject</th><th class="col-company">Business</th><th class="col-board">Board</th><th class="col-priority">Priority</th><th class="col-status">Status</th><th class="col-assignee">Assignee</th><th class="col-updated">Updated</th>
               </tr></thead>
@@ -262,10 +262,16 @@
           <div class="page-head">
             <div><h2>Business</h2><p class="muted" id="cust-summary"></p></div>
           </div>
-          <div class="toolbar"><input type="search" id="cust-search" placeholder="Search business…" class="search-box" /></div>
+          <div class="toolbar">
+            <input type="search" id="cust-search" placeholder="Search business…" class="search-box" />
+            <div class="col-picker">
+              <button class="btn btn-ghost" id="biz-cols-btn" type="button" title="Show / hide columns">⊞ Columns</button>
+              <div class="col-menu hidden" id="biz-cols-menu"></div>
+            </div>
+          </div>
           <div class="table-wrap">
-            <table class="ticket-table">
-              <thead><tr><th>Business Name</th><th>Location</th><th>Phone</th><th>Website</th><th>Tickets</th><th>Added</th></tr></thead>
+            <table class="ticket-table" id="customer-table">
+              <thead><tr><th class="col-name">Business Name</th><th class="col-location">Location</th><th class="col-phone">Phone</th><th class="col-website">Website</th><th class="col-tickets">Tickets</th><th class="col-added">Added</th></tr></thead>
               <tbody id="customer-rows"></tbody>
             </table>
             <div id="customers-empty" class="empty hidden"><div class="empty-emoji">🏢</div><h3>No businesses</h3><p class="muted">Add your first business to get started.</p></div>
@@ -315,10 +321,14 @@
           <div class="toolbar">
             <input type="search" id="user-search" placeholder="Search users…" class="search-box" />
             <select id="uf-role"><option value="staff" selected>Staff (Admin + Technician)</option><option value="">All roles</option><option value="admin">Admin</option><option value="technician">Technician</option><option value="client">Client (portal)</option></select>
+            <div class="col-picker">
+              <button class="btn btn-ghost" id="usr-cols-btn" type="button" title="Show / hide columns">⊞ Columns</button>
+              <div class="col-menu hidden" id="usr-cols-menu"></div>
+            </div>
           </div>
           <div class="table-wrap">
-            <table class="ticket-table">
-              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Business</th><th>Tickets</th><th>Status</th><th>Actions</th></tr></thead>
+            <table class="ticket-table" id="user-table">
+              <thead><tr><th class="col-name">Name</th><th class="col-email">Email</th><th class="col-phone">Phone</th><th class="col-role">Role</th><th class="col-business">Business</th><th class="col-tickets">Tickets</th><th class="col-status">Status</th><th class="col-actions">Actions</th></tr></thead>
               <tbody id="user-rows"></tbody>
             </table>
             <div id="users-empty" class="empty hidden"><div class="empty-emoji">👥</div><h3>No users</h3><p class="muted">Add a staff member or portal user.</p></div>
@@ -466,6 +476,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=51"></script>
+  <script src="/static/staff.js?v=52"></script>
 </body>
 </html>
