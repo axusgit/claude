@@ -14,7 +14,7 @@ from app.models.ticket import (
 from app.models.ticket_watcher import TicketWatcher
 from app.models.attachment import Attachment
 from app.auth import get_current_user, require_staff, require_admin
-from app.models.user import User
+from app.models.user import User, UserRole
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
@@ -566,7 +566,9 @@ MAX_ADDITIONAL_USERS = 10
 
 
 class WatcherIn(BaseModel):
-    user_id: int
+    user_id: Optional[int] = None   # an existing user
+    email: Optional[str] = None     # or add anyone by email
+    name: Optional[str] = None      # optional display name for a new email participant
 
 
 class WatcherOut(BaseModel):
@@ -600,18 +602,31 @@ def add_watcher(ticket_id: int, data: WatcherIn, db: Session = Depends(get_db),
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    user = db.query(User).filter(User.id == data.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    if data.user_id:
+        user = db.query(User).filter(User.id == data.user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+    elif data.email:
+        em = (data.email or "").strip().lower()
+        if "@" not in em or "." not in em.rsplit("@", 1)[-1]:
+            raise HTTPException(status_code=400, detail="Enter a valid email address.")
+        user = db.query(User).filter(User.email.ilike(em)).first()
+        if not user:
+            user = User(email=em, full_name=(data.name or "").strip() or em.split("@")[0],
+                        hashed_password="", role=UserRole.client, client_id=ticket.client_id)
+            db.add(user)
+            db.flush()
+    else:
+        raise HTTPException(status_code=400, detail="Choose a user or enter an email address.")
     if user.id == ticket.reporter_user_id:
         raise HTTPException(status_code=400, detail="That user already opened this ticket")
     existing = db.query(TicketWatcher).filter(
-        TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == data.user_id).first()
+        TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == user.id).first()
     if existing:
         raise HTTPException(status_code=400, detail="User is already on this ticket")
     if db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket_id).count() >= MAX_ADDITIONAL_USERS:
         raise HTTPException(status_code=400, detail=f"A ticket can have at most {MAX_ADDITIONAL_USERS} additional users")
-    db.add(TicketWatcher(ticket_id=ticket_id, user_id=data.user_id))
+    db.add(TicketWatcher(ticket_id=ticket_id, user_id=user.id))
     _log_activity(db, ticket_id, current_user.id, "user_added", f"Added {user.full_name} to the ticket")
     db.commit()
     return user

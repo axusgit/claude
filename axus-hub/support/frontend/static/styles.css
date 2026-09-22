@@ -275,8 +275,8 @@ html[data-theme="dark"] .badge.closed      { background: rgba(107,114,128,.22); 
 .modal-x { background: none; border: none; font-size: 26px; color: var(--muted); cursor: pointer; line-height: 1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
 
-/* New Ticket: wider + shorter so the long consent text fits without scrolling. */
-#new-modal .modal { max-width: 680px; padding: 22px 26px; }
+/* New Ticket: half the viewport wide (height unchanged). */
+#new-modal .modal { width: 50vw; max-width: 50vw; padding: 22px 26px; }
 #new-modal .modal-head { margin-bottom: 12px; }
 #new-modal form label { margin-bottom: 10px; }
 #new-modal .nt-attach-hint { margin: 3px 0 8px; }
@@ -294,6 +294,7 @@ html[data-theme="dark"] .badge.closed      { background: rgba(107,114,128,.22); 
   .detail-grid { grid-template-columns: 1fr; }
   .who { display: none; }
   .form-row { grid-template-columns: 1fr; }
+  #new-modal .modal { width: 100%; max-width: 100%; }  /* full width on phones */
 }
 
 /* ===================== Polish layer (modern, no neon) ===================== */

@@ -586,15 +586,24 @@ const Staff = (() => {
     const wrap = $("tu-add-wrap");
     if (atMax) {
       wrap.innerHTML = `<p class="muted tu-hint">Maximum of ${MAX_ADDITIONAL_USERS} additional users reached.</p>`;
-    } else if (eligible.length) {
-      wrap.innerHTML = `<div class="tu-add"><select id="tu-select">` +
-        eligible.map(u => `<option value="${u.id}">${esc(u.full_name)} (${esc(u.email)})</option>`).join("") +
-        `</select><button type="button" class="btn btn-primary btn-xs" id="tu-add-btn">+ Add</button></div>`;
-      $("tu-add-btn").onclick = addWatcher;
     } else {
-      // nobody left to add — point staff to where business users are created
-      wrap.innerHTML = `<p class="muted tu-hint">No other users in this business to add. ` +
-        `Create them under <a id="tu-goto-biz" class="tu-link">Business → Users</a>.</p>`;
+      let h = "";
+      if (eligible.length) {
+        h += `<div class="tu-add"><select id="tu-select">` +
+          eligible.map(u => `<option value="${u.id}">${esc(u.full_name)} (${esc(u.email)})</option>`).join("") +
+          `</select><button type="button" class="btn btn-primary btn-xs" id="tu-add-btn">+ Add</button></div>`;
+      }
+      // add anyone by email (Axus users or external), like the client portal
+      h += `<div class="tu-add"><input type="email" id="tu-email" placeholder="or add by email…" autocomplete="off" />` +
+        `<button type="button" class="btn btn-ghost btn-xs" id="tu-email-btn">+ Add</button></div>`;
+      if (!eligible.length) {
+        h += `<p class="muted tu-hint">No other users in this business — add by email above, or create them under ` +
+          `<a id="tu-goto-biz" class="tu-link">Business → Users</a>.</p>`;
+      }
+      wrap.innerHTML = h;
+      if (eligible.length) $("tu-add-btn").onclick = addWatcher;
+      $("tu-email-btn").onclick = addWatcherEmail;
+      $("tu-email").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addWatcherEmail(); } };
       const link = $("tu-goto-biz");
       if (link) link.onclick = () => openCustomer(current.client_id);
     }
@@ -614,6 +623,14 @@ const Staff = (() => {
     if (!uid) return;
     try {
       await api(`/api/tickets/${current.id}/watchers`, { method: "POST", body: { user_id: parseInt(uid) } });
+      await loadWatchers(current.id); toast("User added");
+    } catch (e) { toast(e.message); }
+  }
+  async function addWatcherEmail() {
+    const email = $("tu-email").value.trim();
+    if (!email) return;
+    try {
+      await api(`/api/tickets/${current.id}/watchers`, { method: "POST", body: { email } });
       await loadWatchers(current.id); toast("User added");
     } catch (e) { toast(e.message); }
   }

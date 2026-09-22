@@ -314,7 +314,7 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
 
 /* ===================== Ticket users ===================== */
 .tu-add { display: flex; gap: 8px; margin-top: 10px; }
-.tu-add select { flex: 1; min-width: 0; margin-top: 0; }
+.tu-add select, .tu-add input { flex: 1; min-width: 0; margin-top: 0; }
 .tu-add .btn { margin-top: 0; }
 .tu-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
   color: #16a34a; background: rgba(22,163,74,.12); padding: 1px 6px; border-radius: 999px; vertical-align: middle; }
