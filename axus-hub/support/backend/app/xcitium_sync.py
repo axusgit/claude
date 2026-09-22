@@ -37,7 +37,7 @@ OPEN_STATUSES = ("open", "in_progress", "waiting", "reopened", "assigned")
 # directory import. Matched case-insensitively against the Xcitium user name.
 # An already-imported row for one of these is soft-deactivated on the next run
 # (its uid falls out of seen_uids, so deletion reconciliation hides it).
-EXCLUDED_USER_NAMES = {"patch management agent"}
+EXCLUDED_USER_NAMES = {"patch management agent", "monitor agent"}
 
 # Rewrite dead/old requester emails to their current address on import, so mirrored
 # tickets show the person's live email on the Axus Service Desk. Keys are lower-case.

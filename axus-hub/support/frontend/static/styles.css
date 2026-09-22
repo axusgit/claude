@@ -145,6 +145,20 @@ textarea { resize: vertical; }
 }
 .consent-check input { width: 17px; height: 17px; flex-shrink: 0; margin-top: 1px; accent-color: var(--orange); cursor: pointer; }
 
+/* ---------- Ticket participants (portal) ---------- */
+.pt-add { display: flex; gap: 8px; margin-top: 8px; }
+.pt-add select, .pt-add input { flex: 1; min-width: 0; }
+.btn-sm { padding: 8px 14px; font-size: 13px; }
+.part-remove { color: var(--muted); text-decoration: none; font-weight: 700; padding: 0 4px; }
+.part-remove:hover { color: var(--danger, #c0392b); }
+
+/* ---------- New-ticket attachments ---------- */
+.nt-optional { color: var(--muted); font-weight: 400; font-size: 12px; }
+.nt-attach-hint { margin: 4px 0 12px; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.nt-file-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 0; }
+.nt-file { font-size: 12.5px; color: var(--text-soft); display: flex; gap: 6px; align-items: center; }
+.nt-file-bad { color: var(--danger, #c0392b); }
+
 /* ---------- Topbar ---------- */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -260,6 +274,15 @@ html[data-theme="dark"] .badge.closed      { background: rgba(107,114,128,.22); 
 .modal-head h2 { font-size: 19px; }
 .modal-x { background: none; border: none; font-size: 26px; color: var(--muted); cursor: pointer; line-height: 1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+
+/* New Ticket: wider + shorter so the long consent text fits without scrolling. */
+#new-modal .modal { max-width: 680px; padding: 22px 26px; }
+#new-modal .modal-head { margin-bottom: 12px; }
+#new-modal form label { margin-bottom: 10px; }
+#new-modal .nt-attach-hint { margin: 3px 0 8px; }
+#new-modal .nt-file-list { margin-top: 4px; }
+#new-modal .consent-check { font-size: 11px; line-height: 1.42; margin: 2px 0 12px; }
+#new-modal .consent-check input { width: 15px; height: 15px; }
 
 /* ---------- Toast ---------- */
 .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);

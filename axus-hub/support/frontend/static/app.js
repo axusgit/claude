@@ -5,6 +5,12 @@ const App = (() => {
   let token = localStorage.getItem(TOKEN_KEY) || null;
   let me = null;            // { id, full_name, role }
   let currentTicket = null; // id of open ticket
+  // File types a customer may attach (must match the server-side whitelist).
+  const ALLOWED_EXTS = new Set([
+    ".doc", ".pdf", ".jpg", ".jpeg", ".gif", ".png", ".xls", ".docx", ".xlsx",
+    ".txt", ".pcapng", ".eml", ".pcap", ".wav", ".csv", ".mp4", ".mp3", ".heic",
+  ]);
+  const extOf = name => { const i = (name || "").lastIndexOf("."); return i < 0 ? "" : name.slice(i).toLowerCase(); };
 
   /* ---------- Theme ---------- */
   function applyTheme(theme) {
@@ -142,7 +148,61 @@ const App = (() => {
     $("d-category").textContent = t.category || "Uncategorized";
     $("d-created").textContent = "Opened " + fmtDate(t.created_at);
     showDetail();
-    await Promise.all([loadThread(id), loadAttachments(id)]);
+    await Promise.all([loadThread(id), loadAttachments(id), loadParticipants(id)]);
+  }
+
+  async function loadParticipants(id) {
+    const [people, orgUsers] = await Promise.all([
+      api(`/api/portal/tickets/${id}/participants`),
+      api(`/api/portal/org-users`),
+    ]);
+    const box = $("participant-list");
+    box.innerHTML = people.map(p => {
+      const tag = p.is_reporter ? `<span class="attach-size">opened this</span>`
+        : `<a href="#" class="part-remove" data-uid="${p.id}" title="Remove">✕</a>`;
+      return `<div class="attach-item"><span>👤</span><span style="flex:1">${esc(p.full_name)}</span>${tag}</div>`;
+    }).join("");
+    box.querySelectorAll(".part-remove").forEach(a => a.onclick = ev => {
+      ev.preventDefault(); removeParticipant(parseInt(a.dataset.uid));
+    });
+    $("part-count").textContent = people.length ? `(${people.length})` : "";
+    // fill the "add a colleague" picker with org users not already on the ticket
+    const onTicket = new Set(people.map(p => p.id));
+    const sel = $("participant-select");
+    const avail = orgUsers.filter(u => !onTicket.has(u.id));
+    sel.innerHTML = `<option value="">Add a colleague…</option>` +
+      avail.map(u => `<option value="${u.id}">${esc(u.full_name)}</option>`).join("");
+    const wrap = $("participant-select").parentElement;
+    wrap.style.display = avail.length ? "" : "none";
+  }
+
+  async function addParticipant() {
+    const uid = $("participant-select").value;
+    if (!uid) return;
+    try {
+      await api(`/api/portal/tickets/${currentTicket}/participants`, { method: "POST", body: { user_id: parseInt(uid) } });
+      await loadParticipants(currentTicket);
+      toast("Participant added");
+    } catch (err) { toast(err.message); }
+  }
+
+  async function addParticipantEmail() {
+    const email = $("participant-email").value.trim();
+    if (!email) return;
+    try {
+      await api(`/api/portal/tickets/${currentTicket}/participants`, { method: "POST", body: { email } });
+      $("participant-email").value = "";
+      await loadParticipants(currentTicket);
+      toast("Participant added");
+    } catch (err) { toast(err.message); }
+  }
+
+  async function removeParticipant(uid) {
+    try {
+      await api(`/api/portal/tickets/${currentTicket}/participants/${uid}`, { method: "DELETE" });
+      await loadParticipants(currentTicket);
+      toast("Participant removed");
+    } catch (err) { toast(err.message); }
   }
 
   async function loadThread(id) {
@@ -195,17 +255,36 @@ const App = (() => {
     await loadAttachments(currentTicket);
     toast("File uploaded");
   }
-  async function createTicket(payload) {
+  async function createTicket(payload, files) {
     const t = await api("/api/portal/tickets", { method: "POST", body: payload });
+    // Attach any selected files to the new ticket (best-effort, one at a time).
+    let failed = [];
+    for (const f of (files || [])) {
+      const fd = new FormData(); fd.append("file", f);
+      try { await api(`/api/portal/tickets/${t.id}/attachments`, { method: "POST", form: fd }); }
+      catch (err) { failed.push(f.name); }
+    }
     closeNew();
     await loadTickets();
     openTicket(t.id);
-    toast("Ticket " + (t.reference || "") + " submitted");
+    toast(failed.length
+      ? `Ticket ${t.reference || ""} submitted; couldn't attach: ${failed.join(", ")}`
+      : "Ticket " + (t.reference || "") + " submitted");
+  }
+
+  function renderSelectedFiles() {
+    const box = $("nt-file-list");
+    const files = Array.from($("nt-files").files || []);
+    if (!files.length) { box.innerHTML = ""; return; }
+    box.innerHTML = files.map(f => {
+      const ok = ALLOWED_EXTS.has(extOf(f.name));
+      return `<div class="nt-file${ok ? "" : " nt-file-bad"}">${ok ? "📎" : "⛔"} ${f.name} <span class="attach-size">${fileSize(f.size)}</span>${ok ? "" : " — not an accepted format"}</div>`;
+    }).join("");
   }
 
   /* ---------- Modal ---------- */
   function showNew() { $("new-modal").classList.remove("hidden"); $("nt-title").focus(); }
-  function closeNew() { $("new-modal").classList.add("hidden"); $("new-form").reset(); $("nt-error").textContent = ""; }
+  function closeNew() { $("new-modal").classList.add("hidden"); $("new-form").reset(); $("nt-file-list").innerHTML = ""; $("nt-error").textContent = ""; }
 
   /* ---------- Init / wiring ---------- */
   async function start() {
@@ -239,6 +318,9 @@ const App = (() => {
     $("modal-close").onclick = closeNew;
     $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showList(); loadTickets(); };
+    $("participant-add-btn").onclick = addParticipant;
+    $("participant-email-btn").onclick = addParticipantEmail;
+    $("participant-email").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addParticipantEmail(); } };
 
     $("reply-form").onsubmit = async e => {
       e.preventDefault();
@@ -251,15 +333,22 @@ const App = (() => {
       try { await uploadFile(f); } catch (err) { toast(err.message); }
       e.target.value = "";
     };
+    $("nt-files").onchange = renderSelectedFiles;
     $("new-form").onsubmit = async e => {
       e.preventDefault(); $("nt-error").textContent = "";
+      const files = Array.from($("nt-files").files || []);
+      const bad = files.filter(f => !ALLOWED_EXTS.has(extOf(f.name)));
+      if (bad.length) {
+        $("nt-error").textContent = "These files aren't an accepted format: " + bad.map(f => f.name).join(", ");
+        return;
+      }
       try {
         await createTicket({
           title: $("nt-title").value.trim(),
           description: $("nt-desc").value.trim() || null,
           category: $("nt-category").value || null,
           priority: $("nt-priority").value,
-        });
+        }, files);
       } catch (err) { $("nt-error").textContent = err.message; }
     };
 

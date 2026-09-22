@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=42" />
+  <link rel="stylesheet" href="/static/styles.css?v=47" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
     .login-sent { text-align: center; }
@@ -112,10 +112,24 @@
 
           <aside class="detail-side">
             <div class="card">
+              <h3 class="card-title">Participants <span class="muted" id="part-count" style="font-weight:500;font-size:12px"></span></h3>
+              <div id="participant-list" class="attach-list"></div>
+              <div class="pt-add" id="participant-org-row">
+                <select id="participant-select"><option value="">Add a colleague…</option></select>
+                <button type="button" class="btn btn-ghost btn-sm" id="participant-add-btn">Add</button>
+              </div>
+              <div class="pt-add">
+                <input type="email" id="participant-email" placeholder="or add by email…" autocomplete="off" />
+                <button type="button" class="btn btn-ghost btn-sm" id="participant-email-btn">Add</button>
+              </div>
+              <p class="nt-attach-hint">Add a teammate or anyone by email. Everyone listed here is emailed when there's a new reply.</p>
+            </div>
+            <div class="card">
               <h3 class="card-title">Attachments</h3>
               <div id="attach-list" class="attach-list"></div>
               <label class="upload-box">
-                <input type="file" id="attach-input" hidden />
+                <input type="file" id="attach-input" hidden
+                  accept=".doc,.pdf,.jpg,.jpeg,.gif,.png,.xls,.docx,.xlsx,.txt,.pcapng,.eml,.pcap,.wav,.csv,.mp4,.mp3,.heic" />
                 <span>📎 Add a file</span>
               </label>
             </div>
@@ -137,11 +151,11 @@
           <input type="text" id="nt-title" required placeholder="Brief summary of the issue" />
         </label>
         <label>Description
-          <textarea id="nt-desc" rows="4" placeholder="What’s going on? Include any details that help us help you."></textarea>
+          <textarea id="nt-desc" rows="3" required placeholder="What’s going on? Include any details that help us help you."></textarea>
         </label>
         <div class="form-row">
           <label>Category
-            <select id="nt-category">
+            <select id="nt-category" required>
               <option value="">— Select —</option>
               <option>Network</option><option>Wireless</option><option>Cloud</option>
               <option>Security</option><option>Email</option><option>Hardware</option>
@@ -157,9 +171,15 @@
             </select>
           </label>
         </div>
+        <label>Attachments <span class="nt-optional">(optional)</span>
+          <input type="file" id="nt-files" multiple
+            accept=".doc,.pdf,.jpg,.jpeg,.gif,.png,.xls,.docx,.xlsx,.txt,.pcapng,.eml,.pcap,.wav,.csv,.mp4,.mp3,.heic" />
+        </label>
+        <div id="nt-file-list" class="nt-file-list"></div>
+        <p class="nt-attach-hint">Accepted formats: doc, pdf, jpg, jpeg, gif, png, xls, docx, xlsx, txt, pcapng, eml, pcap, wav, csv, mp4, mp3, heic.</p>
         <label class="consent-check">
           <input type="checkbox" id="nt-consent" required />
-          <span>By checking this box, I represent that I am authorized to submit this service ticket on behalf of my organization. I acknowledge and agree that all requests are subject to applicable service fees and will be governed by the terms of the applicable Service Level Agreement (SLA) or Service Level Commitment (SLC).</span>
+          <span>By checking this box and submitting this request, I certify that I am a duly authorized representative of my organization and am empowered to request the services described herein on its behalf. I acknowledge and agree that services provided in response to this request may be subject to applicable charges and fees, and that all such services are furnished pursuant to, and governed by, the terms of the Master Services Agreement, applicable Statement of Work, and/or the applicable Service Level Agreement (SLA) or Service Level Commitment (SLC) in effect between my organization and Axus Technologies. I understand and agree that where no such Master Services Agreement, Statement of Work, SLA, or SLC is in effect between my organization and Axus Technologies, services are provided on a best-effort basis only, without any guaranteed response or resolution times, and may be billed at Axus Technologies' then-current standard time-and-materials rates. I further represent that the information provided in this request is true, accurate, and complete to the best of my knowledge.</span>
         </label>
         <div id="nt-error" class="form-error"></div>
         <div class="modal-actions">
@@ -172,6 +192,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=17"></script>
+  <script src="/static/app.js?v=20"></script>
 </body>
 </html>

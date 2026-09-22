@@ -6,7 +6,7 @@ and only ever exposes public conversation (internal staff notes are never return
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -24,10 +24,18 @@ from app.auth import _user_from_jwt, create_access_token
 from app import mailer
 from app.routers.tickets import (
     generate_ticket_reference, UPLOAD_DIR, MAX_ATTACHMENT_BYTES, _log_activity,
-    TicketOut, CommentOut, AttachmentOut,
+    TicketOut, CommentOut, AttachmentOut, MAX_ADDITIONAL_USERS,
 )
+from app.models.ticket_watcher import TicketWatcher
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
+
+# File types customers may attach to a ticket. Enforced server-side (the client
+# `accept=` attribute is only a UI hint and can be bypassed).
+ALLOWED_ATTACHMENT_EXTS = {
+    ".doc", ".pdf", ".jpg", ".jpeg", ".gif", ".png", ".xls", ".docx", ".xlsx",
+    ".txt", ".pcapng", ".eml", ".pcap", ".wav", ".csv", ".mp4", ".mp3", ".heic",
+}
 
 
 def require_client_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -77,12 +85,51 @@ def magic_request(data: MagicRequestIn, background: BackgroundTasks, db: Session
     ))
     db.commit()
     link = f"{PORTAL_URL}?login={raw}"
-    body = (f"Hi {user.full_name or 'there'},\n\n"
+    name = user.full_name or "there"
+    body = (f"Hi {name},\n\n"
             f"Use this link to sign in to the Axus support portal:\n\n{link}\n\n"
             f"It works once and expires in {MAGIC_TTL_MIN} minutes. If you didn't request "
             f"it, you can safely ignore this email.\n\n— Axus Technologies\n")
-    background.add_task(mailer.send_email, user.email, "Your Axus support portal sign-in link", body)
+    html = _magic_link_html(name, link)
+    background.add_task(mailer.send_email, user.email,
+                        "Your Axus support portal sign-in link", body, html)
     return _NEUTRAL
+
+
+AXUS_LOGO_URL = "https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png"
+
+
+def _magic_link_html(name: str, link: str) -> str:
+    """Branded HTML for the passwordless sign-in email (Axus logo + button)."""
+    import html as _h
+    n = _h.escape(name)
+    l = _h.escape(link, quote=True)
+    return f"""\
+<!doctype html><html><body style="margin:0;padding:0;background:#f4f5f7;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:32px 12px;">
+<tr><td align="center">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#1f2430;">
+    <tr><td style="padding:28px 32px 8px;">
+      <img src="{AXUS_LOGO_URL}" alt="Axus Technologies" height="34" style="height:34px;display:block;border:0;" />
+    </td></tr>
+    <tr><td style="padding:8px 32px 0;">
+      <h1 style="margin:12px 0 4px;font-size:19px;color:#1f2430;">Sign in to the Axus support portal</h1>
+      <p style="margin:12px 0 0;font-size:14px;line-height:1.55;color:#3a4150;">Hi {n},</p>
+      <p style="margin:10px 0 22px;font-size:14px;line-height:1.55;color:#3a4150;">Use the button below to sign in. It works once and expires in {MAGIC_TTL_MIN} minutes.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:8px;background:#f26722;">
+        <a href="{l}" style="display:inline-block;padding:12px 26px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Sign in to the portal</a>
+      </td></tr></table>
+      <p style="margin:22px 0 0;font-size:12.5px;line-height:1.5;color:#6b7280;">If the button doesn't work, copy and paste this link into your browser:</p>
+      <p style="margin:6px 0 0;font-size:12.5px;line-height:1.5;word-break:break-all;"><a href="{l}" style="color:#f26722;">{l}</a></p>
+      <p style="margin:22px 0 0;font-size:12.5px;line-height:1.5;color:#6b7280;">If you didn't request this, you can safely ignore this email.</p>
+    </td></tr>
+    <tr><td style="padding:24px 32px 28px;border-top:1px solid #eef0f3;margin-top:20px;">
+      <p style="margin:16px 0 0;font-size:12px;color:#9aa1ac;">Axus Technologies &middot; Simplifying IT</p>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>"""
 
 
 @router.post("/auth/verify")
@@ -103,14 +150,22 @@ def magic_verify(data: MagicVerifyIn, db: Session = Depends(get_db)):
     return {"access_token": token, "token_type": "bearer"}
 
 
+def _can_see(db: Session, ticket: Ticket, user: User) -> bool:
+    """Per-ticket visibility: a client may see a ticket only if they opened it
+    (reporter/creator) or were added to it as a participant — NOT merely because
+    they belong to the same company. This keeps an externally-added participant
+    from seeing the rest of a company's tickets."""
+    if ticket.reporter_user_id == user.id or ticket.created_by_id == user.id:
+        return True
+    from app.models.ticket_watcher import TicketWatcher
+    return db.query(TicketWatcher).filter(
+        TicketWatcher.ticket_id == ticket.id, TicketWatcher.user_id == user.id).first() is not None
+
+
 def _owned_ticket(db: Session, ticket_id: int, user: User) -> Ticket:
-    """Fetch a ticket only if it belongs to the user's company, else 404."""
-    ticket = (
-        db.query(Ticket)
-        .filter(Ticket.id == ticket_id, Ticket.client_id == user.client_id)
-        .first()
-    )
-    if not ticket:
+    """Fetch a ticket only if it's visible to this user (see `_can_see`), else 404."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket or not _can_see(db, ticket, user):
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket
 
@@ -146,7 +201,13 @@ def my_tickets(
     db: Session = Depends(get_db),
     user: User = Depends(require_client_user),
 ):
-    q = db.query(Ticket).filter(Ticket.client_id == user.client_id)
+    # Per-ticket scoping: only tickets this user opened or was added to.
+    watched = db.query(TicketWatcher.ticket_id).filter(TicketWatcher.user_id == user.id)
+    q = db.query(Ticket).filter(or_(
+        Ticket.reporter_user_id == user.id,
+        Ticket.created_by_id == user.id,
+        Ticket.id.in_(watched),
+    ))
     if status:
         q = q.filter(Ticket.status == status)
     return q.order_by(Ticket.created_at.desc()).all()
@@ -165,6 +226,7 @@ def submit_ticket(
         priority=data.priority,
         client_id=user.client_id,        # forced to the user's own company
         created_by_id=user.id,
+        reporter_user_id=user.id,         # the client who opened it (for scoping + participants)
         ticket_type=TicketType.standard,
         origin="client_portal",
     )
@@ -211,8 +273,99 @@ def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
     _log_activity(db, ticket_id, user.id, "comment_added", "Client replied via portal")
     db.commit()
     db.refresh(comment)
-    background.add_task(notify.notify_customer_reply, ticket_id)  # tell staff a customer replied
+    background.add_task(notify.notify_customer_reply, ticket_id)  # staff broadcast (held by NOTIFY_ENABLED)
+    # notify everyone on the ticket — participants + staff — of the new reply
+    background.add_task(notify.notify_participants_reply, ticket_id, data.body, user.id, user.full_name)
     return comment
+
+
+# ----- Participants (people on a ticket) — clients may add colleagues from their org -----
+
+class ParticipantIn(BaseModel):
+    user_id: Optional[int] = None   # an existing member of the caller's business
+    email: Optional[str] = None     # or any other person's email
+    name: Optional[str] = None      # optional display name for a new email participant
+
+
+def _participant(u: User, is_reporter: bool) -> dict:
+    return {"id": u.id, "full_name": u.full_name, "email": u.email, "is_reporter": is_reporter}
+
+
+@router.get("/tickets/{ticket_id}/participants")
+def list_participants(ticket_id: int, db: Session = Depends(get_db), user: User = Depends(require_client_user)):
+    t = _owned_ticket(db, ticket_id, user)
+    out = []
+    if t.reporter_user_id:
+        r = db.query(User).filter(User.id == t.reporter_user_id).first()
+        if r:
+            out.append(_participant(r, True))
+    for u in (db.query(User).join(TicketWatcher, TicketWatcher.user_id == User.id)
+              .filter(TicketWatcher.ticket_id == ticket_id).order_by(User.full_name).all()):
+        out.append(_participant(u, False))
+    return out
+
+
+@router.get("/org-users")
+def org_users(db: Session = Depends(get_db), user: User = Depends(require_client_user)):
+    """People from the caller's own company they can add as participants."""
+    rows = (db.query(User)
+            .filter(User.client_id == user.client_id, User.role == UserRole.client,
+                    User.is_active == True, User.id != user.id)  # noqa: E712
+            .order_by(User.full_name).all())
+    return [{"id": u.id, "full_name": u.full_name, "email": u.email} for u in rows]
+
+
+@router.post("/tickets/{ticket_id}/participants")
+def add_participant(ticket_id: int, data: ParticipantIn, db: Session = Depends(get_db),
+                    user: User = Depends(require_client_user)):
+    t = _owned_ticket(db, ticket_id, user)
+    target = None
+    if data.user_id:
+        # an existing member of the caller's own business
+        target = db.query(User).filter(User.id == data.user_id,
+                                       User.client_id == user.client_id).first()
+        if not target:
+            raise HTTPException(status_code=400, detail="That person isn't in your organization.")
+    elif data.email:
+        # any other person, by email — reuse an existing account or create a light one
+        em = (data.email or "").strip().lower()
+        if "@" not in em or "." not in em.rsplit("@", 1)[-1]:
+            raise HTTPException(status_code=400, detail="Enter a valid email address.")
+        target = db.query(User).filter(User.email.ilike(em)).first()
+        if not target:
+            target = User(email=em, full_name=(data.name or "").strip() or em.split("@")[0],
+                          hashed_password="", role=UserRole.client, client_id=user.client_id)
+            db.add(target)
+            db.flush()
+    else:
+        raise HTTPException(status_code=400, detail="Choose a colleague or enter an email address.")
+    if target.id == t.reporter_user_id:
+        raise HTTPException(status_code=400, detail="That person opened the ticket and is already on it.")
+    if db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket_id,
+                                      TicketWatcher.user_id == target.id).first():
+        raise HTTPException(status_code=400, detail="That person is already a participant.")
+    if db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket_id).count() >= MAX_ADDITIONAL_USERS:
+        raise HTTPException(status_code=400, detail=f"A ticket can have at most {MAX_ADDITIONAL_USERS} added participants.")
+    db.add(TicketWatcher(ticket_id=ticket_id, user_id=target.id))
+    _log_activity(db, ticket_id, user.id, "participant_added", f"{user.full_name} added {target.full_name} to the ticket")
+    db.commit()
+    return _participant(target, False)
+
+
+@router.delete("/tickets/{ticket_id}/participants/{user_id}")
+def remove_participant(ticket_id: int, user_id: int, db: Session = Depends(get_db),
+                       user: User = Depends(require_client_user)):
+    t = _owned_ticket(db, ticket_id, user)
+    if user_id == t.reporter_user_id:
+        raise HTTPException(status_code=400, detail="The person who opened the ticket can't be removed.")
+    w = db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket_id,
+                                       TicketWatcher.user_id == user_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="Participant not found")
+    db.delete(w)
+    _log_activity(db, ticket_id, user.id, "participant_removed", f"{user.full_name} removed a participant")
+    db.commit()
+    return {"status": "removed", "user_id": user_id}
 
 
 @router.get("/tickets/{ticket_id}/attachments", response_model=List[AttachmentOut])
@@ -234,12 +387,17 @@ def upload_attachment(
     user: User = Depends(require_client_user),
 ):
     _owned_ticket(db, ticket_id, user)
+    original = os.path.basename(file.filename or "file")
+    ext = os.path.splitext(original)[1].lower()
+    if ext not in ALLOWED_ATTACHMENT_EXTS:
+        allowed = ", ".join(sorted(e[1:] for e in ALLOWED_ATTACHMENT_EXTS))
+        raise HTTPException(status_code=400,
+                            detail=f"File type not allowed. Accepted formats: {allowed}")
     content = file.file.read()
     if len(content) > MAX_ATTACHMENT_BYTES:
         raise HTTPException(status_code=413, detail=f"File exceeds the {MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB limit")
 
-    original = os.path.basename(file.filename or "file")
-    stored_name = f"{uuid4().hex}{os.path.splitext(original)[1]}"
+    stored_name = f"{uuid4().hex}{ext}"
     with open(os.path.join(UPLOAD_DIR, stored_name), "wb") as f:
         f.write(content)
 

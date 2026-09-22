@@ -36,9 +36,16 @@ app.include_router(xcitium_router.router)
 
 @app.on_event("startup")
 def start_email_poller():
-    """Poll the support mailbox in a background thread when Graph is configured."""
+    """Poll the support mailbox in a background thread when Graph is configured.
+
+    DISABLED by default: tickets are managed only through the web portal / staff
+    console, never by email. Inbound email→ticket intake stays off unless
+    EMAIL_INTAKE_ENABLED=1 is explicitly set."""
     import os, time, threading
     from app import graph, email_intake
+    if os.getenv("EMAIL_INTAKE_ENABLED", "0") != "1":
+        print("[email-intake] disabled (web-only ticketing); set EMAIL_INTAKE_ENABLED=1 to enable", flush=True)
+        return
     if not graph.is_configured():
         return
     interval = max(15, int(os.getenv("EMAIL_POLL_SECONDS", "60")))

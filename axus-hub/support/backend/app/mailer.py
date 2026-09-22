@@ -22,9 +22,11 @@ def is_configured() -> bool:
     return bool(SMTP_HOST and SMTP_FROM)
 
 
-def send_email(to, subject: str, body: str) -> bool:
-    """Send a plain-text email. `to` is a string or a list of addresses.
-    Best-effort: returns False (and logs) instead of raising."""
+def send_email(to, subject: str, body: str, html: str = None) -> bool:
+    """Send an email. `to` is a string or a list of addresses. When `html` is
+    given, the message is multipart/alternative (plain `body` + HTML) so clients
+    that block or can't render HTML still show the text. Best-effort: returns
+    False (and logs) instead of raising."""
     if not is_configured():
         print(f"[mailer] (no SMTP configured) would send: {subject}", flush=True)
         return False
@@ -37,6 +39,8 @@ def send_email(to, subject: str, body: str) -> bool:
     msg["To"] = ", ".join(recipients)
     msg["Subject"] = subject
     msg.set_content(body)
+    if html:
+        msg.add_alternative(html, subtype="html")
     ctx = ssl.create_default_context()
     try:
         if SMTP_USE_SSL:

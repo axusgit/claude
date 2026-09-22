@@ -489,6 +489,7 @@ const Staff = (() => {
     const isProject = current.ticket_type === "sow";
     $("p-type").textContent = isProject ? "Project (SOW)" : "Standard";
     $("convert-project-btn").style.display = isProject ? "none" : "";  // hide once it's a project
+    $("delete-ticket-btn").hidden = !(me && me.role === "admin");      // admins only
     $("p-hours").textContent = (current.total_hours || 0) + " h";
     $("p-created").textContent = fmtDate(current.created_at);
     // resolve the reporting user's name
@@ -811,6 +812,15 @@ const Staff = (() => {
     await api(`/api/tickets/${current.id}/attachments`, { method: "POST", form: fd });
     await Promise.all([loadAttachments(current.id), loadActivity(current.id)]);
     toast("File uploaded");
+  }
+  async function deleteTicket() {
+    const ref = current.reference || "this ticket";
+    if (!confirm(`Permanently delete ${ref}?\n\nThis removes the ticket and all of its replies, notes, time entries, and attachments. This cannot be undone.`)) return;
+    try {
+      await api(`/api/tickets/${current.id}`, { method: "DELETE" });
+      toast(`Deleted ${ref}`);
+      showQueue(); await loadTickets();
+    } catch (err) { toast(err.message); }
   }
   async function createTicket(payload) {
     const t = await api("/api/tickets/", { method: "POST", body: payload });
@@ -1161,6 +1171,7 @@ const Staff = (() => {
     $("new-ticket-btn").onclick = showNew;
     $("edit-ticket-btn").onclick = () => showEditTicket();
     $("convert-project-btn").onclick = convertToProject;
+    $("delete-ticket-btn").onclick = deleteTicket;
     $("pt-add-btn").onclick = newTicketInProject;
     $("modal-close").onclick = closeNew; $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showQueue(); };

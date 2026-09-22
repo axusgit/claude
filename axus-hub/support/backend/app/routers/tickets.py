@@ -13,7 +13,7 @@ from app.models.ticket import (
 )
 from app.models.ticket_watcher import TicketWatcher
 from app.models.attachment import Attachment
-from app.auth import get_current_user, require_staff
+from app.auth import get_current_user, require_staff, require_admin
 from app.models.user import User
 from pydantic import BaseModel
 
@@ -499,10 +499,11 @@ def add_comment(
     )
     db.commit()
     db.refresh(comment)
-    # Public staff replies are emailed to the ticket's contact (best effort).
+    # Public staff replies notify everyone on the ticket (reporter + participants).
     if not data.is_internal:
-        from app import email_intake
-        background.add_task(email_intake.notify_contact_reply, ticket_id, data.body, current_user.id)
+        from app import notify
+        background.add_task(notify.notify_participants_reply, ticket_id, data.body,
+                            current_user.id, current_user.full_name)
     return comment
 
 
@@ -736,3 +737,34 @@ def delete_attachment(ticket_id: int, attachment_id: int, db: Session = Depends(
     db.delete(attachment)
     db.commit()
     return {"status": "deleted", "id": attachment_id}
+
+
+@router.delete("/{ticket_id}")
+def delete_ticket(ticket_id: int, db: Session = Depends(get_db),
+                  current_user: User = Depends(require_admin)):
+    """Permanently delete a ticket and everything under it. Admin-only.
+
+    Comments, activities, and attachment rows cascade via the ORM; time entries,
+    watchers, and the attachment files on disk are removed explicitly. Any
+    sub-tickets are detached (their project link is cleared) rather than deleted."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    ref = ticket.reference
+    # detach sub-tickets so a project delete doesn't orphan them
+    db.query(Ticket).filter(Ticket.project_id == ticket_id).update(
+        {Ticket.project_id: None}, synchronize_session=False)
+    # attachment files on disk
+    for a in db.query(Attachment).filter(Attachment.ticket_id == ticket_id).all():
+        p = os.path.join(UPLOAD_DIR, a.stored_name)
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    # rows that don't cascade
+    db.query(TimeEntry).filter(TimeEntry.ticket_id == ticket_id).delete(synchronize_session=False)
+    db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket_id).delete(synchronize_session=False)
+    db.delete(ticket)   # cascades comments / activities / attachment rows
+    db.commit()
+    return {"status": "deleted", "id": ticket_id, "reference": ref}
