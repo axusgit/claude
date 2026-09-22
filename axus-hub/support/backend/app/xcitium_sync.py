@@ -15,9 +15,12 @@ Entry points:
 CLI:  python -m app.xcitium_sync {backfill|incremental|status|discover}
 """
 import json
+import os
 import time
 import threading
 from datetime import datetime
+
+from sqlalchemy import func
 
 from app.database import SessionLocal
 from app.models.xcitium import (
@@ -34,6 +37,24 @@ OPEN_STATUSES = ("open", "in_progress", "waiting", "reopened", "assigned")
 # An already-imported row for one of these is soft-deactivated on the next run
 # (its uid falls out of seen_uids, so deletion reconciliation hides it).
 EXCLUDED_USER_NAMES = {"patch management agent"}
+
+# Rewrite dead/old requester emails to their current address on import, so mirrored
+# tickets show the person's live email on the Axus Service Desk. Keys are lower-case.
+# Extend via env XCITIUM_EMAIL_REMAP="old1=new1,old2=new2". Re-applied every sync.
+EMAIL_REMAP = {
+    "acarrazana@axustechnologies.com": "acarr@axustechnologies.com",
+}
+for _pair in os.getenv("XCITIUM_EMAIL_REMAP", "").split(","):
+    if "=" in _pair:
+        _old, _new = _pair.split("=", 1)
+        if _old.strip() and _new.strip():
+            EMAIL_REMAP[_old.strip().lower()] = _new.strip()
+
+
+def _remap_email(email):
+    if not email:
+        return email
+    return EMAIL_REMAP.get(email.strip().lower(), email)
 
 
 # ---------- helpers ----------
@@ -83,7 +104,7 @@ def _upsert_user(db, u):
         db.add(row)
         db.flush()
     row.name = u.get("name")
-    row.email = u.get("email")
+    row.email = _remap_email(u.get("email"))
     row.organization_name = (u.get("organizationName") or "").strip() or None
     row.last_synced_at = datetime.utcnow()
 
@@ -113,7 +134,7 @@ def _import_ticket(db, data) -> None:
     )
     t.username = data.get("username")
     t.user_external_id = str(user["id"]) if user.get("id") else None
-    t.user_email = user.get("email")
+    t.user_email = _remap_email(user.get("email"))
     t.organization_name = org
     t.create_date = _parse_dt(data.get("createDate"))
     t.update_date = _parse_dt(data.get("updateDate"))
@@ -484,6 +505,27 @@ def import_directory():
         db.close()
 
 
+def apply_email_remap():
+    """Rewrite mirrored requester emails per EMAIL_REMAP across all existing rows.
+    Idempotent; used for the one-time fix of already-imported tickets (new/re-synced
+    tickets are remapped at import time by _import_ticket)."""
+    db = SessionLocal()
+    total = 0
+    try:
+        for old, new in EMAIL_REMAP.items():
+            t = (db.query(XcitiumTicket).filter(func.lower(XcitiumTicket.user_email) == old)
+                 .update({XcitiumTicket.user_email: new}, synchronize_session=False))
+            u = (db.query(XcitiumUser).filter(func.lower(XcitiumUser.email) == old)
+                 .update({XcitiumUser.email: new}, synchronize_session=False))
+            if t or u:
+                print(f"[xcitium] email remap {old} -> {new}: {t} tickets, {u} users", flush=True)
+            total += t + u
+        db.commit()
+        return {"remapped_rows": total, "map": EMAIL_REMAP}
+    finally:
+        db.close()
+
+
 # ---------- top-of-hour scheduler ----------
 
 def _seconds_to_next_hour() -> float:
@@ -495,6 +537,10 @@ def run_scheduler():
     """Daemon loop: backfill once if the mirror is empty, then run incremental at
     the top of every hour. Exceptions are swallowed so the loop survives a bad run
     (e.g. the Xcitium API being down, as it was on 2026-09-14)."""
+    try:
+        apply_email_remap()   # keep requester-email remaps applied across restarts
+    except Exception as e:
+        print(f"[xcitium] email remap failed: {e}", flush=True)
     try:
         db = SessionLocal()
         empty = db.query(XcitiumTicket).count() == 0
@@ -531,5 +577,7 @@ if __name__ == "__main__":
         print(json.dumps(import_directory(), indent=2))
     elif cmd == "status":
         print(json.dumps(status(), indent=2))
+    elif cmd == "remap":
+        print(json.dumps(apply_email_remap(), indent=2))
     else:
-        print("usage: python -m app.xcitium_sync {backfill|incremental|directory|status}")
+        print("usage: python -m app.xcitium_sync {backfill|incremental|directory|status|remap}")
