@@ -49,11 +49,12 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(_pw_bytes(plain), hashed.encode("utf-8"))
 
 
-def create_access_token(data: dict) -> str:
+def create_access_token(data: dict, expires_minutes: Optional[int] = None) -> str:
     payload = data.copy()
     if "sub" in payload:
         payload["sub"] = str(payload["sub"])
-    payload["exp"] = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    minutes = expires_minutes if expires_minutes is not None else ACCESS_TOKEN_EXPIRE_MINUTES
+    payload["exp"] = datetime.utcnow() + timedelta(minutes=minutes)
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 

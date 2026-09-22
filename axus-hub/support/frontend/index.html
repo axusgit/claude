@@ -7,7 +7,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=16" />
+  <link rel="stylesheet" href="/static/styles.css?v=42" />
+  <style>
+    .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
+    .login-sent { text-align: center; }
+    .login-sent-emoji { font-size: 40px; margin-bottom: 10px; }
+    .login-sent p { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+  </style>
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -22,14 +28,17 @@
       <p class="login-sub">Track your support tickets &amp; talk to our team</p>
       <form id="login-form">
         <label>Email
-          <input type="email" id="login-email" required autocomplete="username" placeholder="you@company.com" />
-        </label>
-        <label>Password
-          <input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" />
+          <input type="email" id="login-email" required autocomplete="email" placeholder="you@company.com" />
         </label>
         <div id="login-error" class="form-error"></div>
-        <button type="submit" class="btn btn-primary btn-block" id="login-btn">Sign in</button>
+        <button type="submit" class="btn btn-primary btn-block" id="login-btn">Email me a sign-in link</button>
+        <p class="login-hint muted">No password needed — we'll email you a secure sign-in link.</p>
       </form>
+      <div id="login-sent" class="login-sent hidden">
+        <div class="login-sent-emoji">✉️</div>
+        <p>If that email is on file, a sign-in link is on its way. Check your inbox — the link works once and expires in 15 minutes.</p>
+        <button type="button" class="btn btn-ghost btn-block" id="login-again">Use a different email</button>
+      </div>
       <div class="login-foot">Simplifying <span>IT</span></div>
     </div>
   </div>
@@ -163,6 +172,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=16"></script>
+  <script src="/static/app.js?v=17"></script>
 </body>
 </html>

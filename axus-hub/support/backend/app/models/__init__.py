@@ -12,3 +12,4 @@ from app.models.xcitium import (
     XcitiumCustomer, XcitiumUser, XcitiumTicket, XcitiumThread, XcitiumSyncState,
     XcitiumHealth,
 )
+from app.models.magic_token import PortalMagicToken

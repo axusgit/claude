@@ -61,21 +61,26 @@ const App = (() => {
   function showList()  { $("list-view").classList.remove("hidden");  $("detail-view").classList.add("hidden"); }
   function showDetail(){ $("list-view").classList.add("hidden");     $("detail-view").classList.remove("hidden"); }
 
-  /* ---------- Auth ---------- */
-  async function login(email, password) {
-    const body = new URLSearchParams({ username: email, password });
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
+  /* ---------- Auth (passwordless magic-link) ---------- */
+  async function requestMagicLink(email) {
+    // Always neutral server-side (no account enumeration); we ignore the body.
+    await fetch("/api/portal/auth/request", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+  }
+  async function verifyMagic(rawToken) {
+    const res = await fetch("/api/portal/auth/verify", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: rawToken }),
     });
     if (!res.ok) {
-      let msg = "Invalid email or password";
+      let msg = "This sign-in link is invalid or has expired. Please request a new one.";
       try { const j = await res.json(); if (typeof j.detail === "string") msg = j.detail; } catch (e) {}
       throw new Error(msg);
     }
     const data = await res.json();
-    token = data.access_token;
+    token = data.access_token;                    // 30-day portal session
     localStorage.setItem(TOKEN_KEY, token);
   }
   function logout() {
@@ -85,9 +90,9 @@ const App = (() => {
   }
 
   async function loadIdentity() {
-    me = await api("/api/auth/me");                 // id, full_name, role
-    const portal = await api("/api/portal/me");     // company (also enforces client-only)
-    $("who-name").textContent = me.full_name;
+    const portal = await api("/api/portal/me");     // id, role, full_name, company (JWT-only)
+    me = { id: portal.id, full_name: portal.full_name, role: portal.role };
+    $("who-name").textContent = portal.full_name || portal.email;
     $("who-company").textContent = portal.company || "";
   }
 
@@ -211,15 +216,23 @@ const App = (() => {
     $("login-form").onsubmit = async e => {
       e.preventDefault();
       $("login-error").textContent = "";
-      $("login-btn").disabled = true; $("login-btn").textContent = "Signing in…";
+      const email = $("login-email").value.trim();
+      if (!email) return;
+      $("login-btn").disabled = true; $("login-btn").textContent = "Sending…";
       try {
-        await login($("login-email").value.trim(), $("login-password").value);
-        await enterApp();
+        await requestMagicLink(email);
+        $("login-form").classList.add("hidden");
+        $("login-sent").classList.remove("hidden");
       } catch (err) {
-        $("login-error").textContent = err.message;
+        $("login-error").textContent = "Something went wrong. Please try again.";
       } finally {
-        $("login-btn").disabled = false; $("login-btn").textContent = "Sign in";
+        $("login-btn").disabled = false; $("login-btn").textContent = "Email me a sign-in link";
       }
+    };
+    $("login-again").onclick = () => {
+      $("login-sent").classList.add("hidden");
+      $("login-form").classList.remove("hidden");
+      $("login-email").value = ""; $("login-email").focus();
     };
     $("logout-btn").onclick = logout;
     $("new-ticket-btn").onclick = showNew;
@@ -250,8 +263,21 @@ const App = (() => {
       } catch (err) { $("nt-error").textContent = err.message; }
     };
 
-    // Try an existing session (stored JWT locally, or gateway identity in
-    // central mode); fall back to the login screen.
+    // If the user arrived from an emailed magic link, redeem it (single-use),
+    // then strip the token from the URL so it isn't re-used or bookmarked.
+    const magic = new URLSearchParams(location.search).get("login");
+    if (magic) {
+      try {
+        await verifyMagic(magic);
+        history.replaceState({}, "", location.pathname);
+      } catch (err) {
+        history.replaceState({}, "", location.pathname);
+        showLogin();
+        $("login-error").textContent = err.message;
+        return;
+      }
+    }
+    // Otherwise use the stored 30-day session; fall back to the login screen.
     try { await enterApp(); } catch (e) { showLogin(); }
   }
 

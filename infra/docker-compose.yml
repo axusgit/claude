@@ -185,6 +185,10 @@ services:
       SMTP_FROM: ${AUTHENTIK_EMAIL__FROM:-}
       SMTP_USE_TLS: ${AUTHENTIK_EMAIL__USE_TLS:-true}
       SMTP_USE_SSL: ${AUTHENTIK_EMAIL__USE_SSL:-false}
+      # Passwordless customer portal: the base URL that magic-link sign-in emails
+      # point at (the no-SSO /portal route below). Customers authenticate by JWT,
+      # never through the staff Authentik SSO.
+      PORTAL_URL: ${PORTAL_URL:-https://support.${PLATFORM_DOMAIN}/portal}
     volumes:
       # Ticket attachments must survive image rebuilds (`up -d --build`); without
       # this named volume every routine update wipes them. Migrate the legacy
@@ -199,6 +203,15 @@ services:
       traefik.http.routers.support.tls.certresolver: letsencrypt
       traefik.http.routers.support.middlewares: geogate@file,authentik@file
       traefik.http.services.support.loadbalancer.server.port: "8000"
+      # Customer portal + its assets + portal API bypass the staff Authentik SSO
+      # (geogate only). Portal API is JWT-gated in the app; staff APIs on these
+      # hosts still 401 without an Authentik identity, so nothing sensitive leaks.
+      traefik.http.routers.support-portal.rule: Host(`support.${PLATFORM_DOMAIN}`) && (PathPrefix(`/portal`) || PathPrefix(`/api/portal`) || PathPrefix(`/static`))
+      traefik.http.routers.support-portal.entrypoints: websecure
+      traefik.http.routers.support-portal.tls.certresolver: letsencrypt
+      traefik.http.routers.support-portal.middlewares: geogate@file
+      traefik.http.routers.support-portal.service: support
+      traefik.http.routers.support-portal.priority: "100"
     networks: [axus]
 
   accounting:
