@@ -45,6 +45,9 @@ EXCLUDED_USER_NAMES = {"patch management agent"}
 EMAIL_REMAP = {
     "acarrazana@axustechnologies.com": "acarr@axustechnologies.com",
     "abos@hcnetwork.org": "asabor@hcnetwork.org",
+    "hrubin@hcnetwork.org": "asabor@hcnetwork.org",
+    "imccartney@healthcarewithinreach.org": "smorris@healthcarewithinreach.org",
+    "imccartney@chnwf.org": "smorris@healthcarewithinreach.org",
 }
 for _pair in os.getenv("XCITIUM_EMAIL_REMAP", "").split(","):
     if "=" in _pair:
