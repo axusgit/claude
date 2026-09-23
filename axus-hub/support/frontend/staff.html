@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=57" />
+  <link rel="stylesheet" href="/static/styles.css?v=58" />
   <link rel="stylesheet" href="/static/staff.css?v=61" />
 </head>
 <body>
@@ -213,7 +213,6 @@
               </div>
               <div class="card">
                 <h3 class="card-title">Conversation</h3>
-                <div id="thread" class="thread"></div>
                 <form id="reply-form" class="reply-form">
                   <textarea id="reply-body" rows="3" placeholder="Write a reply…" required></textarea>
                   <div class="reply-actions">
@@ -222,6 +221,7 @@
                     <button type="submit" class="btn btn-primary" id="reply-btn">Post</button>
                   </div>
                 </form>
+                <div id="thread" class="thread"></div>
               </div>
               <div class="card">
                 <h3 class="card-title">Activity</h3>

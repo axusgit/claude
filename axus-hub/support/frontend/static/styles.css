@@ -250,7 +250,7 @@ html[data-theme="dark"] .badge.closed      { background: rgba(107,114,128,.22); 
 .msg-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
 .msg-body { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
 .thread-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 18px; }
-.reply-form { border-top: 1px solid var(--border); padding-top: 16px; }
+.reply-form { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px; }
 .reply-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin: 10px 0 0; flex-wrap: wrap; }
 /* Attach + submit button: byte-for-byte identical box so they line up perfectly */
 .reply-actions > .reply-attach, .reply-actions > .btn {
