@@ -467,7 +467,7 @@ const Staff = (() => {
     const xKey = th => th.poster || t.user || "?";
     const xColors = conversationColors((t.threads || []).map(th => ({ key: xKey(th), base: xKey(th) })));
     el.innerHTML = (t.threads && t.threads.length)
-      ? t.threads.map(th => `<div class="msg them">
+      ? t.threads.slice().reverse().map(th => `<div class="msg them">
           <div class="msg-avatar" style="${avatarStyle(xColors.get(xKey(th)))}">${initials(xKey(th))}</div>
           <div class="msg-bubble"><div class="msg-meta">${esc(th.poster || "—")} · ${fmtDate(th.created)}</div>
           <div class="msg-body">${esc(htmlToText(th.body)).replace(/\n/g, "<br>")}</div></div></div>`).join("")
@@ -647,7 +647,7 @@ const Staff = (() => {
       key: String(c.author_id),
       base: userMap[c.author_id] || (c.author_id === me.id ? "You" : "User"),
     })));
-    el.innerHTML = comments.map(c => {
+    el.innerHTML = comments.slice().reverse().map(c => {   // newest on top, oldest at the bottom
       const mine = c.author_id === me.id;
       const who = userMap[c.author_id] || (mine ? "You" : "User");
       const canEdit = me.role === "admin" || c.author_id === me.id;
