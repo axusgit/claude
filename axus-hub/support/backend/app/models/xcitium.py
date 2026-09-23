@@ -40,6 +40,10 @@ class XcitiumTicket(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     external_id = Column(Integer, unique=True, index=True, nullable=False)  # Xcitium ticketId
+    # Human-facing "Ticket Number" from the Xcitium UI (e.g. 8843278). Not returned
+    # by the clientapi; imported from a CSV export. Falls back to external_id for
+    # references when unknown.
+    display_number = Column(String, index=True, nullable=True)
     subject = Column(String, nullable=True)
     status = Column(String, index=True, nullable=True)      # raw Xcitium status (e.g. open/closed)
     priority = Column(String, nullable=True)

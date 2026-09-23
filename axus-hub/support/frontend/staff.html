@@ -54,9 +54,11 @@
           <div class="profile-menu hidden" id="profile-menu" role="menu">
             <div class="pm-head"><span class="pm-name" id="pm-name"></span><span class="pm-email" id="pm-email"></span></div>
             <button class="pm-item" id="sig-btn" role="menuitem"><span class="pm-ico">✎</span> Signature</button>
+            <button class="pm-item" id="xnum-btn" role="menuitem" hidden><span class="pm-ico">#</span> Import Xcitium #s</button>
             <div class="pm-sep"></div>
             <button class="pm-item pm-danger" id="logout-btn" role="menuitem"><span class="pm-ico">⎋</span> Sign out</button>
           </div>
+          <input type="file" id="xnum-file" accept=".csv" hidden />
         </div>
       </div>
     </header>
@@ -495,6 +497,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=74"></script>
+  <script src="/static/staff.js?v=75"></script>
 </body>
 </html>

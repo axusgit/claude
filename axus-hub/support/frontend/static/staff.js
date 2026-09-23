@@ -145,6 +145,7 @@ const Staff = (() => {
     const usersNav = $("users-dd-btn") ? $("users-dd-btn").closest(".nav-dd") : null;
     if (usersNav) usersNav.style.display = isAdmin ? "" : "none";
     if ($("cd-adduser-btn")) $("cd-adduser-btn").style.display = isAdmin ? "" : "none";
+    if ($("xnum-btn")) $("xnum-btn").hidden = !isAdmin;   // admin-only Xcitium # import
     const [cl, us, bd] = await Promise.all([api("/api/clients/"), api("/api/users/"), api("/api/boards/")]);
     clientsData = cl; usersData = us; boardsData = bd;
     clientMap = {}; cl.forEach(c => clientMap[c.id] = c.company_name);
@@ -1313,6 +1314,19 @@ const Staff = (() => {
     document.addEventListener("click", e => { if (!$("profile").contains(e.target)) closeProfile(); });
     // Signature (opened from the profile menu)
     $("sig-btn").onclick = () => { closeProfile(); openSignature(); };
+    $("xnum-btn").onclick = () => { closeProfile(); $("xnum-file").click(); };
+    $("xnum-file").onchange = async e => {
+      const f = e.target.files && e.target.files[0]; e.target.value = "";
+      if (!f) return;
+      const fd = new FormData(); fd.append("file", f);
+      toast("Importing Xcitium ticket numbers…");
+      try {
+        const r = await api("/api/xcitium/ticket-numbers", { method: "POST", form: fd });
+        await loadTickets();
+        const un = (r.unmatched || []).length;
+        toast(`Xcitium #s: ${r.updated} updated, ${r.matched} matched` + (un ? `, ${un} not in mirror` : ""));
+      } catch (err) { toast(err.message); }
+    };
     $("sig-close").onclick = () => $("sig-modal").classList.add("hidden");
     $("sig-cancel").onclick = () => $("sig-modal").classList.add("hidden");
     $("sig-save").onclick = saveSignature;

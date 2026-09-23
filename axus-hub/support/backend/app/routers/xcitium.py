@@ -3,7 +3,7 @@
 Everything here is read-only; the mirror is populated by app/xcitium_sync.py.
 Staff-gated, like the rest of the console.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
@@ -106,6 +106,19 @@ def trigger_sync():
     return xcitium_sync.incremental()
 
 
+@router.post("/ticket-numbers", dependencies=[Depends(require_admin)])
+async def import_ticket_numbers(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Admin-only: upload a Xcitium ticket-list CSV export to stamp each mirrored
+    ticket with its real Xcitium 'Ticket Number' (shown as X-<number>). Re-run after
+    every resync to pick up newly-created tickets."""
+    from app import xcitium_numbers
+    data = await file.read()
+    try:
+        return xcitium_numbers.apply_numbers(db, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 def _x_text(html: str) -> str:
     """Xcitium bodies are HTML emails; render to readable plain text for a comment."""
     if not html:
@@ -171,7 +184,7 @@ def promote_ticket(external_id: int, db: Session = Depends(get_db),
     description = _x_text(threads[0].body) if threads else (t.subject or "")
 
     ticket = Ticket(
-        reference=f"X-{external_id}",
+        reference=f"X-{t.display_number or external_id}",
         title=t.subject or "(no subject)",
         description=description,
         category=t.category or None,

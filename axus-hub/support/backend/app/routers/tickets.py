@@ -232,7 +232,8 @@ def _xcitium_row(xt) -> TicketOut:
     can route it to the read-only detail endpoint."""
     return TicketOut(
         id=-xt.external_id,
-        reference=f"X-{xt.external_id}",
+        # Prefer the real Xcitium ticket number (from the CSV export) when known.
+        reference=f"X-{xt.display_number or xt.external_id}",
         title=xt.subject or "(no subject)",
         description=None,
         category=xt.category,
