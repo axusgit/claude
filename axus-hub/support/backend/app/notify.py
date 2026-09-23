@@ -80,18 +80,9 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not t:
             return
-        recips = set()
-        if t.assigned_to_id and t.assigned_to_id != exclude_user_id:
-            a = db.query(User).filter(User.id == t.assigned_to_id).first()
-            if a and a.email:
-                recips.add(a.email)
-        elif not t.assigned_to_id:
-            recips.update(_staff_emails(db, exclude_id=exclude_user_id))
-        # every new ticket also goes to the intake inbox (info@)
+        # New tickets go ONLY to the intake inbox (info@); staff monitor that inbox.
         if NEW_TICKET_INBOX:
-            recips.add(NEW_TICKET_INBOX)
-        if recips:
-            mailer.send_email(_to(sorted(recips)), f"[New] {t.reference} · {t.title}",
+            mailer.send_email(_to([NEW_TICKET_INBOX]), f"[New] {t.reference} · {t.title}",
                               _body(t, "A new ticket was created."))
     except Exception as e:
         print(f"[notify] new_ticket failed: {e}", flush=True)
