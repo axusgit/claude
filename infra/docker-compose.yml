@@ -214,6 +214,14 @@ services:
       traefik.http.routers.support-portal.middlewares: geogate@file
       traefik.http.routers.support-portal.service: support
       traefik.http.routers.support-portal.priority: "100"
+      # Clean client domain: serve the portal at the ROOT (no SSO) so customers use
+      # support.axustechnologies.com instead of .../portal. Staff still use /staff (SSO).
+      traefik.http.routers.support-clean-root.rule: Host(`support.axustechnologies.com`) && Path(`/`)
+      traefik.http.routers.support-clean-root.entrypoints: websecure
+      traefik.http.routers.support-clean-root.tls.certresolver: letsencrypt
+      traefik.http.routers.support-clean-root.middlewares: geogate@file
+      traefik.http.routers.support-clean-root.service: support
+      traefik.http.routers.support-clean-root.priority: "100"
     networks: [axus]
 
   accounting:
