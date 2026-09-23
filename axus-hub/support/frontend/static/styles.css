@@ -251,7 +251,7 @@ html[data-theme="dark"] .badge.closed      { background: rgba(107,114,128,.22); 
 .msg-body { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
 .thread-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 18px; }
 .reply-form { border-top: 1px solid var(--border); padding-top: 16px; }
-.reply-actions { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.reply-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin: 0 0 10px; flex-wrap: wrap; }
 /* Attach + submit button: byte-for-byte identical box so they line up perfectly */
 .reply-actions > .reply-attach, .reply-actions > .btn {
   box-sizing: border-box; height: 42px; min-width: 140px; padding: 0 20px; margin: 0;
