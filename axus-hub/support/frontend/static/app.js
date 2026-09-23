@@ -8,6 +8,13 @@ const App = (() => {
   let currentClosed = false; // whether the open ticket is closed (read-only for clients)
   const PRIO_LABEL = { low: "Low", medium: "Normal", high: "High", critical: "Critical" };
   const prioLabel = p => PRIO_LABEL[p] || (p || "");
+  // Plain-language meaning of each priority, shown as a tooltip on the badge.
+  const PRIO_MEANING = {
+    critical: "Critical — a service or system is down or severely impacted; needs immediate attention.",
+    high: "High — significant impact to your operations; prioritized ahead of routine work.",
+    medium: "Normal — a standard request handled in the normal course of business (the default priority).",
+    low: "Low — a minor or non-urgent request scheduled after higher-priority work.",
+  };
   const statusLabel = s => (s || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
   // File types a customer may attach (must match the server-side whitelist).
   const ALLOWED_EXTS = new Set([
@@ -173,6 +180,7 @@ const App = (() => {
     $("d-status").textContent = statusLabel(t.status);
     $("d-priority").className = "prio-badge " + t.priority;
     $("d-priority").textContent = prioLabel(t.priority);
+    $("d-priority").title = PRIO_MEANING[t.priority] || "";
     $("d-title").textContent = t.title;
     $("d-desc").textContent = t.description || "No description provided.";
     $("d-category").textContent = t.category || "Uncategorized";

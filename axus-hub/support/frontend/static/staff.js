@@ -90,6 +90,12 @@ const Staff = (() => {
   const cap = s => (s || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
   const PRIO_LABEL = { low: "Low", medium: "Normal", high: "High", critical: "Critical" };
   const prioLabel = p => PRIO_LABEL[p] || cap(p);
+  const PRIO_MEANING = {
+    critical: "Critical — a service or system is down or severely impacted; needs immediate attention.",
+    high: "High — significant business impact; prioritized ahead of routine work.",
+    medium: "Normal — a standard request handled in the normal course of business (the default priority).",
+    low: "Low — a minor or non-urgent request scheduled after higher-priority work.",
+  };
   const statusLabel = s => cap(s);
   function fmtDate(s) { if (!s) return ""; return new Date(s).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
   function fileSize(b) { if (b < 1024) return b + " B"; if (b < 1048576) return (b / 1024).toFixed(0) + " KB"; return (b / 1048576).toFixed(1) + " MB"; }
@@ -503,6 +509,7 @@ const Staff = (() => {
     $("reopen-btn").hidden = current.status !== "closed";   // staff-only reopen for closed tickets
     $("d-prio-badge").className = "prio-badge " + current.priority;
     $("d-prio-badge").textContent = prioLabel(current.priority);
+    $("d-prio-badge").title = PRIO_MEANING[current.priority] || "";
     $("d-title").textContent = current.title;
     $("d-desc").textContent = current.description || "No description provided.";
     $("d-status").value = current.status;
@@ -775,6 +782,7 @@ const Staff = (() => {
     if (field === "priority") {
       $("d-prio-badge").className = "prio-badge " + value;
       $("d-prio-badge").textContent = prioLabel(value);
+      $("d-prio-badge").title = PRIO_MEANING[value] || "";
     }
     toast(cap(field) + " updated");
   }
