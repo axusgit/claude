@@ -220,7 +220,7 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
         staff_url, portal_url = _ticket_url(), _portal_url()
         from app.models.client import Client
         hidden = {c.id for c in db.query(Client.id).filter(Client.company_name == "Dummy Business").all()}
-        seen, recips = set(), []   # dedup by email; keep (name, email, is_staff)
+        seen, recips = set(), []   # dedup by email; keep (name, email, is_staff, can_view)
         def add(u):
             if not u or not u.email:
                 return
@@ -228,7 +228,11 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             if em in seen or em in SYS_EMAILS or u.id == author_id or u.client_id in hidden:
                 return
             seen.add(em)
-            recips.append((u.full_name, u.email, _v(u.role) in ("admin", "technician")))
+            is_staff = _v(u.role) in ("admin", "technician")
+            # Only staff, and the client who OPENED the ticket, can open it — so only
+            # they get a working "View ticket" link. Participants get email updates only.
+            can_view = is_staff or u.id in (t.reporter_user_id, t.created_by_id)
+            recips.append((u.full_name, u.email, is_staff, can_view))
         if t.reporter_user_id:
             add(db.query(User).filter(User.id == t.reporter_user_id).first())
         for u in (db.query(User).join(TicketWatcher, TicketWatcher.user_id == User.id)
@@ -241,10 +245,10 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
         if t.contact_id:
             c = db.query(Contact).filter(Contact.id == t.contact_id).first()
             if c and c.email and c.email.lower() not in seen and c.email.lower() not in SYS_EMAILS:
-                recips.append((getattr(c, "full_name", None), c.email, False))
+                recips.append((getattr(c, "full_name", None), c.email, False, False))
         subject = f"[{t.reference}] {subject_word} · {t.title}"
-        for name, email, is_staff in recips:
-            link = staff_url if is_staff else portal_url
+        for name, email, is_staff, can_view in recips:
+            link = ("" if not can_view else (staff_url if is_staff else portal_url))
             text = (f"Ticket {t.reference} — {t.title}\n"
                     + (f"\nDescription:\n{(t.description or '').strip()}\n" if (t.description or '').strip() else "")
                     + f"\nHi {name or 'there'}, {lead}\n\n{(block or '').strip()}\n\n"
