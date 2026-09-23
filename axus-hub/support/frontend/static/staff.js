@@ -840,10 +840,13 @@ const Staff = (() => {
       catch (err) { toast(err.message); }
     });
   }
-  async function postReply(bodyText, internal, files, close) {
-    // public replies (visible to the customer) get the staff member's signature appended
+  async function postReply(bodyText, internal, files, close, withSig) {
+    // Public replies (visible to the customer) get a sign-off: the staff member's
+    // personal signature when "Include my signature" is on, otherwise "Axus Service Team".
     let body = bodyText || "";
-    if (body && !internal && me.signature) body += "\n\n" + me.signature;
+    if (body && !internal) {
+      body += (withSig && me.signature) ? "\n\n" + me.signature : "\n\nAxus Service Team";
+    }
     // A single request posts the reply AND closes the case, so the close notice and
     // the final reply go out as one combined email.
     await api(`/api/tickets/${current.id}/comments`, {
@@ -1545,12 +1548,14 @@ const Staff = (() => {
       const close = $("reply-close").checked;
       if (!b && !close) { toast("Please enter your message before posting."); return; }
       const internal = $("reply-internal").checked;
+      const withSig = $("reply-signature").checked;
       const files = Array.from($("reply-files").files || []);
       $("reply-body").value = ""; $("reply-internal").checked = false; $("reply-close").checked = false;
+      $("reply-signature").checked = true;   // default back to signing with your signature
       $("reply-form").classList.remove("internal-mode");
       $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
       try {
-        await postReply(b, internal, files, close);
+        await postReply(b, internal, files, close, withSig);
       } catch (err) { toast(err.message); }
     };
     $("time-form").onsubmit = async e => {
