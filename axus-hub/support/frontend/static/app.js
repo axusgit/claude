@@ -374,7 +374,7 @@ const App = (() => {
       e.preventDefault();
       const body = $("reply-body").value.trim();
       const close = $("reply-close").checked;
-      if (!body && !close) { toast("Please enter your message before posting."); return; }
+      if (!body) { toast(close ? "Please add a note in the Conversation field before closing the case." : "Please enter your message before posting."); return; }
       const files = Array.from($("reply-files").files || []);
       $("reply-body").value = ""; $("reply-close").checked = false;
       $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";

@@ -267,9 +267,12 @@ def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
     from app import notify
     t = _owned_ticket(db, ticket_id, user)
     body = (data.body or "").strip()
-    # Posting a reply requires a message; closing the case (checkbox only) does not.
-    if not body and not data.close:
-        raise HTTPException(status_code=400, detail="Please enter your message before posting.")
+    # Clients must always add a note in the Conversation field — both to post a
+    # reply and to close a case.
+    if not body:
+        detail = ("Please add a note in the Conversation field before closing the case."
+                  if data.close else "Please enter your message before posting.")
+        raise HTTPException(status_code=400, detail=detail)
     comment = None
     if body:
         comment = TicketComment(ticket_id=ticket_id, author_id=user.id, body=body, is_internal=False)
