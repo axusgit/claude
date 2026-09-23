@@ -112,10 +112,14 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .mini-avatar.none { background: var(--surface-2); color: var(--muted); border: 1px dashed var(--border); }
 
 /* ---------- Detail ---------- */
-.detail-top-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.detail-top-head h2 { font-size: 20px; }
-.control-row { display: flex; gap: 14px; flex-wrap: wrap; }
-.ctl { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 0; }
+.detail-top { padding: 22px 24px; }
+.detail-top-head { display: flex; align-items: center; gap: 10px; }
+.dt-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dt-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.dt-title { font-size: 22px; font-weight: 700; line-height: 1.25; margin: 12px 0 0; letter-spacing: -.2px; }
+.control-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+.ctl { display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; font-weight: 700;
+  letter-spacing: .5px; text-transform: uppercase; color: var(--muted); margin-bottom: 0; }
 .ctl select { width: 170px; }
 .detail-grid { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; margin-top: 20px; }
 
