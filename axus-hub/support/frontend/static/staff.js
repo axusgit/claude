@@ -1454,6 +1454,7 @@ const Staff = (() => {
       $("nav-glossary").classList.add("active");
       showGlossary();
     };
+    $("nav-canned").onclick = () => openCannedModal();   // review/edit outside a ticket
     $("gl-new-btn").onclick = () => openGlossaryModal(null);
     $("gl-close").onclick = closeGlossaryModal;
     $("gl-cancel").onclick = closeGlossaryModal;

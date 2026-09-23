@@ -380,3 +380,7 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
 .gl-acts { display: flex; gap: 12px; flex-shrink: 0; }
 .gl-acts a { font-size: 12px; font-weight: 600; color: var(--accent, #f26722); cursor: pointer; }
 .gl-acts a.gl-del { color: #c0392b; }
+
+/* Canned picker sits above the reply textarea */
+.reply-canned-row { margin-bottom: 8px; }
+.reply-canned-row .canned-select { min-width: 200px; }

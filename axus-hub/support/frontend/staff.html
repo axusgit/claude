@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=64" />
-  <link rel="stylesheet" href="/static/staff.css?v=65" />
+  <link rel="stylesheet" href="/static/staff.css?v=66" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -70,6 +70,7 @@
         <nav class="side-nav" id="side-nav">
           <a class="nav-item side-home active" id="nav-dashboard">Dashboard</a>
           <a class="nav-item side-home" id="nav-glossary">Glossary</a>
+          <a class="nav-item side-home" id="nav-canned">Canned Responses</a>
           <div class="nav-group" data-group="tickets">
             <button type="button" class="side-label" data-toggle>Tickets <span class="side-caret">▾</span></button>
             <div class="nav-group-body">
@@ -225,9 +226,11 @@
               <div class="card">
                 <h3 class="card-title">Conversation</h3>
                 <form id="reply-form" class="reply-form">
+                  <div class="reply-canned-row">
+                    <select id="canned-select" class="canned-select" title="Insert a canned response"><option value="">💬 Canned…</option></select>
+                  </div>
                   <textarea id="reply-body" rows="3" placeholder="Write a reply…"></textarea>
                   <div class="reply-actions">
-                    <select id="canned-select" class="canned-select" title="Insert a canned response"><option value="">💬 Canned…</option></select>
                     <label class="internal-toggle" title="On: sign with your personal signature. Off: sign as 'Axus Service Team'."><input type="checkbox" id="reply-signature" /> Include my signature</label>
                     <label class="internal-toggle"><input type="checkbox" id="reply-internal" /> Internal note (staff only)</label>
                     <label class="internal-toggle"><input type="checkbox" id="reply-close" /> Close the case</label>
@@ -528,6 +531,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=81"></script>
+  <script src="/static/staff.js?v=82"></script>
 </body>
 </html>
