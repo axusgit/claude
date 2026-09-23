@@ -13,3 +13,4 @@ from app.models.xcitium import (
     XcitiumHealth, XcitiumDirectoryTombstone, XcitiumTicketTombstone,
 )
 from app.models.magic_token import PortalMagicToken
+from app.models.canned import CannedResponse

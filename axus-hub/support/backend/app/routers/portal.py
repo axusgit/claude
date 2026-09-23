@@ -151,15 +151,11 @@ def magic_verify(data: MagicVerifyIn, db: Session = Depends(get_db)):
 
 
 def _can_see(db: Session, ticket: Ticket, user: User) -> bool:
-    """Per-ticket visibility: a client may see a ticket only if they opened it
-    (reporter/creator) or were added to it as a participant — NOT merely because
-    they belong to the same company. This keeps an externally-added participant
-    from seeing the rest of a company's tickets."""
-    if ticket.reporter_user_id == user.id or ticket.created_by_id == user.id:
-        return True
-    from app.models.ticket_watcher import TicketWatcher
-    return db.query(TicketWatcher).filter(
-        TicketWatcher.ticket_id == ticket.id, TicketWatcher.user_id == user.id).first() is not None
+    """Per-USER visibility: a client sees a ticket in the portal ONLY if they
+    opened it (reporter/creator). Belonging to the same company is NOT enough,
+    and being added as a participant is NOT enough either — participants receive
+    updates by email only, they do not get portal access to the ticket."""
+    return ticket.reporter_user_id == user.id or ticket.created_by_id == user.id
 
 
 def _owned_ticket(db: Session, ticket_id: int, user: User) -> Ticket:
@@ -201,12 +197,11 @@ def my_tickets(
     db: Session = Depends(get_db),
     user: User = Depends(require_client_user),
 ):
-    # Per-ticket scoping: only tickets this user opened or was added to.
-    watched = db.query(TicketWatcher.ticket_id).filter(TicketWatcher.user_id == user.id)
+    # Per-user scoping: only tickets this user opened (reporter/creator).
+    # Participants are notified by email but do not see tickets in the portal.
     q = db.query(Ticket).filter(or_(
         Ticket.reporter_user_id == user.id,
         Ticket.created_by_id == user.id,
-        Ticket.id.in_(watched),
     ))
     if status:
         q = q.filter(Ticket.status == status)

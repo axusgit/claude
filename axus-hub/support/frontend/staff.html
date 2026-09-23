@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=58" />
-  <link rel="stylesheet" href="/static/staff.css?v=61" />
+  <link rel="stylesheet" href="/static/staff.css?v=62" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -216,6 +216,7 @@
                 <form id="reply-form" class="reply-form">
                   <textarea id="reply-body" rows="3" placeholder="Write a reply…" required></textarea>
                   <div class="reply-actions">
+                    <select id="canned-select" class="canned-select" title="Insert a canned response"><option value="">💬 Canned…</option></select>
                     <label class="internal-toggle"><input type="checkbox" id="reply-internal" /> Internal note (staff only)</label>
                     <label class="reply-attach" title="Attach files"><input type="file" id="reply-files" multiple hidden />📎 <span id="reply-files-label">Attach</span></label>
                     <button type="submit" class="btn btn-primary" id="reply-btn">Post</button>
@@ -469,7 +470,26 @@
     </div>
   </div>
 
+  <!-- CANNED RESPONSES MODAL -->
+  <div id="canned-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2>Canned Responses</h2><button class="modal-x" id="canned-close">×</button></div>
+      <div id="canned-list" class="canned-list"></div>
+      <form id="canned-form">
+        <input type="hidden" id="canned-id" />
+        <label>Title<input type="text" id="canned-title" required placeholder="e.g. Password reset completed" /></label>
+        <label>Body<textarea id="canned-body" rows="6" required placeholder="Reply text… Placeholders: {{name}} {{ref}} {{title}} {{company}} {{me}}"></textarea></label>
+        <div id="canned-error" class="form-error"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="canned-clear">New / clear</button>
+          <button type="submit" class="btn btn-primary" id="canned-save">Save</button>
+        </div>
+      </form>
+      <p class="nt-attach-hint">On insert these fill from the open ticket: <b>{{name}}</b> (contact), <b>{{ref}}</b>, <b>{{title}}</b>, <b>{{company}}</b>, <b>{{me}}</b> (you).</p>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=66"></script>
+  <script src="/static/staff.js?v=67"></script>
 </body>
 </html>

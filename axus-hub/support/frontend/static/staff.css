@@ -127,6 +127,14 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .show-hidden-toggle input { width: auto; margin: 0; }
 tr.row-hidden { opacity: .6; }
 .reply-actions { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; }
+.canned-select { max-width: 160px; margin: 0; font-size: 13px; padding: 8px 10px; }
+.canned-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; max-height: 240px; overflow-y: auto; }
+.canned-item { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 8px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.canned-item-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canned-item-acts a { cursor: pointer; color: var(--muted); margin-left: 10px; }
+.canned-item-acts a:hover { color: var(--text); }
+.canned-item-acts a.canned-del:hover { color: #e5484d; }
 
 /* internal note styling in thread */
 .msg.internal .msg-bubble { background: #eef3ff; border-color: #c3d6ff; }

@@ -13,6 +13,7 @@ const Staff = (() => {
   let filter = "open";
   let current = null;               // open ticket object
   let currentCustomer = null;       // open customer object
+  let cannedData = [];              // canned responses (staff saved replies)
 
   /* ---------- Theme ---------- */
   function applyTheme(t) {
@@ -746,6 +747,56 @@ const Staff = (() => {
     if (field === "status") { current = await api(`/api/tickets/${current.id}`); }
     toast(cap(field) + " updated");
   }
+  /* ---------- Canned responses ---------- */
+  async function loadCanned() {
+    try { cannedData = await api("/api/canned/"); } catch (e) { cannedData = []; }
+    fillCannedSelect();
+  }
+  function fillCannedSelect() {
+    const sel = $("canned-select");
+    if (!sel) return;
+    sel.innerHTML = `<option value="">💬 Canned…</option>` +
+      cannedData.map(c => `<option value="${c.id}">${esc(c.title)}</option>`).join("") +
+      `<option value="__manage__">⚙ Manage responses…</option>`;
+  }
+  function fillPlaceholders(text) {
+    const t = current || {};
+    const map = {
+      "{{ref}}": t.reference || "",
+      "{{title}}": t.title || "",
+      "{{company}}": clientMap[t.client_id] || "",
+      "{{name}}": ($("p-contact") && $("p-contact").textContent) || "there",
+      "{{me}}": (me && me.full_name) || "",
+    };
+    return (text || "").replace(/\{\{(ref|title|company|name|me)\}\}/g, m => (m in map ? map[m] : m));
+  }
+  function insertCanned(body) {
+    const ta = $("reply-body");
+    const filled = fillPlaceholders(body);
+    const s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+    const e = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+    ta.value = ta.value.slice(0, s) + filled + ta.value.slice(e);
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = s + filled.length;
+  }
+  function openCannedModal() { $("canned-modal").classList.remove("hidden"); clearCannedForm(); renderCannedList(); }
+  function clearCannedForm() { $("canned-id").value = ""; $("canned-title").value = ""; $("canned-body").value = ""; $("canned-error").textContent = ""; }
+  function renderCannedList() {
+    const box = $("canned-list");
+    box.innerHTML = cannedData.length
+      ? cannedData.map(c => `<div class="canned-item"><span class="canned-item-title">${esc(c.title)}</span>` +
+          `<span class="canned-item-acts"><a data-edit="${c.id}">Edit</a><a data-del="${c.id}" class="canned-del">Delete</a></span></div>`).join("")
+      : `<div class="muted">No canned responses yet. Add one below.</div>`;
+    box.querySelectorAll("[data-edit]").forEach(a => a.onclick = () => {
+      const c = cannedData.find(x => String(x.id) === a.dataset.edit); if (!c) return;
+      $("canned-id").value = c.id; $("canned-title").value = c.title; $("canned-body").value = c.body; $("canned-title").focus();
+    });
+    box.querySelectorAll("[data-del]").forEach(a => a.onclick = async () => {
+      if (!confirm("Delete this canned response?")) return;
+      try { await api(`/api/canned/${a.dataset.del}`, { method: "DELETE" }); await loadCanned(); renderCannedList(); clearCannedForm(); toast("Deleted"); }
+      catch (err) { toast(err.message); }
+    });
+  }
   async function postReply(bodyText, internal, files) {
     // public replies (visible to the customer) get the staff member's signature appended
     let body = bodyText;
@@ -1105,7 +1156,7 @@ const Staff = (() => {
       await api("/api/users/", { method: "POST", body: base });
     }
     closeUserModal();
-    await Promise.all([refreshUsers(), refreshClients()]);
+    await Promise.all([refreshUsers(), refreshClients(), loadCanned()]);
     renderUsers();
     toast("User saved");
   }
@@ -1345,6 +1396,26 @@ const Staff = (() => {
     $("reply-files").onchange = () => {
       const n = $("reply-files").files.length;
       $("reply-files-label").textContent = n ? `${n} file${n > 1 ? "s" : ""}` : "Attach";
+    };
+    $("canned-select").onchange = () => {
+      const v = $("canned-select").value; $("canned-select").value = "";
+      if (v === "__manage__") return openCannedModal();
+      if (!v) return;
+      const c = cannedData.find(x => String(x.id) === v);
+      if (c) insertCanned(c.body);
+    };
+    $("canned-close").onclick = () => $("canned-modal").classList.add("hidden");
+    $("canned-clear").onclick = clearCannedForm;
+    $("canned-form").onsubmit = async e => {
+      e.preventDefault(); $("canned-error").textContent = "";
+      const id = $("canned-id").value;
+      const body = { title: $("canned-title").value.trim(), body: $("canned-body").value.trim() };
+      if (!body.title || !body.body) { $("canned-error").textContent = "Title and body are required."; return; }
+      try {
+        if (id) await api(`/api/canned/${id}`, { method: "PUT", body });
+        else await api("/api/canned/", { method: "POST", body });
+        await loadCanned(); renderCannedList(); clearCannedForm(); toast("Saved");
+      } catch (err) { $("canned-error").textContent = err.message; }
     };
     $("reply-form").onsubmit = async e => {
       e.preventDefault(); const b = $("reply-body").value.trim(); if (!b) return;
