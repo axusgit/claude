@@ -132,7 +132,7 @@ const Staff = (() => {
     me = await api("/api/auth/me");
     if (me.role === "client") { logout(); throw new Error("Use the client portal to sign in"); }
     $("who-name").textContent = me.full_name;
-    $("who-role").textContent = cap(me.role);
+    $("who-role").textContent = "";   // don't surface the role in the topbar
     $("profile-av").textContent = initials(me.full_name);
     const _meColor = avatarColor(me.full_name);
     $("profile-av").style.background = _meColor;
