@@ -176,10 +176,11 @@ const App = (() => {
     $("d-desc").textContent = t.description || "No description provided.";
     $("d-category").textContent = t.category || "Uncategorized";
     $("d-created").textContent = "Opened " + fmtDate(t.created_at);
-    // A closed case can't be closed again — hide the close-case consent option.
+    // Closed cases are read-only for clients: no replies and no close option.
     const closed = t.status === "closed";
     $("reply-close").checked = false;
-    $("reply-close-row").hidden = closed;
+    $("reply-form").classList.toggle("hidden", closed);
+    $("reply-closed-note").classList.toggle("hidden", !closed);
     showDetail();
     await Promise.all([loadThread(id), loadAttachments(id), loadParticipants(id)]);
   }

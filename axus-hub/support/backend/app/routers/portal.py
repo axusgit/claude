@@ -266,6 +266,9 @@ def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
           db: Session = Depends(get_db), user: User = Depends(require_client_user)):
     from app import notify
     t = _owned_ticket(db, ticket_id, user)
+    # Closed cases are read-only for clients — no replies, no re-close.
+    if t.status == TicketStatus.closed:
+        raise HTTPException(status_code=409, detail="This case is closed. Please open a new ticket for further help.")
     body = (data.body or "").strip()
     # Clients must always add a note in the Conversation field — both to post a
     # reply and to close a case.
