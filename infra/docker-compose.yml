@@ -180,9 +180,11 @@ services:
       NOTIFY_ONLY: ${NOTIFY_ONLY:-}
       SMTP_HOST: ${AUTHENTIK_EMAIL__HOST:-}
       SMTP_PORT: ${AUTHENTIK_EMAIL__PORT:-587}
-      SMTP_USER: ${AUTHENTIK_EMAIL__USERNAME:-}
-      SMTP_PASSWORD: ${AUTHENTIK_EMAIL__PASSWORD:-}
-      SMTP_FROM: ${AUTHENTIK_EMAIL__FROM:-}
+      # Axus Support sends its own mail as service@ (Support-only override in .env:
+      # SUPPORT_SMTP_USER/PASSWORD/FROM). Authentik + eSign keep using AUTHENTIK_EMAIL__* (support@).
+      SMTP_USER: ${SUPPORT_SMTP_USER:-}
+      SMTP_PASSWORD: ${SUPPORT_SMTP_PASSWORD:-}
+      SMTP_FROM: ${SUPPORT_SMTP_FROM:-}
       SMTP_USE_TLS: ${AUTHENTIK_EMAIL__USE_TLS:-true}
       SMTP_USE_SSL: ${AUTHENTIK_EMAIL__USE_SSL:-false}
       # Passwordless customer portal: the base URL that magic-link sign-in emails
