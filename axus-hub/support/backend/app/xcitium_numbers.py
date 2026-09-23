@@ -16,6 +16,8 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from app.models.xcitium import XcitiumTicket
+from app.models.ticket import Ticket
+from app.models.client import Client
 
 REQUIRED_COLUMNS = {"Ticket", "Subject", "Customer", "From", "Create Date"}
 
@@ -55,16 +57,34 @@ def apply_numbers(db, data: bytes) -> dict:
     updates nothing new."""
     rows = parse_rows(data)
 
-    # Index every mirror ticket by its UTC create-minute for fast candidate lookup.
+    client_name = {c.id: (c.company_name or "") for c in db.query(Client).all()}
+
+    def _fields(obj):
+        """(subject, org, reporter) lower-cased, for a mirror row or a native ticket."""
+        if isinstance(obj, XcitiumTicket):
+            return (obj.subject or "").lower(), (obj.organization_name or "").lower(), (obj.username or "").lower()
+        # native promoted Xcitium ticket
+        return (obj.title or "").lower(), client_name.get(obj.client_id, "").lower(), ""
+
+    def _created(obj):
+        return obj.create_date if isinstance(obj, XcitiumTicket) else obj.created_at
+
+    # Index candidates (mirror rows + promoted native Xcitium tickets still tagged
+    # X-...) by UTC create-minute for fast lookup.
     by_minute = {}
-    for t in db.query(XcitiumTicket).all():
-        cd = t.create_date
+    def _index(obj):
+        cd = _created(obj)
         if not cd:
-            continue
+            return
         if cd.tzinfo is None:
             cd = cd.replace(tzinfo=timezone.utc)
-        key = cd.replace(second=0, microsecond=0)
-        by_minute.setdefault(key, []).append(t)
+        by_minute.setdefault(cd.replace(second=0, microsecond=0), []).append(obj)
+
+    for t in db.query(XcitiumTicket).all():
+        _index(t)
+    for t in (db.query(Ticket)
+              .filter(Ticket.origin == "xcitium", Ticket.reference.like("X-%")).all()):
+        _index(t)
 
     matched = updated = skipped = 0
     unmatched = []
@@ -87,10 +107,8 @@ def apply_numbers(db, data: bytes) -> dict:
         for dm in (-2, -1, 0, 1, 2):
             cands += by_minute.get(key + timedelta(minutes=dm), [])
 
-        def score(t):
-            ts = (t.subject or "").lower()
-            to = (t.organization_name or "").lower()
-            tu = (t.username or "").lower()
+        def score(obj):
+            ts, to, tu = _fields(obj)
             s = 0
             if subj and (ts.startswith(subj) or subj.startswith(ts[:len(subj)])):
                 s += 2
@@ -106,10 +124,18 @@ def apply_numbers(db, data: bytes) -> dict:
         if len(best) == 1 or (len(best) > 1 and score(best[0]) > score(best[1])):
             t = best[0]
             matched += 1
-            if t.display_number != num and num not in used_numbers:
-                t.display_number = num
-                used_numbers.add(num)
-                updated += 1
+            if num not in used_numbers:
+                if isinstance(t, XcitiumTicket):
+                    if t.display_number != num:
+                        t.display_number = num
+                        used_numbers.add(num)
+                        updated += 1
+                else:  # promoted native ticket — relabel its reference
+                    newref = f"X-{num}"
+                    if t.reference != newref:
+                        t.reference = newref
+                        used_numbers.add(num)
+                        updated += 1
         else:
             unmatched.append({"number": num, "subject": r.get("Subject", "")})
 
