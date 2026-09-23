@@ -162,7 +162,12 @@ def _portal_url() -> str:
     return url or "https://service.axustechnologies.com/portal"
 
 
-def _participant_html(recipient_name, lead, block, t, link, note=None) -> str:
+# Standard closing used when a message isn't otherwise signed (e.g. the automatic
+# ticket-received acknowledgement).
+DEFAULT_SIGNOFF = "Thank you for choosing our services.\nAxus Service Team"
+
+
+def _participant_html(recipient_name, lead, block, t, link, note=None, signoff=None) -> str:
     import html as _h
     rn = _h.escape(recipient_name or "there")
     ld = _h.escape(lead or "")
@@ -185,6 +190,8 @@ def _participant_html(recipient_name, lead, block, t, link, note=None) -> str:
            f'<a href="{lk}" style="display:inline-block;padding:11px 24px;font-size:14px;'
            f'font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">View ticket</a>'
            f'</td></tr></table>') if lk else ""
+    signoff_html = (f'<p style="margin:22px 0 0;font-size:14px;line-height:1.55;color:#3a4150;">'
+                    f'{_h.escape(signoff).strip().replace(chr(10), "<br>")}</p>') if signoff else ""
     return f"""\
 <!doctype html><html><body style="margin:0;padding:0;background:#ffffff;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:#ffffff;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#1f2430;">
@@ -197,6 +204,7 @@ def _participant_html(recipient_name, lead, block, t, link, note=None) -> str:
     <p style="margin:8px 0 4px;font-size:15px;line-height:1.55;color:#3a4150;">{ld}</p>
     {block_box}
     {btn}
+    {signoff_html}
     {note_html}
   </td></tr>
   <tr><td style="padding:24px 32px 28px;"><p style="margin:20px 0 0;padding-top:16px;border-top:1px solid #eef0f3;font-size:12px;color:#9aa1ac;">Axus Technologies &middot; Simplifying IT</p></td></tr>
@@ -346,8 +354,8 @@ def notify_ticket_received(ticket_id: int):
                 f"Ticket {t.reference} — {t.title}\n"
                 + (f"\nDescription:\n{(t.description or '').strip()}\n" if (t.description or '').strip() else "")
                 + (f"\nView it: {link}\n" if link else "")
-                + "\n— Axus Service\n")
-        html = _participant_html(u.full_name, TICKET_RECEIVED_MSG, "", t, link, note="")
+                + f"\n{DEFAULT_SIGNOFF}\n")
+        html = _participant_html(u.full_name, TICKET_RECEIVED_MSG, "", t, link, note="", signoff=DEFAULT_SIGNOFF)
         mailer.send_email([u.email], subject, text, html)
     except Exception as e:
         print(f"[notify] ticket_received failed: {e}", flush=True)
