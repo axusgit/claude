@@ -120,7 +120,7 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .detail-grid { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; margin-top: 20px; }
 
 .internal-toggle { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-soft);
-  font-weight: 500; margin-bottom: 0; cursor: pointer; margin-right: auto; }
+  font-weight: 500; margin-bottom: 0; cursor: pointer; }
 .internal-toggle input { width: auto; margin: 0; }
 .show-hidden-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
   color: var(--text-soft); white-space: nowrap; cursor: pointer; }
