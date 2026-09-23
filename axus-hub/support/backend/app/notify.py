@@ -163,27 +163,36 @@ def _participant_html(recipient_name, lead, block, t, link) -> str:
            f'font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">View ticket</a>'
            f'</td></tr></table>') if lk else ""
     return f"""\
-<!doctype html><html><body style="margin:0;padding:0;background:#f4f5f7;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:32px 12px;">
-<tr><td align="center">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#1f2430;">
-    <tr><td style="padding:26px 32px 6px;"><img src="{AXUS_LOGO_URL}" alt="Axus Technologies" height="32" style="height:32px;display:block;border:0;" /></td></tr>
-    <tr><td style="padding:6px 32px 0;">
-      <p style="margin:10px 0 2px;font-size:12px;color:#9aa1ac;letter-spacing:.4px;">TICKET {ref}</p>
-      <h1 style="margin:2px 0 4px;font-size:18px;color:#1f2430;">{title}</h1>
-      {desc_block}
-      <p style="margin:14px 0 4px;font-size:14px;line-height:1.55;color:#3a4150;">Hi {rn}, {ld}</p>
-      <div style="margin:10px 0 20px;padding:14px 16px;background:#f7f8fa;border-left:3px solid #f26722;border-radius:6px;font-size:14px;line-height:1.55;color:#1f2430;">{msg}</div>
-      {btn}
-      <p style="margin:22px 0 0;font-size:12px;line-height:1.5;color:#9aa1ac;">You're receiving this because you're a participant on this ticket.</p>
-    </td></tr>
-    <tr><td style="padding:22px 32px 26px;border-top:1px solid #eef0f3;"><p style="margin:14px 0 0;font-size:12px;color:#9aa1ac;">Axus Technologies &middot; Simplifying IT</p></td></tr>
-  </table>
-</td></tr></table>
+<!doctype html><html><body style="margin:0;padding:0;background:#ffffff;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:#ffffff;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#1f2430;">
+  <tr><td style="padding:24px 32px 8px;"><img src="{AXUS_LOGO_URL}" alt="Axus Technologies" height="32" style="height:32px;display:block;border:0;" /></td></tr>
+  <tr><td style="padding:0 32px;">
+    <p style="margin:8px 0 2px;font-size:12px;color:#9aa1ac;letter-spacing:.4px;">TICKET {ref}</p>
+    <h1 style="margin:2px 0 4px;font-size:20px;color:#1f2430;">{title}</h1>
+    {desc_block}
+    <p style="margin:16px 0 4px;font-size:15px;line-height:1.55;color:#3a4150;">Hi {rn}, {ld}</p>
+    <div style="margin:10px 0 22px;padding:16px 18px;background:#f7f8fa;border-left:4px solid #f26722;border-radius:6px;font-size:15px;line-height:1.6;color:#1f2430;">{msg}</div>
+    {btn}
+    <p style="margin:24px 0 0;font-size:12px;line-height:1.5;color:#9aa1ac;">You're receiving this because you're a participant on this ticket.</p>
+  </td></tr>
+  <tr><td style="padding:24px 32px 28px;"><p style="margin:20px 0 0;padding-top:16px;border-top:1px solid #eef0f3;font-size:12px;color:#9aa1ac;">Axus Technologies &middot; Simplifying IT</p></td></tr>
+</table>
 </body></html>"""
 
 
-def _notify_participants(ticket_id, author_id, subject_word, lead, block):
+def _author_display(db, author_id, author_name):
+    """Name to show as the sender. Axus staff (admin/technician) are always shown
+    as 'Axus Service Team' so customers never see individual staff names."""
+    if author_id:
+        u = db.query(User).filter(User.id == author_id).first()
+        if u and _v(u.role) in ("admin", "technician"):
+            return "Axus Service Team"
+        if u and u.full_name:
+            return u.full_name
+    return author_name or "The Axus team"
+
+
+def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, block):
     """Email everyone on a ticket — reporter, added participants, and staff
     (assignee + creator) — except the author. `lead` is the sentence after the
     greeting; `block` is the highlighted content (reply text or change summary)."""
@@ -199,6 +208,7 @@ def _notify_participants(ticket_id, author_id, subject_word, lead, block):
         # Skip imported Xcitium history (references starting with "X").
         if (t.reference or "").strip().upper().startswith("X"):
             return
+        lead = f"{_author_display(db, author_id, author_name)} {verb}"
         staff_url, portal_url = _ticket_url(), _portal_url()
         seen, recips = set(), []   # dedup by email; keep (name, email, is_staff)
         def add(u):
@@ -241,11 +251,9 @@ def _notify_participants(ticket_id, author_id, subject_word, lead, block):
 
 def notify_participants_reply(ticket_id: int, body: str, author_id=None, author_name=None):
     """Notify everyone on a ticket of a new public reply."""
-    lead = f"{author_name or 'The Axus team'} added a new reply:"
-    _notify_participants(ticket_id, author_id, "New reply", lead, body)
+    _notify_participants(ticket_id, author_id, author_name, "New reply", "added a new reply:", body)
 
 
 def notify_participants_update(ticket_id: int, summary: str, author_id=None, author_name=None):
     """Notify everyone on a ticket that it was updated (status/priority/etc.)."""
-    lead = f"{author_name or 'The Axus team'} updated this ticket:"
-    _notify_participants(ticket_id, author_id, "Updated", lead, summary)
+    _notify_participants(ticket_id, author_id, author_name, "Updated", "updated this ticket:", summary)
