@@ -158,6 +158,7 @@ const Staff = (() => {
     clientMap = {}; cl.forEach(c => clientMap[c.id] = c.company_name);
     userMap = {}; us.forEach(u => userMap[u.id] = u.full_name);
     boardMap = {}; bd.forEach(b => boardMap[b.id] = b.name);
+    loadCanned();   // populate the reply "Canned…" picker on login
     staffUsers = us.filter(u => u.role !== "client");
     $("c-customers").textContent = cl.length;
     $("c-users").textContent = us.length;
