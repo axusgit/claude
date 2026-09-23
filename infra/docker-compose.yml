@@ -178,6 +178,10 @@ services:
       # redirect them all to one address. NOTIFY_ENABLED=0 holds ALL sending off.
       NOTIFY_ENABLED: ${NOTIFY_ENABLED:-1}
       NOTIFY_ONLY: ${NOTIFY_ONLY:-}
+      # Pre-production guard: if set, CLIENT-facing emails (participant notifications
+      # + magic-link logins) go ONLY to these addresses; staff email is unaffected.
+      # MUST be cleared before go-live so real customers get their emails.
+      CLIENT_NOTIFY_ALLOW: ${CLIENT_NOTIFY_ALLOW:-}
       SMTP_HOST: ${AUTHENTIK_EMAIL__HOST:-}
       SMTP_PORT: ${AUTHENTIK_EMAIL__PORT:-587}
       # Axus Support sends its own mail as service@ (Support-only override in .env:

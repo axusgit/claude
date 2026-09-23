@@ -23,6 +23,21 @@ STAFF_ROLES = (UserRole.admin, UserRole.technician)
 NEW_TICKET_INBOX = os.getenv("NEW_TICKET_INBOX", "info@axustechnologies.com")
 
 
+def _client_allowlist():
+    """Pre-production guard: when CLIENT_NOTIFY_ALLOW is set, client-facing emails
+    go ONLY to those addresses (staff emails are never affected). Empty/unset = no
+    restriction (production behaviour)."""
+    raw = (os.getenv("CLIENT_NOTIFY_ALLOW") or "").strip()
+    if not raw:
+        return None
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def client_blocked(email) -> bool:
+    allow = _client_allowlist()
+    return allow is not None and (email or "").lower() not in allow
+
+
 def _enabled() -> bool:
     return os.getenv("NOTIFY_ENABLED", "1") == "1" and mailer.is_configured()
 
@@ -244,6 +259,8 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
                 recips.append((getattr(c, "full_name", None), c.email, False, False))
         subject = f"[{t.reference}] {subject_word} · {t.title}"
         for name, email, is_staff, can_view in recips:
+            if not is_staff and client_blocked(email):
+                continue   # pre-production: client emails suppressed unless allow-listed
             link = ("" if not can_view else (staff_url if is_staff else portal_url))
             text = (f"Ticket {t.reference} — {t.title}\n"
                     + (f"\nDescription:\n{(t.description or '').strip()}\n" if (t.description or '').strip() else "")

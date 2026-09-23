@@ -78,6 +78,9 @@ def magic_request(data: MagicRequestIn, background: BackgroundTasks, db: Session
             .filter(func.lower(User.email) == email, User.is_active == True).first())  # noqa: E712
     if not user or user.role != UserRole.client or user.client_id is None:
         return _NEUTRAL
+    from app import notify
+    if notify.client_blocked(user.email):   # pre-production: only allow-listed test clients
+        return _NEUTRAL
     raw = secrets.token_urlsafe(32)
     db.add(PortalMagicToken(
         user_id=user.id, token_hash=_hash_token(raw),
