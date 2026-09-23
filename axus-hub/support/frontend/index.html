@@ -13,6 +13,13 @@
     .login-sent { text-align: center; }
     .login-sent-emoji { font-size: 40px; margin-bottom: 10px; }
     .login-sent p { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+    /* Match the New Ticket window and the conversation/reply area (both wide):
+       conversation goes full-width with Participants/Attachments below it, and the
+       New Ticket modal is sized to the same content width. */
+    #detail-view .detail-grid { grid-template-columns: 1fr; }
+    #detail-view .detail-side { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+    #new-modal .modal { width: 100%; max-width: 912px; }
+    @media (max-width: 760px) { #detail-view .detail-side { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
