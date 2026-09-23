@@ -120,13 +120,14 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .detail-grid { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; margin-top: 20px; }
 
 .internal-toggle { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-soft);
-  font-weight: 500; margin-bottom: 0; cursor: pointer; margin-right: auto; }
+  font-weight: 500; margin-bottom: 0; cursor: pointer; white-space: nowrap; }
 .internal-toggle input { width: auto; margin: 0; }
 .show-hidden-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
   color: var(--text-soft); white-space: nowrap; cursor: pointer; }
 .show-hidden-toggle input { width: auto; margin: 0; }
 tr.row-hidden { opacity: .6; }
-.reply-actions { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; }
+.reply-actions { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; justify-content: flex-start; flex-wrap: wrap; }
+.reply-actions .reply-attach { margin-left: auto; }   /* push Attach + Post to the right */
 .canned-select { max-width: 160px; margin: 0; font-size: 13px; padding: 8px 10px; }
 .canned-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; max-height: 240px; overflow-y: auto; }
 .canned-item { display: flex; justify-content: space-between; align-items: center; gap: 10px;

@@ -1445,11 +1445,15 @@ const Staff = (() => {
     $("reply-form").onsubmit = async e => {
       e.preventDefault(); const b = $("reply-body").value.trim(); if (!b) return;
       const internal = $("reply-internal").checked;
+      const close = $("reply-close").checked;
       const files = Array.from($("reply-files").files || []);
-      $("reply-body").value = ""; $("reply-internal").checked = false;
+      $("reply-body").value = ""; $("reply-internal").checked = false; $("reply-close").checked = false;
       $("reply-form").classList.remove("internal-mode");
       $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
-      try { await postReply(b, internal, files); } catch (err) { toast(err.message); }
+      try {
+        await postReply(b, internal, files);
+        if (close && current.status !== "closed") { $("d-status").value = "closed"; await patch("status", "closed"); }
+      } catch (err) { toast(err.message); }
     };
     $("time-form").onsubmit = async e => {
       e.preventDefault(); const h = parseFloat($("time-hours").value); if (!h) return;

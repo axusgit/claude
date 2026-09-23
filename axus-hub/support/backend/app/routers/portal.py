@@ -16,7 +16,7 @@ import hashlib
 from pydantic import BaseModel, EmailStr
 
 from app.database import get_db
-from app.models.ticket import Ticket, TicketComment, TicketType
+from app.models.ticket import Ticket, TicketComment, TicketType, TicketStatus
 from app.models.attachment import Attachment
 from app.models.user import User, UserRole
 from app.models.magic_token import PortalMagicToken
@@ -177,7 +177,8 @@ class PortalTicketIn(BaseModel):
 
 
 class PortalReplyIn(BaseModel):
-    body: str
+    body: Optional[str] = None
+    close: bool = False   # client closes the case (with the inline legal confirmation)
 
 
 @router.get("/me")
@@ -260,25 +261,34 @@ def ticket_comments(ticket_id: int, db: Session = Depends(get_db), user: User = 
     )
 
 
-@router.post("/tickets/{ticket_id}/comments", response_model=CommentOut)
+@router.post("/tickets/{ticket_id}/comments")
 def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
           db: Session = Depends(get_db), user: User = Depends(require_client_user)):
     from app import notify
-    _owned_ticket(db, ticket_id, user)
-    comment = TicketComment(
-        ticket_id=ticket_id,
-        author_id=user.id,
-        body=data.body,
-        is_internal=False,   # portal replies are always public
-    )
-    db.add(comment)
-    _log_activity(db, ticket_id, user.id, "comment_added", "Client replied via portal")
+    t = _owned_ticket(db, ticket_id, user)
+    body = (data.body or "").strip()
+    if not body and not data.close:
+        raise HTTPException(status_code=400, detail="Write a reply or check 'Close this case'.")
+    comment = None
+    if body:
+        comment = TicketComment(ticket_id=ticket_id, author_id=user.id, body=body, is_internal=False)
+        db.add(comment)
+        _log_activity(db, ticket_id, user.id, "comment_added", "Client replied via portal")
+    closed = False
+    if data.close and t.status != TicketStatus.closed:
+        t.status = TicketStatus.closed
+        t.closed_at = datetime.now(timezone.utc)
+        _log_activity(db, ticket_id, user.id, "status_changed", "Client closed the case via portal")
+        closed = True
     db.commit()
-    db.refresh(comment)
-    background.add_task(notify.notify_customer_reply, ticket_id)  # staff broadcast (held by NOTIFY_ENABLED)
-    # notify everyone on the ticket — participants + staff — of the new reply
-    background.add_task(notify.notify_participants_reply, ticket_id, data.body, user.id, user.full_name)
-    return comment
+    if comment:
+        db.refresh(comment)
+        background.add_task(notify.notify_customer_reply, ticket_id)  # staff broadcast (held by NOTIFY_ENABLED)
+        background.add_task(notify.notify_participants_reply, ticket_id, body, user.id, user.full_name)
+    if closed:
+        background.add_task(notify.notify_participants_update, ticket_id,
+                            "The client closed this case.", user.id, user.full_name)
+    return {"ok": True, "closed": closed}
 
 
 # ----- Participants (people on a ticket) — clients may add colleagues from their org -----
