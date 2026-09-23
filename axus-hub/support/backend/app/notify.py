@@ -146,6 +146,9 @@ def _participants_enabled() -> bool:
 
 
 def _portal_url() -> str:
+    url = (os.getenv("PORTAL_URL") or "").strip()
+    if url:
+        return url
     domain = os.getenv("PLATFORM_DOMAIN", "")
     return f"https://support.{domain}/portal" if domain else ""
 
