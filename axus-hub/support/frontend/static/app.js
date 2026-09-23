@@ -209,7 +209,8 @@ const App = (() => {
     const comments = await api(`/api/portal/tickets/${id}/comments`);
     const thread = $("thread");
     if (!comments.length) { thread.innerHTML = `<div class="thread-empty">No replies yet — our team will respond here.</div>`; return; }
-    thread.innerHTML = comments.map(c => {
+    // newest reply first, right under the ticket description
+    thread.innerHTML = comments.slice().reverse().map(c => {
       const mine = me && c.author_id === me.id;
       const who = mine ? "You" : "Axus Support";
       return `<div class="msg ${mine ? "me" : "them"}">
