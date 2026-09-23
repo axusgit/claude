@@ -362,3 +362,17 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
   background: #fff6e9; color: #9a6a15; border: 1px solid #f2dcae;
   font-size: 12px; font-weight: 600;
 }
+
+/* Glossary (staff-only reference) */
+.glossary-list { display: flex; flex-direction: column; gap: 8px; }
+.gl-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--card, #fff); border: 1px solid var(--border, #e5e7eb);
+  border-radius: 10px; padding: 12px 14px;
+}
+.gl-item-main { flex: 1; min-width: 0; }
+.gl-term { font-weight: 600; font-size: 14px; color: var(--text, #1f2430); }
+.gl-def { margin-top: 3px; font-size: 13px; line-height: 1.5; color: var(--muted, #6b7280); white-space: pre-wrap; }
+.gl-acts { display: flex; gap: 12px; flex-shrink: 0; }
+.gl-acts a { font-size: 12px; font-weight: 600; color: var(--accent, #f26722); cursor: pointer; }
+.gl-acts a.gl-del { color: #c0392b; }

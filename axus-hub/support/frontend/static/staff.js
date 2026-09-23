@@ -107,7 +107,7 @@ const Staff = (() => {
     $("login-sso").classList.toggle("hidden", local);
   };
   const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); };
-  const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view"];
+  const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view", "glossary-view"];
   const hideViews = () => VIEWS.forEach(id => $(id).classList.add("hidden"));
   const showDashboard = () => { hideViews(); $("dashboard-view").classList.remove("hidden"); renderDashboard(); };
   const showQueue = () => { hideViews(); $("queue-view").classList.remove("hidden"); };
@@ -115,6 +115,7 @@ const Staff = (() => {
   const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); requestAnimationFrame(() => makeResizable("#customer-table", "axus-biz-widths")); };
   const showCustomerDetail = () => { hideViews(); $("customer-detail-view").classList.remove("hidden"); };
   const showUsers = () => { hideViews(); $("users-view").classList.remove("hidden"); requestAnimationFrame(() => makeResizable("#user-table", "axus-usr-widths")); };
+  const showGlossary = () => { hideViews(); $("glossary-view").classList.remove("hidden"); loadGlossary(); };
 
   /* ---------- Auth ---------- */
   async function login(email, password) {
@@ -849,6 +850,55 @@ const Staff = (() => {
     if (close) await openTicket(current.id);   // refresh status/priority badges after closing
     toast(close ? "Case closed" : (internal ? "Internal note added" : "Reply posted"));
   }
+  /* ---------- Glossary (staff-only reference) ---------- */
+  let glossaryData = [];
+  async function loadGlossary() {
+    try { glossaryData = await api("/api/glossary/"); } catch (e) { glossaryData = []; }
+    renderGlossary();
+  }
+  function renderGlossary() {
+    const q = ($("gl-search").value || "").toLowerCase();
+    const rows = glossaryData.filter(t =>
+      !q || t.term.toLowerCase().includes(q) || (t.definition || "").toLowerCase().includes(q));
+    const box = $("glossary-list");
+    $("glossary-empty").classList.toggle("hidden", glossaryData.length > 0);
+    box.innerHTML = rows.map(t => `
+      <div class="gl-item">
+        <div class="gl-item-main">
+          <div class="gl-term">${esc(t.term)}</div>
+          <div class="gl-def">${esc(t.definition)}</div>
+        </div>
+        <div class="gl-acts"><a data-edit="${t.id}">Edit</a><a data-del="${t.id}" class="gl-del">Delete</a></div>
+      </div>`).join("");
+    box.querySelectorAll("[data-edit]").forEach(a => a.onclick = () => {
+      const t = glossaryData.find(x => String(x.id) === a.dataset.edit); if (t) openGlossaryModal(t);
+    });
+    box.querySelectorAll("[data-del]").forEach(a => a.onclick = async () => {
+      if (!confirm("Delete this glossary term?")) return;
+      try { await api(`/api/glossary/${a.dataset.del}`, { method: "DELETE" }); await loadGlossary(); toast("Deleted"); }
+      catch (err) { toast(err.message); }
+    });
+  }
+  function openGlossaryModal(t) {
+    $("gl-id").value = t ? t.id : "";
+    $("gl-term").value = t ? t.term : "";
+    $("gl-def").value = t ? t.definition : "";
+    $("gl-error").textContent = "";
+    $("gl-modal-title").textContent = t ? "Edit term" : "Add term";
+    $("gl-modal").classList.remove("hidden");
+    $("gl-term").focus();
+  }
+  function closeGlossaryModal() { $("gl-modal").classList.add("hidden"); }
+  async function saveGlossary() {
+    const id = $("gl-id").value;
+    const term = $("gl-term").value.trim();
+    const definition = $("gl-def").value.trim();
+    if (!term || !definition) { $("gl-error").textContent = "Term and definition are required."; return; }
+    const path = id ? `/api/glossary/${id}` : "/api/glossary/";
+    await api(path, { method: id ? "PUT" : "POST", body: { term, definition } });
+    closeGlossaryModal(); await loadGlossary(); toast("Saved");
+  }
+
   /* ---------- Signature ---------- */
   let sigLogo = null;  // pending logo data URL while the modal is open ("" = cleared)
 
@@ -1387,6 +1437,16 @@ const Staff = (() => {
       $("nav-dashboard").classList.add("active");
       showDashboard();
     };
+    $("nav-glossary").onclick = () => {
+      document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+      $("nav-glossary").classList.add("active");
+      showGlossary();
+    };
+    $("gl-new-btn").onclick = () => openGlossaryModal(null);
+    $("gl-close").onclick = closeGlossaryModal;
+    $("gl-cancel").onclick = closeGlossaryModal;
+    $("gl-search").oninput = renderGlossary;
+    $("gl-form").onsubmit = async e => { e.preventDefault(); try { await saveGlossary(); } catch (err) { $("gl-error").textContent = err.message; } };
     // sidebar nav (ticket queues + manage sections) — only real nav links, not action buttons
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-section]").forEach(item => {
       item.onclick = () => {

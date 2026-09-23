@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=62" />
-  <link rel="stylesheet" href="/static/staff.css?v=63" />
+  <link rel="stylesheet" href="/static/staff.css?v=64" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -69,6 +69,7 @@
       <aside class="sidebar">
         <nav class="side-nav" id="side-nav">
           <a class="nav-item side-home active" id="nav-dashboard">Dashboard</a>
+          <a class="nav-item side-home" id="nav-glossary">Glossary</a>
           <div class="nav-group" data-group="tickets">
             <button type="button" class="side-label" data-toggle>Tickets <span class="side-caret">▾</span></button>
             <div class="nav-group-body">
@@ -354,7 +355,32 @@
             <div id="users-empty" class="empty hidden"><div class="empty-emoji">👥</div><h3>No users</h3><p class="muted">Add a staff member or portal user.</p></div>
           </div>
         </section>
+
+        <!-- GLOSSARY (staff-only reference) -->
+        <section id="glossary-view" class="hidden">
+          <div class="page-head">
+            <div><h2>Glossary</h2><p class="muted">Staff-only reference — terms, acronyms &amp; definitions.</p></div>
+            <button class="btn btn-primary" id="gl-new-btn">+ Add term</button>
+          </div>
+          <div class="toolbar"><input type="search" id="gl-search" class="search-box" placeholder="Search terms or definitions…" /></div>
+          <div id="glossary-list" class="glossary-list"></div>
+          <div id="glossary-empty" class="empty hidden"><div class="empty-emoji">📖</div><h3>No terms yet</h3><p class="muted">Add your first glossary term.</p></div>
+        </section>
       </main>
+    </div>
+  </div>
+
+  <!-- GLOSSARY ADD/EDIT MODAL -->
+  <div id="gl-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2 id="gl-modal-title">Add term</h2><button class="modal-x" id="gl-close">×</button></div>
+      <form id="gl-form">
+        <input type="hidden" id="gl-id" />
+        <label>Term<input type="text" id="gl-term" required placeholder="e.g. SD-WAN" /></label>
+        <label>Definition<textarea id="gl-def" rows="4" required placeholder="What it means…"></textarea></label>
+        <div id="gl-error" class="form-error"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="gl-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
     </div>
   </div>
 
@@ -497,6 +523,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=76"></script>
+  <script src="/static/staff.js?v=77"></script>
 </body>
 </html>
