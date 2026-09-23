@@ -253,7 +253,7 @@ html[data-theme="dark"] .badge.closed      { background: rgba(107,114,128,.22); 
 .reply-form { border-top: 1px solid var(--border); padding-top: 16px; }
 .reply-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 10px; }
 .reply-attach { cursor: pointer; color: var(--text-soft); font-size: 18.75px; font-weight: 500;
-  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; margin-right: auto;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 8px 16px; }
 .reply-attach:hover { color: var(--text); border-color: var(--muted); }
 .desc-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
