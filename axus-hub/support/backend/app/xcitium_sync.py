@@ -10,7 +10,7 @@ Strategy (this instance has no user/customer/all-tickets list endpoint):
 Entry points:
   * backfill()      -- full historical import (sweep from id 1)
   * incremental()   -- import new ids past the high-water mark + re-sync open tickets
-  * run_scheduler() -- daemon loop that runs incremental at the top of every hour
+  * run_scheduler() -- daemon loop that runs incremental every SYNC_INTERVAL_SEC (default 15 min)
 
 CLI:  python -m app.xcitium_sync {backfill|incremental|status|discover}
 """
@@ -581,17 +581,23 @@ def delete_ticket(external_id: int):
         db.close()
 
 
-# ---------- top-of-hour scheduler ----------
+# ---------- interval scheduler ----------
 
-def _seconds_to_next_hour() -> float:
+# How often to re-sync the mirror. Default 15 minutes; override with
+# XCITIUM_SYNC_INTERVAL_SEC (e.g. 3600 for hourly).
+SYNC_INTERVAL_SEC = max(60, int(os.getenv("XCITIUM_SYNC_INTERVAL_SEC", "900")))
+
+
+def _seconds_to_next_tick() -> float:
+    """Sleep until the next interval boundary (e.g. :00/:15/:30/:45 for 15 min)."""
     now = time.time()
-    return 3600 - (now % 3600)
+    return SYNC_INTERVAL_SEC - (now % SYNC_INTERVAL_SEC)
 
 
 def run_scheduler():
-    """Daemon loop: backfill once if the mirror is empty, then run incremental at
-    the top of every hour. Exceptions are swallowed so the loop survives a bad run
-    (e.g. the Xcitium API being down, as it was on 2026-09-14)."""
+    """Daemon loop: backfill once if the mirror is empty, then run incremental every
+    SYNC_INTERVAL_SEC (default 15 min). Exceptions are swallowed so the loop survives
+    a bad run (e.g. the Xcitium API being down, as it was on 2026-09-14)."""
     try:
         apply_email_remap()   # keep requester-email remaps applied across restarts
         apply_org_remap()     # keep business renames applied across restarts
@@ -611,11 +617,11 @@ def run_scheduler():
         pass
 
     while True:
-        time.sleep(_seconds_to_next_hour())
+        time.sleep(_seconds_to_next_tick())
         try:
             incremental()
         except Exception as e:
-            print(f"[xcitium] hourly sync failed: {e}", flush=True)
+            print(f"[xcitium] scheduled sync failed: {e}", flush=True)
 
 
 def start_scheduler_thread():

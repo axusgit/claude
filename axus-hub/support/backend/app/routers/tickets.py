@@ -418,12 +418,20 @@ def update_ticket(ticket_id: int, data: TicketUpdate, background: BackgroundTask
                             changes["assigned_to_id"], current_user.id)
     # Notify everyone on the ticket (participants + staff) of meaningful updates.
     _NOTIFY_UPDATE_FIELDS = {"status": "Status", "priority": "Priority", "category": "Category"}
-    summary = [f"{label} changed to {_fmt(changes[f])}."
-               for f, label in _NOTIFY_UPDATE_FIELDS.items()
-               if f in changes and changes[f] != old.get(f)]
-    if summary:
-        background.add_task(notify.notify_participants_update, ticket.id,
-                            " ".join(summary), current_user.id, current_user.full_name)
+    status_closed = ("status" in changes and changes["status"] == TicketStatus.closed
+                     and old.get("status") != TicketStatus.closed)
+    if status_closed:
+        # Closing a case: send the combined "case closed" email to participants —
+        # including the client (reporter) — and to the intake inbox (info@).
+        background.add_task(notify.notify_participants_closed, ticket.id, "",
+                            current_user.id, current_user.full_name)
+    else:
+        summary = [f"{label} changed to {_fmt(changes[f])}."
+                   for f, label in _NOTIFY_UPDATE_FIELDS.items()
+                   if f in changes and changes[f] != old.get(f)]
+        if summary:
+            background.add_task(notify.notify_participants_update, ticket.id,
+                                " ".join(summary), current_user.id, current_user.full_name)
     return ticket
 
 
