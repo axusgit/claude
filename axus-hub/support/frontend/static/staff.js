@@ -1551,7 +1551,7 @@ const Staff = (() => {
       const withSig = $("reply-signature").checked;
       const files = Array.from($("reply-files").files || []);
       $("reply-body").value = ""; $("reply-internal").checked = false; $("reply-close").checked = false;
-      $("reply-signature").checked = true;   // default back to signing with your signature
+      $("reply-signature").checked = false;   // default: sign as "Axus Service Team"
       $("reply-form").classList.remove("internal-mode");
       $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
       try {
