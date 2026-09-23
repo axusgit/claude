@@ -193,7 +193,8 @@ def _participant_html(recipient_name, lead, block, t, link, note=None) -> str:
     <p style="margin:8px 0 2px;font-size:12px;color:#9aa1ac;letter-spacing:.4px;">TICKET {ref}</p>
     <h1 style="margin:2px 0 4px;font-size:20px;color:#1f2430;">{title}</h1>
     {desc_block}
-    <p style="margin:16px 0 4px;font-size:15px;line-height:1.55;color:#3a4150;">Hi {rn}, {ld}</p>
+    <p style="margin:16px 0 0;font-size:15px;line-height:1.55;color:#3a4150;">Hi {rn},</p>
+    <p style="margin:8px 0 4px;font-size:15px;line-height:1.55;color:#3a4150;">{ld}</p>
     {block_box}
     {btn}
     {note_html}
@@ -283,7 +284,7 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             link = ("" if not can_view else (staff_url if is_staff else portal_url))
             text = (f"Ticket {t.reference} — {t.title}\n"
                     + (f"\nDescription:\n{(t.description or '').strip()}\n" if (t.description or '').strip() else "")
-                    + f"\nHi {name or 'there'}, {lead}\n\n{(block or '').strip()}\n\n"
+                    + f"\nHi {name or 'there'},\n\n{lead}\n\n{(block or '').strip()}\n\n"
                     + (f"View it: {link}\n" if link else "")
                     + "\nYou're receiving this because you're a participant on this ticket.\n")
             html = _participant_html(name, lead, block, t, link)
