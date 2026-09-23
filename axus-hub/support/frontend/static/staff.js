@@ -297,8 +297,9 @@ const Staff = (() => {
 
   function renderQueue() {
     const q = ($("search").value || "").toLowerCase();
-    const fp = $("f-priority").value, fc = $("f-client").value;
+    const fp = $("f-priority").value, fc = $("f-client").value, fs = $("f-status").value;
     const rows = tickets.filter(matchesFilter).filter(t => {
+      if (fs && t.status !== fs) return false;
       if (fp && t.priority !== fp) return false;
       if (fc && String(t.client_id) !== fc) return false;
       if (q) {
@@ -1376,6 +1377,7 @@ const Staff = (() => {
     });
     // toolbar
     $("search").oninput = renderQueue;
+    $("f-status").onchange = renderQueue;
     $("f-priority").onchange = renderQueue;
     $("f-client").onchange = renderQueue;
     // column choosers
