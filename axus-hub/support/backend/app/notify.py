@@ -321,8 +321,8 @@ def notify_participants_closed(ticket_id: int, body: str = "", author_id=None, a
                          staff_to_inbox=True)
 
 
-TICKET_RECEIVED_MSG = ("Your service ticket has been received, and we are in the process "
-                       "of scheduling a technician.")
+TICKET_RECEIVED_MSG = ("Thank you for initiating a case with Axus Technologies. Our team will "
+                       "promptly review the case and provide you with a timely response.")
 
 
 def notify_ticket_received(ticket_id: int):
