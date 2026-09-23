@@ -974,10 +974,11 @@ const Staff = (() => {
   const roleBadge = { admin: "waiting", technician: "open", client: "in_progress" };
 
   async function refreshUsers() {
-    usersData = await api("/api/users/");
+    const inc = $("show-hidden") && $("show-hidden").checked ? "?include_hidden=true" : "";
+    usersData = await api("/api/users/" + inc);
     userMap = {}; usersData.forEach(u => userMap[u.id] = u.full_name);
     staffUsers = usersData.filter(u => u.role !== "client");
-    $("c-users").textContent = usersData.length;
+    $("c-users").textContent = usersData.filter(u => !u.hidden).length;
   }
 
   function renderUsers() {
@@ -997,16 +998,37 @@ const Staff = (() => {
     $("users-empty").classList.toggle("hidden", rows.length > 0);
     for (const u of rows) {
       const tr = document.createElement("tr");
+      if (u.hidden) tr.classList.add("row-hidden");
       tr.onclick = () => showUserModal(u);
+      const actions = u.id === me.id
+        ? `<span class="cell-muted">—</span>`
+        : `${u.hidden
+              ? `<button class="btn btn-ghost btn-xs" data-unhide-user="${u.id}">Unhide</button>`
+              : `<button class="btn btn-ghost btn-xs" data-hide-user="${u.id}" title="Move to the hidden holding business">Hide</button>`}` +
+          `<button class="btn btn-ghost btn-xs btn-danger" data-del-user="${u.id}" data-del-name="${esc(u.full_name)}">Delete</button>`;
       tr.innerHTML = `
-        <td class="cell-subject col-name">${esc(u.full_name)}</td>
+        <td class="cell-subject col-name">${esc(u.full_name)}${u.hidden ? ' <span class="badge closed">Hidden</span>' : ""}</td>
         <td class="cell-muted col-email">${esc(u.email)}</td>
         <td class="cell-muted col-phone">${esc(u.phone || "—")}</td>
         <td class="col-role"><span class="badge ${roleBadge[u.role] || "closed"}">${cap(u.role)}</span></td>
-        <td class="cell-muted col-business">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
+        <td class="cell-muted col-business">${u.hidden ? "Hidden" : (u.client_id ? esc(clientMap[u.client_id] || "—") : "—")}</td>
         <td class="cell-muted col-tickets">${u.assigned_tickets || 0}</td>
         <td class="col-status"><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>
-        <td class="user-actions col-actions">${u.id === me.id ? "<span class=\"cell-muted\">—</span>" : `<button class="btn btn-ghost btn-xs btn-danger" data-del-user="${u.id}" data-del-name="${esc(u.full_name)}">Delete</button>`}</td>`;
+        <td class="user-actions col-actions">${actions}</td>`;
+      const hideBtn = tr.querySelector("[data-hide-user]");
+      if (hideBtn) hideBtn.onclick = async (e) => {
+        e.stopPropagation();
+        try { await api(`/api/users/${hideBtn.dataset.hideUser}/hide`, { method: "POST" });
+          toast("User hidden"); await refreshUsers(); renderUsers(); }
+        catch (err) { toast(err.message); }
+      };
+      const unhideBtn = tr.querySelector("[data-unhide-user]");
+      if (unhideBtn) unhideBtn.onclick = async (e) => {
+        e.stopPropagation();
+        try { await api(`/api/users/${unhideBtn.dataset.unhideUser}/unhide`, { method: "POST" });
+          toast("User unhidden"); await refreshUsers(); renderUsers(); }
+        catch (err) { toast(err.message); }
+      };
       const del = tr.querySelector("[data-del-user]");
       if (del) del.onclick = async (e) => {
         e.stopPropagation();
@@ -1234,6 +1256,7 @@ const Staff = (() => {
     // users
     $("user-search").oninput = renderUsers;
     $("uf-role").onchange = renderUsers;
+    $("show-hidden").onchange = async () => { await refreshUsers(); renderUsers(); };
     $("new-user-btn").onclick = () => { $("users-dd-menu").classList.add("hidden"); showUserModal(null); };
     $("um-close").onclick = closeUserModal; $("uf-cancel").onclick = closeUserModal;
     $("user-form").onsubmit = async e => { e.preventDefault(); $("uf-error").textContent = ""; try { await saveUser(); } catch (err) { $("uf-error").textContent = err.message; } };

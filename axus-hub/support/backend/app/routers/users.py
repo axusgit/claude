@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from typing import List, Optional
 from app.database import get_db
 from app.models.user import User, UserRole
+from app.models.client import Client
 from app.models.ticket import Ticket, TicketComment, TicketActivity, TimeEntry
 from app.models.ticket_watcher import TicketWatcher
 from app.models.attachment import Attachment
@@ -13,6 +14,22 @@ from app.auth import get_current_user, hash_password, require_admin
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+# A hidden "holding" business (an inactive Client). Users parked here are kept
+# but hidden from the Users list and the Business list — a place for accounts
+# like the Authentik default admin that shouldn't be deleted or shown.
+HIDDEN_CLIENT_NAME = "System — Hidden"
+
+
+def _hidden_client(db: Session, create: bool = False) -> Optional[Client]:
+    c = db.query(Client).filter(Client.company_name == HIDDEN_CLIENT_NAME).first()
+    if c is None and create:
+        c = Client(company_name=HIDDEN_CLIENT_NAME, contact_name="", email="",
+                   is_active=False, source="system")
+        db.add(c); db.commit(); db.refresh(c)
+    elif c is not None and c.is_active:   # keep it inactive so it never shows as a business
+        c.is_active = False; db.commit()
+    return c
 
 
 def _user_ref_count(db: Session, uid: int) -> int:
@@ -38,6 +55,7 @@ class UserOut(BaseModel):
     is_active: bool
     client_id: Optional[int]
     assigned_tickets: int = 0   # native tickets currently assigned to this user
+    hidden: bool = False        # parked in the hidden holding business
 
     class Config:
         from_attributes = True
@@ -63,17 +81,23 @@ class UserUpdateIn(BaseModel):
 
 @router.get("/", response_model=List[UserOut])
 def list_users(role: Optional[str] = None, include_inactive: bool = False,
+               include_hidden: bool = False,
                db: Session = Depends(get_db), _=Depends(get_current_user)):
     """List users. Pass ?role=technician to get assignable staff only.
 
     Deactivated users (e.g. deleted in Xcitium and soft-deleted by the sync) are
-    hidden by default; pass ?include_inactive=true to see them.
+    hidden by default; pass ?include_inactive=true to see them. Users parked in
+    the hidden holding business are excluded unless ?include_hidden=true.
     """
+    # Ids of inactive clients = the hidden holding bucket(s).
+    hidden_ids = {r[0] for r in db.query(Client.id).filter(Client.is_active == False).all()}  # noqa: E712
     q = db.query(User)
     if role:
         q = q.filter(User.role == role)
     if not include_inactive:
         q = q.filter(User.is_active == True)  # noqa: E712
+    if not include_hidden and hidden_ids:
+        q = q.filter(or_(User.client_id.is_(None), User.client_id.notin_(hidden_ids)))
     users = q.order_by(User.full_name).all()
     # Ticket count per user. Native tickets link by user id; the Xcitium mirror (where
     # essentially all history lives, with no assignee) links by requester email, so we
@@ -86,6 +110,7 @@ def list_users(role: Optional[str] = None, include_inactive: bool = False,
               .group_by(func.lower(XcitiumTicket.user_email)).all())
     for u in users:
         u.assigned_tickets = native.get(u.id, 0) + xc.get((u.email or "").lower(), 0)
+        u.hidden = u.client_id in hidden_ids
     return users
 
 
@@ -140,6 +165,35 @@ def update_user(user_id: int, data: UserUpdateIn, db: Session = Depends(get_db),
         setattr(user, key, value)
     db.commit()
     db.refresh(user)
+    return user
+
+
+@router.post("/{user_id}/hide", response_model=UserOut)
+def hide_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """Park a user in the hidden holding business so it stays but doesn't show in
+    the Users or Business lists (e.g. the Authentik default admin)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You can't hide your own account")
+    user.client_id = _hidden_client(db, create=True).id
+    db.commit(); db.refresh(user)
+    user.hidden = True
+    return user
+
+
+@router.post("/{user_id}/unhide", response_model=UserOut)
+def unhide_user(user_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Remove a user from the hidden holding business (leaves them unassigned)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    hc = _hidden_client(db)
+    if hc and user.client_id == hc.id:
+        user.client_id = None
+        db.commit(); db.refresh(user)
+    user.hidden = False
     return user
 
 

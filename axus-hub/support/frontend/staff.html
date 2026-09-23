@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=52" />
-  <link rel="stylesheet" href="/static/staff.css?v=57" />
+  <link rel="stylesheet" href="/static/staff.css?v=58" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -330,6 +330,7 @@
           <div class="toolbar">
             <input type="search" id="user-search" placeholder="Search users…" class="search-box" />
             <select id="uf-role"><option value="">All roles</option><option value="staff">Staff (Admin + Technician)</option><option value="admin">Admin</option><option value="technician">Technician</option><option value="client">Client (portal)</option></select>
+            <label class="show-hidden-toggle"><input type="checkbox" id="show-hidden" /> Show hidden</label>
             <div class="col-picker">
               <button class="btn btn-ghost" id="usr-cols-btn" type="button" title="Show / hide columns">⊞ Columns</button>
               <div class="col-menu hidden" id="usr-cols-menu"></div>
@@ -467,6 +468,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=62"></script>
+  <script src="/static/staff.js?v=63"></script>
 </body>
 </html>
