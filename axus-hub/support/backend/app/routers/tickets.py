@@ -315,6 +315,7 @@ def create_ticket(data: TicketIn, background: BackgroundTasks, db: Session = Dep
     db.refresh(ticket)
     # Email staff: the assignee if pre-assigned, else the whole team (never the creator).
     background.add_task(notify.notify_new_ticket, ticket.id, current_user.id)
+    background.add_task(notify.notify_ticket_received, ticket.id)  # client ack (if reporter is a client)
     return ticket
 
 

@@ -164,13 +164,19 @@ def _portal_url() -> str:
     return f"https://support.{domain}/portal" if domain else ""
 
 
-def _participant_html(recipient_name, lead, block, t, link) -> str:
+def _participant_html(recipient_name, lead, block, t, link, note=None) -> str:
     import html as _h
     rn = _h.escape(recipient_name or "there")
     ld = _h.escape(lead or "")
     ref = _h.escape(t.reference or "")
     title = _h.escape(t.title or "")
     msg = _h.escape((block or "").strip()).replace("\n", "<br>")
+    block_box = (f'<div style="margin:10px 0 22px;padding:16px 18px;background:#f7f8fa;'
+                 f'border-left:4px solid #f26722;border-radius:6px;font-size:15px;'
+                 f'line-height:1.6;color:#1f2430;">{msg}</div>') if msg else ""
+    note_txt = "You're receiving this because you're a participant on this ticket." if note is None else note
+    note_html = (f'<p style="margin:24px 0 0;font-size:12px;line-height:1.5;color:#9aa1ac;">'
+                 f'{_h.escape(note_txt)}</p>') if note_txt else ""
     lk = _h.escape(link or "", quote=True)
     desc = _h.escape((t.description or "").strip()).replace("\n", "<br>")
     desc_block = (f'<p style="margin:12px 0 2px;font-size:11px;color:#9aa1ac;letter-spacing:.5px;">DESCRIPTION</p>'
@@ -190,9 +196,9 @@ def _participant_html(recipient_name, lead, block, t, link) -> str:
     <h1 style="margin:2px 0 4px;font-size:20px;color:#1f2430;">{title}</h1>
     {desc_block}
     <p style="margin:16px 0 4px;font-size:15px;line-height:1.55;color:#3a4150;">Hi {rn}, {ld}</p>
-    <div style="margin:10px 0 22px;padding:16px 18px;background:#f7f8fa;border-left:4px solid #f26722;border-radius:6px;font-size:15px;line-height:1.6;color:#1f2430;">{msg}</div>
+    {block_box}
     {btn}
-    <p style="margin:24px 0 0;font-size:12px;line-height:1.5;color:#9aa1ac;">You're receiving this because you're a participant on this ticket.</p>
+    {note_html}
   </td></tr>
   <tr><td style="padding:24px 32px 28px;"><p style="margin:20px 0 0;padding-top:16px;border-top:1px solid #eef0f3;font-size:12px;color:#9aa1ac;">Axus Technologies &middot; Simplifying IT</p></td></tr>
 </table>
@@ -284,3 +290,36 @@ def notify_participants_reply(ticket_id: int, body: str, author_id=None, author_
 def notify_participants_update(ticket_id: int, summary: str, author_id=None, author_name=None):
     """Notify everyone on a ticket that it was updated (status/priority/etc.)."""
     _notify_participants(ticket_id, author_id, author_name, "Updated", "updated this ticket:", summary)
+
+
+TICKET_RECEIVED_MSG = ("Your service ticket has been received, and we are in the process "
+                       "of scheduling a technician.")
+
+
+def notify_ticket_received(ticket_id: int):
+    """Email the client who opened a ticket a branded 'received' acknowledgement."""
+    if not _participants_enabled():
+        return
+    db = SessionLocal()
+    try:
+        t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not t or (t.reference or "").strip().upper().startswith("X"):
+            return
+        u = db.query(User).filter(User.id == t.reporter_user_id).first() if t.reporter_user_id else None
+        if not u or not u.email or _v(u.role) in ("admin", "technician"):
+            return  # only client reporters get the acknowledgement
+        if client_blocked(u.email):
+            return  # pre-production guard
+        link = _portal_url()
+        subject = f"[{t.reference}] Ticket received · {t.title}"
+        text = (f"Hi {u.full_name or 'there'},\n\n{TICKET_RECEIVED_MSG}\n\n"
+                f"Ticket {t.reference} — {t.title}\n"
+                + (f"\nDescription:\n{(t.description or '').strip()}\n" if (t.description or '').strip() else "")
+                + (f"\nView it: {link}\n" if link else "")
+                + "\n— Axus Service\n")
+        html = _participant_html(u.full_name, TICKET_RECEIVED_MSG, "", t, link, note="")
+        mailer.send_email([u.email], subject, text, html)
+    except Exception as e:
+        print(f"[notify] ticket_received failed: {e}", flush=True)
+    finally:
+        db.close()

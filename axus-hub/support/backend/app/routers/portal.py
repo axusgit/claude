@@ -238,7 +238,8 @@ def submit_ticket(
     db.commit()
     db.refresh(ticket)
     from app import notify
-    background.add_task(notify.notify_new_ticket, ticket.id)   # notify staff + info@ inbox
+    background.add_task(notify.notify_new_ticket, ticket.id)       # staff intake (info@)
+    background.add_task(notify.notify_ticket_received, ticket.id)  # client acknowledgement
     return ticket
 
 
