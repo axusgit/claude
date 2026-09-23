@@ -264,8 +264,9 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             c = db.query(Contact).filter(Contact.id == t.contact_id).first()
             if c and c.email and c.email.lower() not in seen and c.email.lower() not in SYS_EMAILS:
                 recips.append((getattr(c, "full_name", None), c.email, False, False))
-        # the intake inbox is always notified of any ticket change (staff monitor it)
-        if NEW_TICKET_INBOX and NEW_TICKET_INBOX.lower() not in seen:
+        # Staff side: the assigned tech (added above) gets it; if the ticket is
+        # UNASSIGNED, the intake inbox (info@) is notified instead.
+        if NEW_TICKET_INBOX and not t.assigned_to_id and NEW_TICKET_INBOX.lower() not in seen:
             recips.append((None, NEW_TICKET_INBOX, True, True))
         subject = f"[{t.reference}] {subject_word} · {t.title}"
         for name, email, is_staff, can_view in recips:
