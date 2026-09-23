@@ -21,3 +21,11 @@ http:
           - X-authentik-uid
           - X-authentik-jwt
           - X-Axus-Client-Id
+    # Pre-launch IP allowlist (TEMPORARY until go-live 2026-09-28). Only these
+    # sources reach the client portal entry paths. Remove the support-prelaunch
+    # router (docker-compose) at go-live to open the portal; geogate stays.
+    prelaunch:
+      ipAllowList:
+        sourceRange:
+          - "47.0.0.0/8"
+          - "172.191.189.223/32"

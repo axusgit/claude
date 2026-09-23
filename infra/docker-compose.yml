@@ -226,6 +226,14 @@ services:
       traefik.http.routers.support-clean-root.middlewares: geogate@file
       traefik.http.routers.support-clean-root.service: support
       traefik.http.routers.support-clean-root.priority: "100"
+      # PRE-LAUNCH LOCK (temporary until go-live 2026-09-28): client portal entry
+      # paths restricted to the prelaunch IP allowlist. Delete this router at go-live.
+      traefik.http.routers.support-prelaunch.rule: Host(`service.axustechnologies.com`) && (Path(`/`) || PathPrefix(`/portal`) || PathPrefix(`/api/portal`))
+      traefik.http.routers.support-prelaunch.entrypoints: websecure
+      traefik.http.routers.support-prelaunch.tls.certresolver: letsencrypt
+      traefik.http.routers.support-prelaunch.middlewares: prelaunch@file
+      traefik.http.routers.support-prelaunch.service: support
+      traefik.http.routers.support-prelaunch.priority: "200"
     networks: [axus]
 
   accounting:
