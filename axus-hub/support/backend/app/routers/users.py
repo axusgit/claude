@@ -15,20 +15,18 @@ from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-# A hidden "holding" business (an inactive Client). Users parked here are kept
-# but hidden from the Users list and the Business list — a place for accounts
-# like the Authentik default admin that shouldn't be deleted or shown.
-HIDDEN_CLIENT_NAME = "System — Hidden"
+# A "holding" business for accounts that should be kept but not shown in the Users
+# list (e.g. the Authentik default admin). The business itself is a normal, visible
+# business ("Dummy Business"); only its users are hidden from the Users list.
+HIDDEN_CLIENT_NAME = "Dummy Business"
 
 
 def _hidden_client(db: Session, create: bool = False) -> Optional[Client]:
     c = db.query(Client).filter(Client.company_name == HIDDEN_CLIENT_NAME).first()
     if c is None and create:
         c = Client(company_name=HIDDEN_CLIENT_NAME, contact_name="", email="",
-                   is_active=False, source="system")
+                   is_active=True, source="system")
         db.add(c); db.commit(); db.refresh(c)
-    elif c is not None and c.is_active:   # keep it inactive so it never shows as a business
-        c.is_active = False; db.commit()
     return c
 
 
@@ -89,8 +87,9 @@ def list_users(role: Optional[str] = None, include_inactive: bool = False,
     hidden by default; pass ?include_inactive=true to see them. Users parked in
     the hidden holding business are excluded unless ?include_hidden=true.
     """
-    # Ids of inactive clients = the hidden holding bucket(s).
-    hidden_ids = {r[0] for r in db.query(Client.id).filter(Client.is_active == False).all()}  # noqa: E712
+    # The holding business ("Dummy Business"); its users are hidden from the list.
+    _dummy = db.query(Client.id).filter(Client.company_name == HIDDEN_CLIENT_NAME).first()
+    hidden_ids = {_dummy[0]} if _dummy else set()
     q = db.query(User)
     if role:
         q = q.filter(User.role == role)

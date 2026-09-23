@@ -1011,7 +1011,7 @@ const Staff = (() => {
         <td class="cell-muted col-email">${esc(u.email)}</td>
         <td class="cell-muted col-phone">${esc(u.phone || "—")}</td>
         <td class="col-role"><span class="badge ${roleBadge[u.role] || "closed"}">${cap(u.role)}</span></td>
-        <td class="cell-muted col-business">${u.hidden ? "Hidden" : (u.client_id ? esc(clientMap[u.client_id] || "—") : "—")}</td>
+        <td class="cell-muted col-business">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
         <td class="cell-muted col-tickets">${u.assigned_tickets || 0}</td>
         <td class="col-status"><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>
         <td class="user-actions col-actions">${actions}</td>`;
