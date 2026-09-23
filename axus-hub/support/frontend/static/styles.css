@@ -184,6 +184,9 @@ html[data-theme="dark"] .topbar-logo { filter: brightness(0) invert(1); }
 .card-title { font-size: 15px; margin-bottom: 16px; }
 
 /* ---------- Ticket list ---------- */
+.portal-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 18px; }
+.portal-filters .pf-search { flex: 1; min-width: 200px; margin: 0; }
+.portal-filters select, .portal-filters .pf-date { width: auto; margin: 0; min-width: 130px; }
 .ticket-list { display: flex; flex-direction: column; gap: 14px; }
 .ticket-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px;

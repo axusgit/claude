@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=60" />
+  <link rel="stylesheet" href="/static/styles.css?v=61" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
     .login-sent { text-align: center; }
@@ -76,6 +76,19 @@
             <p class="muted" id="list-summary"></p>
           </div>
           <button class="btn btn-primary" id="new-ticket-btn">+ New Ticket</button>
+        </div>
+        <div class="portal-filters">
+          <input type="search" id="pf-search" class="pf-search" placeholder="Search tickets…" />
+          <select id="pf-status"><option value="">All statuses</option><option value="open">Open</option><option value="closed">Closed</option></select>
+          <select id="pf-range">
+            <option value="">All time</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="custom">Custom range…</option>
+          </select>
+          <input type="date" id="pf-from" class="pf-date" hidden title="From" />
+          <input type="date" id="pf-to" class="pf-date" hidden title="To" />
         </div>
         <div id="ticket-list" class="ticket-list"></div>
         <div id="list-empty" class="empty hidden">
@@ -207,6 +220,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=22"></script>
+  <script src="/static/app.js?v=23"></script>
 </body>
 </html>

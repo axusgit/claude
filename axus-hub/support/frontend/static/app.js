@@ -106,23 +106,49 @@ const App = (() => {
   }
 
   /* ---------- Tickets list ---------- */
+  let ticketsData = [];   // all of this client's tickets (filtered client-side)
   async function loadTickets() {
-    const tickets = await api("/api/portal/tickets");
+    ticketsData = await api("/api/portal/tickets");
+    renderTickets();
+  }
+  function renderTickets() {
     const list = $("ticket-list"), empty = $("list-empty");
-    list.innerHTML = "";
-    if (!tickets.length) {
+    if (!ticketsData.length) {
       empty.classList.remove("hidden"); list.classList.add("hidden");
       $("list-summary").textContent = "";
       return;
     }
     empty.classList.add("hidden"); list.classList.remove("hidden");
-    const open = tickets.filter(t => t.status !== "closed").length;
-    $("list-summary").textContent = `${tickets.length} total · ${open} open`;
-    for (const t of tickets) {
-      const el = document.createElement("div");
-      el.className = "ticket-card";
-      el.onclick = () => openTicket(t.id);
-      el.innerHTML = `
+    const q = ($("pf-search").value || "").trim().toLowerCase();
+    const st = $("pf-status").value;
+    const range = $("pf-range").value;
+    let from = null, to = null;
+    if (range === "custom") {
+      if ($("pf-from").value) from = new Date($("pf-from").value + "T00:00:00");
+      if ($("pf-to").value) to = new Date($("pf-to").value + "T23:59:59");
+    } else if (range) {
+      from = new Date(Date.now() - parseInt(range, 10) * 86400000);
+    }
+    const rows = ticketsData.filter(t => {
+      if (st === "open" && t.status === "closed") return false;
+      if (st === "closed" && t.status !== "closed") return false;
+      const created = new Date(t.created_at);
+      if (from && created < from) return false;
+      if (to && created > to) return false;
+      if (q) {
+        const hay = `${t.reference || ""} ${t.title || ""} ${t.category || ""} ${t.description || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    const openCount = ticketsData.filter(t => t.status !== "closed").length;
+    $("list-summary").textContent = `${rows.length} shown · ${ticketsData.length} total · ${openCount} open`;
+    if (!rows.length) {
+      list.innerHTML = `<div class="muted" style="padding:24px 4px">No tickets match your filters.</div>`;
+      return;
+    }
+    list.innerHTML = rows.map(t => `
+      <div class="ticket-card" data-id="${t.id}">
         <div class="tc-prio-bar prio ${t.priority}" style="background:currentColor"></div>
         <div class="tc-body">
           <div class="tc-title">${esc(t.title)}</div>
@@ -132,9 +158,9 @@ const App = (() => {
             <span>Updated ${fmtDate(t.updated_at || t.created_at)}</span>
           </div>
         </div>
-        <span class="badge ${t.status}">${t.status.replace("_", " ")}</span>`;
-      list.appendChild(el);
-    }
+        <span class="badge ${t.status}">${statusLabel(t.status)}</span>
+      </div>`).join("");
+    list.querySelectorAll(".ticket-card").forEach(el => el.onclick = () => openTicket(parseInt(el.dataset.id, 10)));
   }
 
   /* ---------- Ticket detail ---------- */
@@ -324,6 +350,15 @@ const App = (() => {
     };
     $("logout-btn").onclick = logout;
     $("new-ticket-btn").onclick = showNew;
+    $("pf-search").oninput = renderTickets;
+    $("pf-status").onchange = renderTickets;
+    $("pf-range").onchange = () => {
+      const custom = $("pf-range").value === "custom";
+      $("pf-from").hidden = !custom; $("pf-to").hidden = !custom;
+      renderTickets();
+    };
+    $("pf-from").onchange = renderTickets;
+    $("pf-to").onchange = renderTickets;
     $("modal-close").onclick = closeNew;
     $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showList(); loadTickets(); };
