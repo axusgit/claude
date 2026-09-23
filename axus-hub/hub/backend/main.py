@@ -29,7 +29,7 @@ INTERNAL_PORT = os.getenv("INTERNAL_PORT", "8443")
 # entitlement group; admins see everything. `internal` apps are Axus-staff-only
 # (served on :8443); non-internal apps are client-facing (:443).
 APP_CATALOG = [
-    {"key": "support", "name": "Support", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False, "staff_path": "/staff"},
+    {"key": "support", "name": "Service Desk", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False, "host": "service.axustechnologies.com", "staff_path": "/staff"},
     {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "url": "https://ain.axustechnologies.com/auth?sso=1", "health": "https://ain.axustechnologies.com/"},
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
     {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
@@ -83,7 +83,8 @@ def _apps_for(identity: Identity):
             path = "" if is_client else a.get("staff_path", "")
             # Apps hosted outside *.hub (e.g. Insights at ain.axustechnologies.com)
             # can pin an explicit URL; others are derived from the key + domain.
-            url = "#" if a.get("coming_soon") else (a.get("url") or f"https://{a['key']}.{PLATFORM_DOMAIN}{port}{path}")
+            host = a.get("host") or f"{a['key']}.{PLATFORM_DOMAIN}"
+            url = "#" if a.get("coming_soon") else (a.get("url") or f"https://{host}{port}{path}")
             apps.append({**a, "url": url})
     return apps
 
