@@ -200,7 +200,7 @@ services:
       postgres: {condition: service_healthy}
     labels:
       traefik.enable: "true"
-      traefik.http.routers.support.rule: Host(`support.${PLATFORM_DOMAIN}`) || Host(`support.axustechnologies.com`)
+      traefik.http.routers.support.rule: Host(`support.${PLATFORM_DOMAIN}`) || Host(`service.axustechnologies.com`)
       traefik.http.routers.support.entrypoints: websecure
       traefik.http.routers.support.tls.certresolver: letsencrypt
       traefik.http.routers.support.middlewares: geogate@file,authentik@file
@@ -208,15 +208,15 @@ services:
       # Customer portal + its assets + portal API bypass the staff Authentik SSO
       # (geogate only). Portal API is JWT-gated in the app; staff APIs on these
       # hosts still 401 without an Authentik identity, so nothing sensitive leaks.
-      traefik.http.routers.support-portal.rule: (Host(`support.${PLATFORM_DOMAIN}`) || Host(`support.axustechnologies.com`)) && (PathPrefix(`/portal`) || PathPrefix(`/api/portal`) || PathPrefix(`/static`))
+      traefik.http.routers.support-portal.rule: (Host(`support.${PLATFORM_DOMAIN}`) || Host(`service.axustechnologies.com`)) && (PathPrefix(`/portal`) || PathPrefix(`/api/portal`) || PathPrefix(`/static`))
       traefik.http.routers.support-portal.entrypoints: websecure
       traefik.http.routers.support-portal.tls.certresolver: letsencrypt
       traefik.http.routers.support-portal.middlewares: geogate@file
       traefik.http.routers.support-portal.service: support
       traefik.http.routers.support-portal.priority: "100"
       # Clean client domain: serve the portal at the ROOT (no SSO) so customers use
-      # support.axustechnologies.com instead of .../portal. Staff still use /staff (SSO).
-      traefik.http.routers.support-clean-root.rule: Host(`support.axustechnologies.com`) && Path(`/`)
+      # service.axustechnologies.com instead of .../portal. Staff still use /staff (SSO).
+      traefik.http.routers.support-clean-root.rule: Host(`service.axustechnologies.com`) && Path(`/`)
       traefik.http.routers.support-clean-root.entrypoints: websecure
       traefik.http.routers.support-clean-root.tls.certresolver: letsencrypt
       traefik.http.routers.support-clean-root.middlewares: geogate@file
