@@ -121,8 +121,9 @@ class TimeEntryOut(BaseModel):
 
 
 class CommentIn(BaseModel):
-    body: str
+    body: Optional[str] = None
     is_internal: bool = False  # internal note (staff-only) vs public reply to the client
+    close: bool = False        # also close the case (close-on-reply)
 
 
 class CommentOut(BaseModel):
@@ -483,7 +484,7 @@ def get_time_entries(ticket_id: int, db: Session = Depends(get_db), _=Depends(ge
     return db.query(TimeEntry).filter(TimeEntry.ticket_id == ticket_id).all()
 
 
-@router.post("/{ticket_id}/comments", response_model=CommentOut)
+@router.post("/{ticket_id}/comments")
 def add_comment(
     ticket_id: int,
     data: CommentIn,
@@ -495,25 +496,51 @@ def add_comment(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    comment = TicketComment(
-        ticket_id=ticket_id,
-        author_id=current_user.id,
-        body=data.body,
-        is_internal=data.is_internal,
-    )
-    db.add(comment)
-    _log_activity(
-        db, ticket_id, current_user.id, "comment_added",
-        "Internal note added" if data.is_internal else "Public reply added",
-    )
+    body = (data.body or "").strip()
+    # Posting a reply/note requires a message; closing the case (checkbox only) does not.
+    if not body and not data.close:
+        raise HTTPException(status_code=400, detail="Please enter your message before posting.")
+
+    comment = None
+    if body:
+        comment = TicketComment(
+            ticket_id=ticket_id,
+            author_id=current_user.id,
+            body=data.body,
+            is_internal=data.is_internal,
+        )
+        db.add(comment)
+        _log_activity(
+            db, ticket_id, current_user.id, "comment_added",
+            "Internal note added" if data.is_internal else "Public reply added",
+        )
+
+    closed = False
+    if data.close and ticket.status != TicketStatus.closed:
+        ticket.status = TicketStatus.closed
+        if not ticket.closed_at:
+            ticket.closed_at = datetime.utcnow()
+        _log_activity(db, ticket_id, current_user.id, "status_changed", "Closed by staff on reply")
+        closed = True
+
     db.commit()
-    db.refresh(comment)
-    # Public staff replies notify everyone on the ticket (reporter + participants).
-    if not data.is_internal:
-        from app import notify
+    if comment:
+        db.refresh(comment)
+
+    from app import notify
+    # A public reply's text rides along; an internal note is never emailed to the client.
+    public_body = body if (comment and not data.is_internal) else ""
+    if closed:
+        # One combined email: final public reply (if any) + close notice, staff -> info@.
+        background.add_task(notify.notify_participants_closed, ticket_id, public_body,
+                            current_user.id, current_user.full_name)
+    elif comment and not data.is_internal:
         background.add_task(notify.notify_participants_reply, ticket_id, data.body,
                             current_user.id, current_user.full_name)
-    return comment
+
+    if comment:
+        return CommentOut.model_validate(comment)
+    return {"ok": True, "closed": closed}
 
 
 @router.get("/{ticket_id}/comments", response_model=List[CommentOut])

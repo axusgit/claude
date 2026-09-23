@@ -267,8 +267,9 @@ def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
     from app import notify
     t = _owned_ticket(db, ticket_id, user)
     body = (data.body or "").strip()
+    # Posting a reply requires a message; closing the case (checkbox only) does not.
     if not body and not data.close:
-        raise HTTPException(status_code=400, detail="Write a reply or check 'Close this case'.")
+        raise HTTPException(status_code=400, detail="Please enter your message before posting.")
     comment = None
     if body:
         comment = TicketComment(ticket_id=ticket_id, author_id=user.id, body=body, is_internal=False)
@@ -283,11 +284,12 @@ def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
     db.commit()
     if comment:
         db.refresh(comment)
+    if closed:
+        # One combined email: the final reply (if any) + the close notice, staff -> info@.
+        background.add_task(notify.notify_participants_closed, ticket_id, body, user.id, user.full_name)
+    elif comment:
         background.add_task(notify.notify_customer_reply, ticket_id)  # staff broadcast (held by NOTIFY_ENABLED)
         background.add_task(notify.notify_participants_reply, ticket_id, body, user.id, user.full_name)
-    if closed:
-        background.add_task(notify.notify_participants_update, ticket_id,
-                            "The client closed this case.", user.id, user.full_name)
     return {"ok": True, "closed": closed}
 
 

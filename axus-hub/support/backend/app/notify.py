@@ -218,10 +218,15 @@ def _author_display(db, author_id, author_name):
     return author_name or "The Axus team"
 
 
-def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, block):
+def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, block,
+                         staff_to_inbox=False):
     """Email everyone on a ticket — reporter, added participants, and staff
     (assignee + creator) — except the author. `lead` is the sentence after the
-    greeting; `block` is the highlighted content (reply text or change summary)."""
+    greeting; `block` is the highlighted content (reply text or change summary).
+
+    When `staff_to_inbox` is True (case closures), the staff side is routed to the
+    intake inbox (info@) only — the assigned staff member is NOT emailed individually.
+    """
     if not _participants_enabled():
         return
     from app.models.ticket_watcher import TicketWatcher
@@ -245,8 +250,12 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             em = u.email.lower()
             if em in seen or em in SYS_EMAILS or u.id == author_id or u.client_id in hidden:
                 return
-            seen.add(em)
             is_staff = _v(u.role) in ("admin", "technician")
+            # On a closure, staff are notified via the intake inbox only — skip
+            # every individual staff member (assignee, creator, etc.).
+            if staff_to_inbox and is_staff:
+                return
+            seen.add(em)
             # Only staff, and the client who OPENED the ticket, can open it — so only
             # they get a working "View ticket" link. Participants get email updates only.
             can_view = is_staff or u.id in (t.reporter_user_id, t.created_by_id)
@@ -264,9 +273,11 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             c = db.query(Contact).filter(Contact.id == t.contact_id).first()
             if c and c.email and c.email.lower() not in seen and c.email.lower() not in SYS_EMAILS:
                 recips.append((getattr(c, "full_name", None), c.email, False, False))
-        # Staff side: the assigned tech (added above) gets it; if the ticket is
-        # UNASSIGNED, the intake inbox (info@) is notified instead.
-        if NEW_TICKET_INBOX and not t.assigned_to_id and NEW_TICKET_INBOX.lower() not in seen:
+        # Staff side: on a closure, always notify the intake inbox (info@) and never
+        # the assignee. Otherwise the assigned tech (added above) gets it, and only an
+        # UNASSIGNED ticket falls back to info@.
+        if NEW_TICKET_INBOX and NEW_TICKET_INBOX.lower() not in seen and (
+                staff_to_inbox or not t.assigned_to_id):
             recips.append((None, NEW_TICKET_INBOX, True, True))
         subject = f"[{t.reference}] {subject_word} · {t.title}"
         for name, email, is_staff, can_view in recips:
@@ -295,6 +306,22 @@ def notify_participants_reply(ticket_id: int, body: str, author_id=None, author_
 def notify_participants_update(ticket_id: int, summary: str, author_id=None, author_name=None):
     """Notify everyone on a ticket that it was updated (status/priority/etc.)."""
     _notify_participants(ticket_id, author_id, author_name, "Updated", "updated this ticket:", summary)
+
+
+def notify_participants_closed(ticket_id: int, body: str = "", author_id=None, author_name=None):
+    """Single combined 'closed' notification for participants + staff. If a final
+    reply accompanied the closure, its text is included in the SAME email (so the
+    last update and the close notice are never two separate messages). Staff are
+    notified via the intake inbox (info@), never the assignee individually."""
+    body = (body or "").strip()
+    if body:
+        verb = "posted a final reply and closed this case:"
+        block = body
+    else:
+        verb = "closed this case."
+        block = ""
+    _notify_participants(ticket_id, author_id, author_name, "Case closed", verb, block,
+                         staff_to_inbox=True)
 
 
 TICKET_RECEIVED_MSG = ("Your service ticket has been received, and we are in the process "

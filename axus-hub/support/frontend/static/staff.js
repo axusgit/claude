@@ -821,18 +821,23 @@ const Staff = (() => {
       catch (err) { toast(err.message); }
     });
   }
-  async function postReply(bodyText, internal, files) {
+  async function postReply(bodyText, internal, files, close) {
     // public replies (visible to the customer) get the staff member's signature appended
-    let body = bodyText;
-    if (!internal && me.signature) body += "\n\n" + me.signature;
-    await api(`/api/tickets/${current.id}/comments`, { method: "POST", body: { body, is_internal: internal } });
+    let body = bodyText || "";
+    if (body && !internal && me.signature) body += "\n\n" + me.signature;
+    // A single request posts the reply AND closes the case, so the close notice and
+    // the final reply go out as one combined email.
+    await api(`/api/tickets/${current.id}/comments`, {
+      method: "POST", body: { body: body || null, is_internal: internal, close: !!close },
+    });
     for (const f of (files || [])) {
       const fd = new FormData(); fd.append("file", f);
       try { await api(`/api/tickets/${current.id}/attachments`, { method: "POST", form: fd }); }
       catch (e) { toast(`Couldn't attach ${f.name}: ${e.message}`); }
     }
     await Promise.all([loadThread(current.id), loadActivity(current.id), loadAttachments(current.id)]);
-    toast(internal ? "Internal note added" : "Reply posted");
+    if (close) await openTicket(current.id);   // refresh status/priority badges after closing
+    toast(close ? "Case closed" : (internal ? "Internal note added" : "Reply posted"));
   }
   /* ---------- Signature ---------- */
   let sigLogo = null;  // pending logo data URL while the modal is open ("" = cleared)
@@ -1443,16 +1448,17 @@ const Staff = (() => {
       } catch (err) { $("canned-error").textContent = err.message; }
     };
     $("reply-form").onsubmit = async e => {
-      e.preventDefault(); const b = $("reply-body").value.trim(); if (!b) return;
-      const internal = $("reply-internal").checked;
+      e.preventDefault();
+      const b = $("reply-body").value.trim();
       const close = $("reply-close").checked;
+      if (!b && !close) { toast("Please enter your message before posting."); return; }
+      const internal = $("reply-internal").checked;
       const files = Array.from($("reply-files").files || []);
       $("reply-body").value = ""; $("reply-internal").checked = false; $("reply-close").checked = false;
       $("reply-form").classList.remove("internal-mode");
       $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
       try {
-        await postReply(b, internal, files);
-        if (close && current.status !== "closed") { $("d-status").value = "closed"; await patch("status", "closed"); }
+        await postReply(b, internal, files, close);
       } catch (err) { toast(err.message); }
     };
     $("time-form").onsubmit = async e => {

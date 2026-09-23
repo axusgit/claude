@@ -282,7 +282,7 @@ const App = (() => {
       catch (e) { toast(`Couldn't attach ${f.name}: ${e.message}`); }
     }
     if (close) { await openTicket(currentTicket); toast("Case closed"); }
-    else { await Promise.all([loadThread(currentTicket), loadAttachments(currentTicket)]); toast("Reply sent"); }
+    else { await Promise.all([loadThread(currentTicket), loadAttachments(currentTicket)]); toast("Posted"); }
   }
   async function uploadFile(file) {
     const fd = new FormData(); fd.append("file", file);
@@ -374,7 +374,7 @@ const App = (() => {
       e.preventDefault();
       const body = $("reply-body").value.trim();
       const close = $("reply-close").checked;
-      if (!body && !close) { toast("Write a reply or check 'Close this case'."); return; }
+      if (!body && !close) { toast("Please enter your message before posting."); return; }
       const files = Array.from($("reply-files").files || []);
       $("reply-body").value = ""; $("reply-close").checked = false;
       $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
