@@ -19,6 +19,8 @@ from app import mailer
 # System/automation accounts that should never receive notifications.
 SYS_EMAILS = {"email-intake@axustechnologies.com"}
 STAFF_ROLES = (UserRole.admin, UserRole.technician)
+# Every new ticket is also emailed here (the ticket intake inbox).
+NEW_TICKET_INBOX = os.getenv("NEW_TICKET_INBOX", "info@axustechnologies.com")
 
 
 def _enabled() -> bool:
@@ -78,15 +80,18 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not t:
             return
-        if t.assigned_to_id:
-            if t.assigned_to_id == exclude_user_id:
-                return  # creator assigned it to themselves — no need to email
+        recips = set()
+        if t.assigned_to_id and t.assigned_to_id != exclude_user_id:
             a = db.query(User).filter(User.id == t.assigned_to_id).first()
-            recips = [a.email] if a and a.email else []
-        else:
-            recips = _staff_emails(db, exclude_id=exclude_user_id)
+            if a and a.email:
+                recips.add(a.email)
+        elif not t.assigned_to_id:
+            recips.update(_staff_emails(db, exclude_id=exclude_user_id))
+        # every new ticket also goes to the intake inbox (info@)
+        if NEW_TICKET_INBOX:
+            recips.add(NEW_TICKET_INBOX)
         if recips:
-            mailer.send_email(_to(recips), f"[New] {t.reference} · {t.title}",
+            mailer.send_email(_to(sorted(recips)), f"[New] {t.reference} · {t.title}",
                               _body(t, "A new ticket was created."))
     except Exception as e:
         print(f"[notify] new_ticket failed: {e}", flush=True)

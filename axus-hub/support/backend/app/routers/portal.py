@@ -211,6 +211,7 @@ def my_tickets(
 @router.post("/tickets", response_model=TicketOut)
 def submit_ticket(
     data: PortalTicketIn,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(require_client_user),
 ):
@@ -233,6 +234,8 @@ def submit_ticket(
     _log_activity(db, ticket.id, user.id, "created", f"Submitted via portal: {ticket.title}")
     db.commit()
     db.refresh(ticket)
+    from app import notify
+    background.add_task(notify.notify_new_ticket, ticket.id)   # notify staff + info@ inbox
     return ticket
 
 

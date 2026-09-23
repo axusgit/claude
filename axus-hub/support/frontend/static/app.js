@@ -5,6 +5,9 @@ const App = (() => {
   let token = localStorage.getItem(TOKEN_KEY) || null;
   let me = null;            // { id, full_name, role }
   let currentTicket = null; // id of open ticket
+  const PRIO_LABEL = { low: "Low", medium: "Normal", high: "High", critical: "Critical" };
+  const prioLabel = p => PRIO_LABEL[p] || (p || "");
+  const statusLabel = s => (s || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
   // File types a customer may attach (must match the server-side whitelist).
   const ALLOWED_EXTS = new Set([
     ".doc", ".pdf", ".jpg", ".jpeg", ".gif", ".png", ".xls", ".docx", ".xlsx",
@@ -140,9 +143,9 @@ const App = (() => {
     const t = await api(`/api/portal/tickets/${id}`);
     $("d-ref").textContent = t.reference || "";
     $("d-status").className = "badge " + t.status;
-    $("d-status").textContent = t.status.replace("_", " ");
-    $("d-priority").className = "prio " + t.priority;
-    $("d-priority").textContent = t.priority;
+    $("d-status").textContent = statusLabel(t.status);
+    $("d-priority").className = "prio-badge " + t.priority;
+    $("d-priority").textContent = prioLabel(t.priority);
     $("d-title").textContent = t.title;
     $("d-desc").textContent = t.description || "No description provided.";
     $("d-category").textContent = t.category || "Uncategorized";

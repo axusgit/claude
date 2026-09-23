@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=59" />
+  <link rel="stylesheet" href="/static/styles.css?v=60" />
   <link rel="stylesheet" href="/static/staff.css?v=62" />
 </head>
 <body>
@@ -157,6 +157,8 @@
           <div class="detail-top card">
             <div class="detail-top-head">
               <span id="d-ref" class="ref-pill"></span>
+              <span id="d-status-badge" class="badge"></span>
+              <span id="d-prio-badge" class="prio-badge"></span>
               <h2 id="d-title"></h2>
               <button class="btn btn-ghost btn-xs" id="convert-project-btn" style="margin-left:auto">★ Convert to Project</button>
               <button class="btn btn-ghost btn-xs" id="edit-ticket-btn">✎ Edit ticket</button>
@@ -172,7 +174,7 @@
               </label>
               <label class="ctl">Priority
                 <select id="d-priority">
-                  <option value="low">Low</option><option value="medium">Normal</option><option value="high">High</option><option value="critical">Critical</option>
+                  <option value="critical">Critical</option><option value="high">High</option><option value="medium">Normal</option><option value="low">Low</option>
                 </select>
               </label>
               <label class="ctl">Assignee
@@ -431,7 +433,7 @@
         <label>Description<textarea id="nt-desc" rows="3" placeholder="Details…"></textarea></label>
         <div class="form-row">
           <label>Category<select id="nt-category"><option value="">— Select —</option><option>ATA</option><option>Cabling</option><option>Call manager</option><option>Cellular Gateway</option><option>Circuit</option><option>Firewall</option><option>ISP</option><option>Laptop</option><option>Mobile</option><option>PBX</option><option>Phone</option><option>Printer</option><option>Router</option><option>SD-WAN</option><option>Server</option><option>Software</option><option>Switch</option><option>UPS</option><option>Voice/video gateway</option><option>Wireless access point</option><option>Wireless controller</option><option>Workstation</option><option>Other</option></select></label>
-          <label>Priority<select id="nt-priority"><option value="low">Low</option><option value="medium" selected>Normal</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+          <label>Priority<select id="nt-priority"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Normal</option><option value="low">Low</option></select></label>
         </div>
         <div class="form-row">
           <label>Assignee<select id="nt-assignee"><option value="">Unassigned</option></select></label>
@@ -490,6 +492,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=67"></script>
+  <script src="/static/staff.js?v=69"></script>
 </body>
 </html>

@@ -88,6 +88,9 @@ const Staff = (() => {
     return map;
   };
   const cap = s => (s || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+  const PRIO_LABEL = { low: "Low", medium: "Normal", high: "High", critical: "Critical" };
+  const prioLabel = p => PRIO_LABEL[p] || cap(p);
+  const statusLabel = s => cap(s);
   function fmtDate(s) { if (!s) return ""; return new Date(s).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
   function fileSize(b) { if (b < 1024) return b + " B"; if (b < 1048576) return (b / 1024).toFixed(0) + " KB"; return (b / 1048576).toFixed(1) + " MB"; }
   function toast(m) { const t = $("toast"); t.textContent = m; t.classList.remove("hidden"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.add("hidden"), 2400); }
@@ -317,7 +320,7 @@ const Staff = (() => {
         <td class="cell-subject col-subject">${esc(t.title)}</td>
         <td class="cell-muted col-company">${esc(t.client_name || clientMap[t.client_id] || "—")}</td>
         <td class="cell-muted col-board">${t.board_id ? esc(boardMap[t.board_id] || "—") : "—"}</td>
-        <td class="col-priority"><span class="prio-dot prio ${t.priority}">${cap(t.priority)}</span></td>
+        <td class="col-priority"><span class="prio-dot prio ${t.priority}">${prioLabel(t.priority)}</span></td>
         <td class="col-status"><span class="badge ${t.status}">${cap(t.status)}</span></td>
         <td class="col-assignee">${aName
           ? `<span class="assignee-pill"><span class="mini-avatar" style="${avatarStyle(avatarColor(aName))}">${initials(aName)}</span>${esc(aName)}</span>`
@@ -453,6 +456,8 @@ const Staff = (() => {
     $("delete-ticket-btn").hidden = true;
     $("promote-btn").hidden = false;   // "Edit ticket" → import into Axus as editable
     $("d-ref").textContent = `X-${externalId}`;
+    $("d-status-badge").className = "badge"; $("d-status-badge").textContent = t.status || "";
+    $("d-prio-badge").className = "prio-badge"; $("d-prio-badge").textContent = t.priority || "";
     $("d-title").textContent = t.subject || "(no subject)";
     $("d-desc").textContent = (t.threads && t.threads.length)
       ? htmlToText(t.threads[0].body) : (t.subject || "No description provided.");
@@ -481,6 +486,10 @@ const Staff = (() => {
     applyReadonly(false);
     current = await api(`/api/tickets/${id}`);
     $("d-ref").textContent = current.reference || "";
+    $("d-status-badge").className = "badge " + current.status;
+    $("d-status-badge").textContent = statusLabel(current.status);
+    $("d-prio-badge").className = "prio-badge " + current.priority;
+    $("d-prio-badge").textContent = prioLabel(current.priority);
     $("d-title").textContent = current.title;
     $("d-desc").textContent = current.description || "No description provided.";
     $("d-status").value = current.status;

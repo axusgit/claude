@@ -212,8 +212,19 @@ html[data-theme="dark"] .badge.resolved    { background: rgba(22,163,74,.20); co
 html[data-theme="dark"] .badge.closed      { background: rgba(107,114,128,.22); color: #aab2bf; }
 
 .prio { font-size: 12px; font-weight: 600; text-transform: capitalize; }
-.prio.low { color: #16a34a; } .prio.medium { color: #2563eb; }
-.prio.high { color: var(--orange); } .prio.critical { color: #e5484d; }
+.prio.low { color: #22c55e; } .prio.medium { color: #2563eb; }
+.prio.high { color: #e07b1a; } .prio.critical { color: #e5484d; }
+/* Priority badges (colored pills): Critical=red, High=orange, Normal=blue, Low=light green */
+.prio-badge { font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 999px;
+  white-space: nowrap; display: inline-block; }
+.prio-badge.critical { background: #fdecec; color: #e5484d; }
+.prio-badge.high     { background: #fff3e0; color: #d9701a; }
+.prio-badge.medium   { background: #e7f0ff; color: #2563eb; }
+.prio-badge.low      { background: #e8fbf0; color: #16a34a; }
+html[data-theme="dark"] .prio-badge.critical { background: rgba(229,72,77,.20); color: #ff8b8f; }
+html[data-theme="dark"] .prio-badge.high     { background: rgba(217,112,26,.20); color: #f0a35a; }
+html[data-theme="dark"] .prio-badge.medium   { background: rgba(37,99,235,.18); color: #7aa7ff; }
+html[data-theme="dark"] .prio-badge.low      { background: rgba(34,197,94,.18); color: #6ee7a0; }
 .chip { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-soft);
   font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 8px; }
 
