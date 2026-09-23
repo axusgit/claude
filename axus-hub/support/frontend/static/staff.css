@@ -126,7 +126,7 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
   color: var(--text-soft); white-space: nowrap; cursor: pointer; }
 .show-hidden-toggle input { width: auto; margin: 0; }
 tr.row-hidden { opacity: .6; }
-.reply-actions { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; }
+.reply-actions { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; }
 
 /* internal note styling in thread */
 .msg.internal .msg-bubble { background: #eef3ff; border-color: #c3d6ff; }
