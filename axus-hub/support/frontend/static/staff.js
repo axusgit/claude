@@ -846,7 +846,9 @@ const Staff = (() => {
     // personal signature when "Include my signature" is on, otherwise "Axus Service Team".
     let body = bodyText || "";
     if (body && !internal) {
-      body += (withSig && me.signature) ? "\n\n" + me.signature : "\n\nAxus Service Team";
+      body += (withSig && me.signature)
+        ? "\n\n" + me.signature
+        : "\n\nThank you for choosing our services.\nAxus Service Team";
     }
     // A single request posts the reply AND closes the case, so the close notice and
     // the final reply go out as one combined email.
