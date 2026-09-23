@@ -53,7 +53,7 @@ def require_client_user(request: Request, db: Session = Depends(get_db)) -> User
 # ---------- passwordless magic-link sign-in ----------
 MAGIC_TTL_MIN = int(os.getenv("PORTAL_MAGIC_TTL_MIN", "15"))
 PORTAL_SESSION_MIN = int(os.getenv("PORTAL_SESSION_MIN", str(30 * 24 * 60)))  # 30 days
-PORTAL_URL = os.getenv("PORTAL_URL") or f"https://support.{os.getenv('PLATFORM_DOMAIN', '')}/portal"
+PORTAL_URL = os.getenv("PORTAL_URL") or "https://service.axustechnologies.com/portal"
 _NEUTRAL = {"ok": True, "message": "If that email is on file, a sign-in link is on its way."}
 
 

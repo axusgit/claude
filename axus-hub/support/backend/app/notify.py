@@ -53,8 +53,8 @@ def _to(recips):
 
 
 def _ticket_url() -> str:
-    domain = os.getenv("PLATFORM_DOMAIN", "")
-    return f"https://support.{domain}/staff" if domain else ""
+    # Staff app lives on the clean service domain (STAFF_URL overrides).
+    return (os.getenv("STAFF_URL") or "https://service.axustechnologies.com/staff").strip()
 
 
 def _v(x):
@@ -159,10 +159,7 @@ def _participants_enabled() -> bool:
 
 def _portal_url() -> str:
     url = (os.getenv("PORTAL_URL") or "").strip()
-    if url:
-        return url
-    domain = os.getenv("PLATFORM_DOMAIN", "")
-    return f"https://support.{domain}/portal" if domain else ""
+    return url or "https://service.axustechnologies.com/portal"
 
 
 def _participant_html(recipient_name, lead, block, t, link, note=None) -> str:
