@@ -449,9 +449,12 @@ const Staff = (() => {
     const t = await api(`/api/xcitium/tickets/${externalId}`);
     current = { id: -externalId, source: "xcitium" };
     applyReadonly(true);
+    $("delete-ticket-btn").hidden = true;
+    $("promote-btn").hidden = false;   // "Edit ticket" → import into Axus as editable
     $("d-ref").textContent = `X-${externalId}`;
     $("d-title").textContent = t.subject || "(no subject)";
-    $("d-desc").innerHTML = `<span class="ro-banner">Read-only — imported from Xcitium Service Desk</span>`;
+    $("d-desc").textContent = (t.threads && t.threads.length)
+      ? htmlToText(t.threads[0].body) : (t.subject || "No description provided.");
     $("p-company").textContent = t.organization || "—";
     $("p-contact").textContent = t.user || "—";
     $("p-project").textContent = "—";
@@ -490,6 +493,7 @@ const Staff = (() => {
     $("p-type").textContent = isProject ? "Project (SOW)" : "Standard";
     $("convert-project-btn").style.display = isProject ? "none" : "";  // hide once it's a project
     $("delete-ticket-btn").hidden = !(me && me.role === "admin");      // admins only
+    $("promote-btn").hidden = true;                                    // native tickets are already editable
     $("p-hours").textContent = (current.total_hours || 0) + " h";
     $("p-created").textContent = fmtDate(current.created_at);
     // resolve the reporting user's name
@@ -837,6 +841,17 @@ const Staff = (() => {
     await api(`/api/tickets/${current.id}/attachments`, { method: "POST", form: fd });
     await Promise.all([loadAttachments(current.id), loadActivity(current.id)]);
     toast("File uploaded");
+  }
+  async function promoteXcitium() {
+    if (!current || current.source !== "xcitium") return;
+    const ext = -current.id;
+    if (!confirm("Import this Xcitium ticket into Axus so you can edit it?\n\nThe imported copy becomes a normal editable ticket, and the hourly sync will no longer overwrite it.")) return;
+    try {
+      const r = await api(`/api/xcitium/tickets/${ext}/promote`, { method: "POST" });
+      toast("Imported — now editable");
+      await loadTickets();
+      await openTicket(r.id);
+    } catch (err) { toast(err.message); }
   }
   async function deleteTicket() {
     const ref = current.reference || "this ticket";
@@ -1219,6 +1234,7 @@ const Staff = (() => {
     $("edit-ticket-btn").onclick = () => showEditTicket();
     $("convert-project-btn").onclick = convertToProject;
     $("delete-ticket-btn").onclick = deleteTicket;
+    $("promote-btn").onclick = promoteXcitium;
     $("pt-add-btn").onclick = newTicketInProject;
     $("modal-close").onclick = closeNew; $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showQueue(); };
