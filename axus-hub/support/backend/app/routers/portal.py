@@ -16,7 +16,7 @@ import hashlib
 from pydantic import BaseModel, EmailStr
 
 from app.database import get_db
-from app.models.ticket import Ticket, TicketComment, TicketType, TicketStatus
+from app.models.ticket import Ticket, TicketComment, TicketType, TicketStatus, TicketPriority
 from app.models.attachment import Attachment
 from app.models.user import User, UserRole
 from app.models.magic_token import PortalMagicToken
@@ -181,6 +181,18 @@ class PortalReplyIn(BaseModel):
     close: bool = False   # client closes the case (with the inline legal confirmation)
 
 
+class PortalPriorityIn(BaseModel):
+    priority: str
+
+
+# Clients may ESCALATE (raise) a ticket's priority, never lower it.
+_PRIORITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+
+def _prio_str(p) -> str:
+    return (p.value if hasattr(p, "value") else str(p or "medium")).lower()
+
+
 @router.get("/me")
 def whoami(user: User = Depends(require_client_user), db: Session = Depends(get_db)):
     from app.models.client import Client
@@ -297,6 +309,30 @@ def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
         background.add_task(notify.notify_customer_reply, ticket_id)  # staff broadcast (held by NOTIFY_ENABLED)
         background.add_task(notify.notify_participants_reply, ticket_id, body, user.id, user.full_name)
     return {"ok": True, "closed": closed}
+
+
+@router.patch("/tickets/{ticket_id}/priority")
+def raise_priority(ticket_id: int, data: PortalPriorityIn, background: BackgroundTasks,
+                   db: Session = Depends(get_db), user: User = Depends(require_client_user)):
+    """Client-side escalation: raise a ticket's priority only (never lower it)."""
+    from app import notify
+    t = _owned_ticket(db, ticket_id, user)
+    if t.status == TicketStatus.closed:
+        raise HTTPException(status_code=409, detail="This case is closed.")
+    new = (data.priority or "").strip().lower()
+    if new not in _PRIORITY_RANK:
+        raise HTTPException(status_code=400, detail="Invalid priority.")
+    cur = _prio_str(t.priority)
+    if _PRIORITY_RANK[new] <= _PRIORITY_RANK.get(cur, 1):
+        raise HTTPException(status_code=400, detail="You can only raise the priority, not lower it.")
+    t.priority = TicketPriority(new)
+    _log_activity(db, ticket_id, user.id, "priority_changed",
+                  f"Client raised priority from {cur} to {new}")
+    db.commit()
+    # Notify staff + participants of the escalation (assignee, else info@).
+    background.add_task(notify.notify_participants_update, ticket_id,
+                        f"Priority raised to {new.capitalize()}.", user.id, user.full_name)
+    return {"ok": True, "priority": new}
 
 
 # ----- Participants (people on a ticket) — clients may add colleagues from their org -----

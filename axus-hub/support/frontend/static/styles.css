@@ -248,6 +248,10 @@ html[data-theme="dark"] .prio-badge.low      { background: rgba(34,197,94,.18); 
 .meta-lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
   color: var(--muted); margin-left: 4px; }
 .dt-meta .meta-lbl:first-of-type, .detail-head .meta-lbl:first-of-type { margin-left: 6px; }
+/* Client escalate ("Raise priority…") dropdown */
+.raise-prio { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface, #fff); color: var(--text);
+  cursor: pointer; margin-left: 4px; width: auto; margin-top: 0; }
 /* Client ticket header (portal) */
 .ticket-head { padding: 22px 24px; }
 .ticket-title { font-size: 22px; font-weight: 700; line-height: 1.25; letter-spacing: -.2px; margin: 0 0 12px; }

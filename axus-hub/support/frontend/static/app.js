@@ -15,6 +15,18 @@ const App = (() => {
     medium: "Normal — a standard request handled in the normal course of business (the default priority).",
     low: "Low — a minor or non-urgent request scheduled after higher-priority work.",
   };
+  const PRIO_ORDER = ["low", "medium", "high", "critical"];   // ascending
+  // Populate the escalate dropdown with ONLY priorities higher than the current one
+  // (clients can raise, never lower). Hidden when closed or already at the top.
+  function fillRaisePriority(t) {
+    const sel = $("d-raise-prio");
+    const cur = PRIO_ORDER.indexOf(t.priority);
+    const higher = (t.status === "closed" || cur < 0) ? [] : PRIO_ORDER.slice(cur + 1);
+    if (!higher.length) { sel.hidden = true; sel.innerHTML = ""; return; }
+    sel.innerHTML = `<option value="">⬆ Raise priority…</option>` +
+      higher.map(p => `<option value="${p}">${prioLabel(p)}</option>`).join("");
+    sel.hidden = false;
+  }
   const statusLabel = s => (s || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
   // File types a customer may attach (must match the server-side whitelist).
   const ALLOWED_EXTS = new Set([
@@ -181,6 +193,7 @@ const App = (() => {
     $("d-priority").className = "prio-badge " + t.priority;
     $("d-priority").textContent = prioLabel(t.priority);
     $("d-priority").title = PRIO_MEANING[t.priority] || "";
+    fillRaisePriority(t);
     $("d-title").textContent = t.title;
     $("d-desc").textContent = t.description || "No description provided.";
     $("d-category").textContent = t.category || "Uncategorized";
@@ -382,6 +395,16 @@ const App = (() => {
     $("modal-close").onclick = closeNew;
     $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showList(); loadTickets(); };
+    $("d-raise-prio").onchange = async e => {
+      const p = e.target.value; e.target.value = "";
+      if (!p) return;
+      if (!confirm(`Raise this ticket's priority to ${prioLabel(p)}? Priority can be raised but not lowered from the portal.`)) return;
+      try {
+        await api(`/api/portal/tickets/${currentTicket}/priority`, { method: "PATCH", body: { priority: p } });
+        await openTicket(currentTicket);
+        toast(`Priority raised to ${prioLabel(p)}`);
+      } catch (err) { toast(err.message); }
+    };
     $("participant-add-btn").onclick = addParticipant;
     $("participant-email-btn").onclick = addParticipantEmail;
     $("participant-email").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addParticipantEmail(); } };
