@@ -226,10 +226,11 @@ _XCITIUM_PRIORITY = {"low": "low", "normal": "medium", "medium": "medium",
                      "high": "high", "critical": "critical", "emergency": "critical"}
 
 
-def _xcitium_row(xt) -> TicketOut:
+def _xcitium_row(xt, board_id=None) -> TicketOut:
     """Shape one mirrored Xcitium ticket as a read-only TicketOut. The id is the
     negative external id so it never collides with a native ticket id and the UI
-    can route it to the read-only detail endpoint."""
+    can route it to the read-only detail endpoint. `board_id` places the row on the
+    Support board so imported cases appear there alongside native tickets."""
     return TicketOut(
         id=-xt.external_id,
         # Prefer the real Xcitium ticket number (from the CSV export) when known.
@@ -241,7 +242,7 @@ def _xcitium_row(xt) -> TicketOut:
         priority=_XCITIUM_PRIORITY.get((xt.priority or "").lower(), "medium"),
         ticket_type="standard",
         origin=None,   # unknown for legacy mirrored rows
-        client_id=0, board_id=None, contact_id=None, reporter_user_id=None,
+        client_id=0, board_id=board_id, contact_id=None, reporter_user_id=None,
         assigned_to_id=None, project_id=None, created_by_id=0,
         total_hours=0.0, invoiced=False,
         created_at=xt.create_date or xt.synced_at,
@@ -271,8 +272,10 @@ def list_tickets(
     # client, since imported rows have no native client_id).
     if include_xcitium and not client_id:
         from app.models.xcitium import XcitiumTicket
+        from app.models.board import default_board_id
+        support_board = default_board_id(db)   # imported cases live on the Support board
         xq = db.query(XcitiumTicket)
-        xrows = [_xcitium_row(x) for x in xq.all()]
+        xrows = [_xcitium_row(x, support_board) for x in xq.all()]
         if status:
             xrows = [r for r in xrows if r.status == status]
         rows.extend(xrows)
