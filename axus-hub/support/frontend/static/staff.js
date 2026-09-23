@@ -298,10 +298,18 @@ const Staff = (() => {
   function renderQueue() {
     const q = ($("search").value || "").toLowerCase();
     const fp = $("f-priority").value, fc = $("f-client").value, fs = $("f-status").value;
+    // Imported Xcitium tickets have no native client_id (0); they carry the company
+    // as client_name. Match the selected business by id OR by name so those rows
+    // (e.g. RL Carriers' closed cases) are included.
+    const fcName = fc ? (clientMap[fc] || "").trim().toLowerCase() : "";
     const rows = tickets.filter(matchesFilter).filter(t => {
       if (fs && t.status !== fs) return false;
       if (fp && t.priority !== fp) return false;
-      if (fc && String(t.client_id) !== fc) return false;
+      if (fc) {
+        const byId = String(t.client_id) === fc;
+        const byName = fcName && (t.client_name || "").trim().toLowerCase() === fcName;
+        if (!byId && !byName) return false;
+      }
       if (q) {
         const hay = `${t.reference} ${t.title} ${t.client_name || clientMap[t.client_id] || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
