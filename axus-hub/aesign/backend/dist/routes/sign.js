@@ -31,11 +31,11 @@ async function sealAndNotify(envId, signerName) {
         await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'completed', $2)`, [envId, `Sealed. SHA-256 ${sha256}`]);
         logActivity("system", "Completed document", e.title, e.id);
         for (const r of recs.rows) {
-            await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment });
+            await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment, envelopeId: envId, recipientId: r.id });
         }
         // Also notify the sender (staff) with the final signed copy.
         if (e.created_by && !recs.rows.some((r) => r.email === e.created_by)) {
-            await sendCompleted({ to: e.created_by, recipientName: "Axus Team", title: e.title, attachment });
+            await sendCompleted({ to: e.created_by, recipientName: "Axus Team", title: e.title, attachment, envelopeId: envId });
         }
         // If this is an On Call quote, notify On Call so it shows under Invoices.
         // Fire-and-forget (the helper never throws) so completion stays snappy.
@@ -55,6 +55,8 @@ async function sealAndNotify(envId, signerName) {
                     title: e.title,
                     signerName,
                     attachment,
+                    envelopeId: envId,
+                    recipientId: r.id,
                 });
             }
             else {
@@ -67,6 +69,8 @@ async function sealAndNotify(envId, signerName) {
                     signerName,
                     title: e.title,
                     url: `${config.publicBaseUrl}/sign/${r.sign_token}`,
+                    envelopeId: envId,
+                    recipientId: r.id,
                 });
             }
         }
@@ -204,7 +208,7 @@ export async function signRoutes(app) {
         for (const p of notify) {
             if (!p.email)
                 continue;
-            await sendDeclined({ to: p.email, recipientName: p.name, declinerName: r.name, title: env.title, reason });
+            await sendDeclined({ to: p.email, recipientName: p.name, declinerName: r.name, title: env.title, reason, envelopeId: envId });
         }
         return { ok: true, declined: true };
     });

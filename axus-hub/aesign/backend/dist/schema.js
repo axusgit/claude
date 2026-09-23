@@ -76,6 +76,28 @@ create index if not exists idx_recipient_envelope on recipient(envelope_id);
 create index if not exists idx_field_envelope on field(envelope_id);
 create index if not exists idx_event_envelope on event(envelope_id);
 
+-- Per-attempt email send log. Records the outcome of every outbound message so
+-- staff can verify a signing invite/reminder actually left the app and was
+-- accepted by the mail server (O365 SMTP) — including the SMTP response line and
+-- any error. NOTE: "accepted by the mail server" is the strongest signal SMTP
+-- submission gives; it is not proof of inbox delivery (that requires a mailbox
+-- message trace). recipient_id is null for non-recipient sends (e.g. the
+-- completed-copy to the document creator).
+create table if not exists email_log (
+  id            uuid primary key default gen_random_uuid(),
+  envelope_id   uuid references envelope(id) on delete cascade,
+  recipient_id  uuid references recipient(id) on delete set null,
+  to_email      text not null,
+  kind          text not null,            -- invite|reminder|completed|progress|declined
+  success       boolean not null,         -- SMTP submission accepted (no throw, no rejected rcpt)
+  message_id    text,                     -- Message-ID assigned by the mail server
+  smtp_response text,                     -- e.g. "250 2.0.0 OK <id> ..." — proof of handoff
+  error         text,                     -- failure detail when success = false
+  at            timestamptz not null default now()
+);
+create index if not exists idx_email_log_envelope on email_log(envelope_id);
+create index if not exists idx_email_log_recipient on email_log(recipient_id);
+
 -- Reusable contact list (shared across Axus staff), so recipients can be picked
 -- instead of retyped.
 create table if not exists contact (

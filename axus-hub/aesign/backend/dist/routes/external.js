@@ -93,12 +93,14 @@ export async function externalRoutes(app) {
             await pool.query(`update envelope set status = 'sent', sent_at = now() where id = $1`, [envId]);
             await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'sent', $3)`, [envId, createdBy, `Sent to ${recipEmail}`]);
             signUrl = `${config.publicBaseUrl}/sign/${token}`;
-            const sent = await sendSigningInvite({
+            const res = await sendSigningInvite({
                 to: recipEmail,
                 recipientName: recipName,
                 senderName,
                 title,
                 url: signUrl,
+                envelopeId: envId,
+                recipientId,
             });
             logActivity(createdBy, "Sent for signature", `${title} → ${recipEmail}`, envId);
             return reply.code(201).send({
@@ -106,7 +108,7 @@ export async function externalRoutes(app) {
                 quoteNumber: q.quote_number,
                 recipientId,
                 status: "sent",
-                emailSent: sent,
+                emailSent: res.success,
                 signUrl,
             });
         }

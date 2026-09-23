@@ -2,12 +2,51 @@ import nodemailer from "nodemailer";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.js";
+import { pool } from "./db.js";
 const transport = nodemailer.createTransport({
     host: config.mail.host,
     port: config.mail.port,
     secure: false, // STARTTLS on 587
     auth: config.mail.user ? { user: config.mail.user, pass: config.mail.pass } : undefined,
 });
+// Perform the actual send, capture the real SMTP result (message id, response,
+// rejected recipients, or the error), and persist the attempt to email_log.
+// Replaces the old fire-and-forget `try { sendMail } catch { return false }`.
+async function runSend(to, message, ctx) {
+    let result;
+    try {
+        const info = await transport.sendMail(message);
+        const rejected = Array.isArray(info.rejected) ? info.rejected.map(String) : [];
+        result = {
+            success: rejected.length === 0,
+            messageId: info.messageId,
+            response: typeof info.response === "string" ? info.response : undefined,
+            error: rejected.length ? `Recipient rejected by mail server: ${rejected.join(", ")}` : undefined,
+        };
+    }
+    catch (e) {
+        result = { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
+    // Persist the attempt. A logging failure must never break the send path.
+    try {
+        await pool.query(`insert into email_log
+         (envelope_id, recipient_id, to_email, kind, success, message_id, smtp_response, error)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`, [
+            ctx.envelopeId ?? null,
+            ctx.recipientId ?? null,
+            to,
+            ctx.kind,
+            result.success,
+            result.messageId ?? null,
+            result.response ?? null,
+            result.error ?? null,
+        ]);
+    }
+    catch (e) {
+        console.error("email_log insert failed:", e);
+    }
+    return result;
+}
 // Axus logo, embedded inline (cid) so it renders in every mail client without
 // hotlinking. Loaded once at startup from the runtime assets/ dir.
 const LOGO_CID = "axuslogo";
@@ -60,13 +99,7 @@ export async function sendSigningInvite(opts) {
         '<p style="margin:0;font-size:13px;color:#9ca3af;">If you weren\'t expecting this, you can ignore this email.</p>');
     const text = `Hi ${opts.recipientName},\n\n${opts.senderName} has sent you "${opts.title}" to review and sign.\n\n` +
         `Open it here:\n${opts.url}\n\n— Axus eSign`;
-    try {
-        await transport.sendMail({ from: config.mail.from, envelope: { from: config.mail.sender, to: opts.to }, to: opts.to, subject: `Please sign: ${opts.title}`, text, html, attachments: withLogo() });
-        return true;
-    }
-    catch {
-        return false;
-    }
+    return runSend(opts.to, { from: config.mail.from, envelope: { from: config.mail.sender, to: opts.to }, to: opts.to, subject: `Please sign: ${opts.title}`, text, html, attachments: withLogo() }, { kind: "invite", envelopeId: opts.envelopeId, recipientId: opts.recipientId });
 }
 export async function sendCompleted(opts) {
     const html = shell("Document completed", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">Hi ' +
@@ -76,23 +109,17 @@ export async function sendCompleted(opts) {
         "</strong> has been signed by all parties. A signed copy is attached for your records, " +
         "including a certificate of completion.</p>");
     const text = `Hi ${opts.recipientName},\n\n"${opts.title}" has been signed by all parties. A signed copy is attached.\n\n— Axus eSign`;
-    try {
-        await transport.sendMail({
-            from: config.mail.from,
-            envelope: { from: config.mail.sender, to: opts.to },
-            to: opts.to,
-            subject: `Completed: ${opts.title}`,
-            text,
-            html,
-            attachments: withLogo(opts.attachment
-                ? [{ filename: opts.attachment.filename, content: opts.attachment.content }]
-                : []),
-        });
-        return true;
-    }
-    catch {
-        return false;
-    }
+    return runSend(opts.to, {
+        from: config.mail.from,
+        envelope: { from: config.mail.sender, to: opts.to },
+        to: opts.to,
+        subject: `Completed: ${opts.title}`,
+        text,
+        html,
+        attachments: withLogo(opts.attachment
+            ? [{ filename: opts.attachment.filename, content: opts.attachment.content }]
+            : []),
+    }, { kind: "completed", envelopeId: opts.envelopeId, recipientId: opts.recipientId });
 }
 export async function sendProgress(opts) {
     const html = shell("Document update", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">Hi ' +
@@ -104,23 +131,17 @@ export async function sendProgress(opts) {
         "</strong>. The current copy is attached; you'll receive the fully-signed version once all parties have signed.</p>");
     const text = `Hi ${opts.recipientName},\n\n${opts.signerName} has completed their part of "${opts.title}". ` +
         `The current copy is attached; the fully-signed version follows once all parties sign.\n\n— Axus eSign`;
-    try {
-        await transport.sendMail({
-            from: config.mail.from,
-            envelope: { from: config.mail.sender, to: opts.to },
-            to: opts.to,
-            subject: `Update: ${opts.title}`,
-            text,
-            html,
-            attachments: withLogo(opts.attachment
-                ? [{ filename: opts.attachment.filename, content: opts.attachment.content }]
-                : []),
-        });
-        return true;
-    }
-    catch {
-        return false;
-    }
+    return runSend(opts.to, {
+        from: config.mail.from,
+        envelope: { from: config.mail.sender, to: opts.to },
+        to: opts.to,
+        subject: `Update: ${opts.title}`,
+        text,
+        html,
+        attachments: withLogo(opts.attachment
+            ? [{ filename: opts.attachment.filename, content: opts.attachment.content }]
+            : []),
+    }, { kind: "progress", envelopeId: opts.envelopeId, recipientId: opts.recipientId });
 }
 // Sent to a participant who hasn't signed yet, once the other party completes.
 export async function sendReminder(opts) {
@@ -134,21 +155,15 @@ export async function sendReminder(opts) {
         '<p style="margin:0 0 8px;">' + button(opts.url, "Complete your part") + "</p>");
     const text = `Hi ${opts.recipientName},\n\n${opts.signerName} has completed their part of "${opts.title}". ` +
         `Your signature is now needed to complete it:\n${opts.url}\n\n— Axus eSign`;
-    try {
-        await transport.sendMail({
-            from: config.mail.from,
-            envelope: { from: config.mail.sender, to: opts.to },
-            to: opts.to,
-            subject: `Signature needed: ${opts.title}`,
-            text,
-            html,
-            attachments: withLogo(),
-        });
-        return true;
-    }
-    catch {
-        return false;
-    }
+    return runSend(opts.to, {
+        from: config.mail.from,
+        envelope: { from: config.mail.sender, to: opts.to },
+        to: opts.to,
+        subject: `Signature needed: ${opts.title}`,
+        text,
+        html,
+        attachments: withLogo(),
+    }, { kind: "reminder", envelopeId: opts.envelopeId, recipientId: opts.recipientId });
 }
 // A signer DECLINED — notify the sender + other participants, with the reason.
 export async function sendDeclined(opts) {
@@ -166,21 +181,15 @@ export async function sendDeclined(opts) {
         "</div>");
     const text = `Hi ${opts.recipientName},\n\n${opts.declinerName} declined to sign "${opts.title}". ` +
         `No further signatures can be collected.\n\nReason given:\n${opts.reason}\n\n— Axus eSign`;
-    try {
-        await transport.sendMail({
-            from: config.mail.from,
-            envelope: { from: config.mail.sender, to: opts.to },
-            to: opts.to,
-            subject: `Declined: ${opts.title}`,
-            text,
-            html,
-            attachments: withLogo(),
-        });
-        return true;
-    }
-    catch {
-        return false;
-    }
+    return runSend(opts.to, {
+        from: config.mail.from,
+        envelope: { from: config.mail.sender, to: opts.to },
+        to: opts.to,
+        subject: `Declined: ${opts.title}`,
+        text,
+        html,
+        attachments: withLogo(),
+    }, { kind: "declined", envelopeId: opts.envelopeId, recipientId: opts.recipientId });
 }
 // Periodic reminder (scheduled) to a signer who hasn't completed yet.
 export async function sendPendingReminder(opts) {
@@ -191,20 +200,14 @@ export async function sendPendingReminder(opts) {
         "</strong> is awaiting your signature.</p>" +
         '<p style="margin:0 0 8px;">' + button(opts.url, "Complete your part") + "</p>");
     const text = `Hi ${opts.recipientName},\n\nReminder: "${opts.title}" is awaiting your signature.\n${opts.url}\n\n— Axus eSign`;
-    try {
-        await transport.sendMail({
-            from: config.mail.from,
-            envelope: { from: config.mail.sender, to: opts.to },
-            to: opts.to,
-            subject: `Reminder — signature needed: ${opts.title}`,
-            text,
-            html,
-            attachments: withLogo(),
-        });
-        return true;
-    }
-    catch {
-        return false;
-    }
+    return runSend(opts.to, {
+        from: config.mail.from,
+        envelope: { from: config.mail.sender, to: opts.to },
+        to: opts.to,
+        subject: `Reminder — signature needed: ${opts.title}`,
+        text,
+        html,
+        attachments: withLogo(),
+    }, { kind: "reminder", envelopeId: opts.envelopeId, recipientId: opts.recipientId });
 }
 //# sourceMappingURL=mail.js.map
