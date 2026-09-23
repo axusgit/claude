@@ -106,15 +106,23 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
 
 
 def notify_assignment(ticket_id: int, assignee_id: int, by_user_id=None):
-    if not _enabled() or assignee_id == by_user_id:
-        return  # someone assigning a ticket to themselves doesn't need an email
+    if not _enabled():
+        return
     db = SessionLocal()
     try:
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-        a = db.query(User).filter(User.id == assignee_id).first()
-        if t and a and a.email and a.email.lower() not in SYS_EMAILS:
-            mailer.send_email(_to([a.email]), f"[Assigned] {t.reference} · {t.title}",
-                              _body(t, "You've been assigned this ticket."))
+        if not t:
+            return
+        recips = set()
+        if assignee_id and assignee_id != by_user_id:   # not a self-assignment
+            a = db.query(User).filter(User.id == assignee_id).first()
+            if a and a.email and a.email.lower() not in SYS_EMAILS:
+                recips.add(a.email)
+        if NEW_TICKET_INBOX:            # intake inbox always sees assignment changes
+            recips.add(NEW_TICKET_INBOX)
+        if recips:
+            mailer.send_email(_to(sorted(recips)), f"[Assigned] {t.reference} · {t.title}",
+                              _body(t, "This ticket's assignee changed."))
     except Exception as e:
         print(f"[notify] assignment failed: {e}", flush=True)
     finally:
@@ -263,6 +271,9 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             c = db.query(Contact).filter(Contact.id == t.contact_id).first()
             if c and c.email and c.email.lower() not in seen and c.email.lower() not in SYS_EMAILS:
                 recips.append((getattr(c, "full_name", None), c.email, False, False))
+        # the intake inbox is always notified of any ticket change (staff monitor it)
+        if NEW_TICKET_INBOX and NEW_TICKET_INBOX.lower() not in seen:
+            recips.append((None, NEW_TICKET_INBOX, True, True))
         subject = f"[{t.reference}] {subject_word} · {t.title}"
         for name, email, is_staff, can_view in recips:
             if not is_staff and client_blocked(email):
