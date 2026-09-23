@@ -302,15 +302,19 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
    row stays put. (The page-level sticky can't work because .table-wrap clips.) */
 #customers-view .table-wrap, #users-view .table-wrap { overflow: auto; max-height: calc(100vh - 220px); }
 #customer-table thead th, #user-table thead th {
-  position: sticky; top: 0; z-index: 3; background: var(--surface);
-  box-shadow: inset 0 -1px 0 var(--border);
+  position: sticky; top: 0; z-index: 6; background: #eef1f8;
+  box-shadow: inset 0 -1px 0 var(--border), 0 4px 8px -4px rgba(0,0,0,.20);
 }
-/* Same sticky-header treatment for the main ticket queue. */
+html[data-theme="dark"] #customer-table thead th, html[data-theme="dark"] #user-table thead th { background: #222b40; }
+/* Same sticky-header treatment for the main ticket queue. The header must use an
+   OPAQUE background (the --surface tokens are semi-transparent, esp. in dark mode)
+   so scrolling rows never show through / mix with the header line. */
 #queue-view .table-wrap { overflow: auto; max-height: calc(100vh - 210px); }
 #ticket-table thead th {
-  position: sticky; top: 0; z-index: 3; background: var(--surface-2);
-  box-shadow: inset 0 -1px 0 var(--border);
+  position: sticky; top: 0; z-index: 6; background: #eef1f8;
+  box-shadow: inset 0 -1px 0 var(--border), 0 4px 8px -4px rgba(0,0,0,.20);
 }
+html[data-theme="dark"] #ticket-table thead th { background: #222b40; }
 .pwr-row { display: flex; gap: 8px; align-items: stretch; }
 .pwr-row input { margin-top: 6px; }
 .pwr-row .btn { margin-top: 6px; white-space: nowrap; }
