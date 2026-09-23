@@ -305,6 +305,12 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
   position: sticky; top: 0; z-index: 3; background: var(--surface);
   box-shadow: inset 0 -1px 0 var(--border);
 }
+/* Same sticky-header treatment for the main ticket queue. */
+#queue-view .table-wrap { overflow: auto; max-height: calc(100vh - 210px); }
+#ticket-table thead th {
+  position: sticky; top: 0; z-index: 3; background: var(--surface-2);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
 .pwr-row { display: flex; gap: 8px; align-items: stretch; }
 .pwr-row input { margin-top: 6px; }
 .pwr-row .btn { margin-top: 6px; white-space: nowrap; }
