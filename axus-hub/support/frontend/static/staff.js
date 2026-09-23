@@ -458,6 +458,7 @@ const Staff = (() => {
     $("d-ref").textContent = `X-${externalId}`;
     $("d-status-badge").className = "badge"; $("d-status-badge").textContent = t.status || "";
     $("d-prio-badge").className = "prio-badge"; $("d-prio-badge").textContent = t.priority || "";
+    $("reopen-btn").hidden = true;   // not applicable to read-only imported tickets
     $("d-title").textContent = t.subject || "(no subject)";
     $("d-desc").textContent = (t.threads && t.threads.length)
       ? htmlToText(t.threads[0].body) : (t.subject || "No description provided.");
@@ -488,6 +489,7 @@ const Staff = (() => {
     $("d-ref").textContent = current.reference || "";
     $("d-status-badge").className = "badge " + current.status;
     $("d-status-badge").textContent = statusLabel(current.status);
+    $("reopen-btn").hidden = current.status !== "closed";   // staff-only reopen for closed tickets
     $("d-prio-badge").className = "prio-badge " + current.priority;
     $("d-prio-badge").textContent = prioLabel(current.priority);
     $("d-title").textContent = current.title;
@@ -753,8 +755,21 @@ const Staff = (() => {
     await api(`/api/tickets/${current.id}`, { method: "PUT", body: { [field]: value } });
     current[field] = value;
     await Promise.all([loadActivity(current.id), loadTickets()]); // refresh queue + audit
-    if (field === "status") { current = await api(`/api/tickets/${current.id}`); }
+    if (field === "status") {
+      current = await api(`/api/tickets/${current.id}`);
+      $("d-status-badge").className = "badge " + current.status;
+      $("d-status-badge").textContent = statusLabel(current.status);
+      $("reopen-btn").hidden = current.status !== "closed";
+    }
+    if (field === "priority") {
+      $("d-prio-badge").className = "prio-badge " + value;
+      $("d-prio-badge").textContent = prioLabel(value);
+    }
     toast(cap(field) + " updated");
+  }
+  async function reopenTicket() {
+    $("d-status").value = "open";
+    try { await patch("status", "open"); } catch (e) { toast(e.message); }
   }
   /* ---------- Canned responses ---------- */
   async function loadCanned() {
@@ -1295,6 +1310,7 @@ const Staff = (() => {
     $("convert-project-btn").onclick = convertToProject;
     $("delete-ticket-btn").onclick = deleteTicket;
     $("promote-btn").onclick = promoteXcitium;
+    $("reopen-btn").onclick = reopenTicket;
     $("pt-add-btn").onclick = newTicketInProject;
     $("modal-close").onclick = closeNew; $("nt-cancel").onclick = closeNew;
     $("back-btn").onclick = () => { showQueue(); };
