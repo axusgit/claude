@@ -45,9 +45,14 @@ def _v(x):
 
 
 def _staff_emails(db, exclude_id=None):
+    # Accounts parked in the hidden "Dummy Business" (e.g. the Authentik default
+    # admin) never receive staff notifications.
+    from app.models.client import Client
+    hidden = {c.id for c in db.query(Client.id).filter(Client.company_name == "Dummy Business").all()}
     out = set()
     for u in db.query(User).filter(User.role.in_(STAFF_ROLES), User.is_active == True).all():  # noqa: E712
-        if u.id == exclude_id or not u.email or u.email.lower() in SYS_EMAILS:
+        if (u.id == exclude_id or not u.email or u.email.lower() in SYS_EMAILS
+                or u.client_id in hidden):
             continue
         out.add(u.email)
     return sorted(out)
@@ -210,12 +215,14 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             return
         lead = f"{_author_display(db, author_id, author_name)} {verb}"
         staff_url, portal_url = _ticket_url(), _portal_url()
+        from app.models.client import Client
+        hidden = {c.id for c in db.query(Client.id).filter(Client.company_name == "Dummy Business").all()}
         seen, recips = set(), []   # dedup by email; keep (name, email, is_staff)
         def add(u):
             if not u or not u.email:
                 return
             em = u.email.lower()
-            if em in seen or em in SYS_EMAILS or u.id == author_id:
+            if em in seen or em in SYS_EMAILS or u.id == author_id or u.client_id in hidden:
                 return
             seen.add(em)
             recips.append((u.full_name, u.email, _v(u.role) in ("admin", "technician")))
