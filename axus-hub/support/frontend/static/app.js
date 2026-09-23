@@ -5,6 +5,7 @@ const App = (() => {
   let token = localStorage.getItem(TOKEN_KEY) || null;
   let me = null;            // { id, full_name, role }
   let currentTicket = null; // id of open ticket
+  let currentClosed = false; // whether the open ticket is closed (read-only for clients)
   const PRIO_LABEL = { low: "Low", medium: "Normal", high: "High", critical: "Critical" };
   const prioLabel = p => PRIO_LABEL[p] || (p || "");
   const statusLabel = s => (s || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
@@ -176,11 +177,16 @@ const App = (() => {
     $("d-desc").textContent = t.description || "No description provided.";
     $("d-category").textContent = t.category || "Uncategorized";
     $("d-created").textContent = "Opened " + fmtDate(t.created_at);
-    // Closed cases are read-only for clients: no replies and no close option.
+    // Closed cases are fully read-only for clients: no replies, no close, and no
+    // editing of participants or attachments (they stay visible, just not editable).
     const closed = t.status === "closed";
+    currentClosed = closed;
     $("reply-close").checked = false;
     $("reply-form").classList.toggle("hidden", closed);
     $("reply-closed-note").classList.toggle("hidden", !closed);
+    $("attach-upload-box").classList.toggle("hidden", closed);
+    $("participant-email-row").classList.toggle("hidden", closed);
+    $("participant-hint").classList.toggle("hidden", closed);
     showDetail();
     await Promise.all([loadThread(id), loadAttachments(id), loadParticipants(id)]);
   }
@@ -192,7 +198,8 @@ const App = (() => {
     ]);
     const box = $("participant-list");
     box.innerHTML = people.map(p => {
-      const tag = p.is_reporter ? `<span class="attach-size">opened this</span>`
+      // On a closed case participants are read-only — no remove (✕) control.
+      const tag = (p.is_reporter || currentClosed) ? `<span class="attach-size">${p.is_reporter ? "opened this" : ""}</span>`
         : `<a href="#" class="part-remove" data-uid="${p.id}" title="Remove">✕</a>`;
       return `<div class="attach-item"><span>👤</span><span style="flex:1">${esc(p.full_name)}</span>${tag}</div>`;
     }).join("");
@@ -206,8 +213,8 @@ const App = (() => {
     const avail = orgUsers.filter(u => !onTicket.has(u.id));
     sel.innerHTML = `<option value="">Add a colleague…</option>` +
       avail.map(u => `<option value="${u.id}">${esc(u.full_name)}</option>`).join("");
-    const wrap = $("participant-select").parentElement;
-    wrap.style.display = avail.length ? "" : "none";
+    // Hide the add-colleague row when the case is closed or nobody's left to add.
+    $("participant-org-row").style.display = (!currentClosed && avail.length) ? "" : "none";
   }
 
   async function addParticipant() {

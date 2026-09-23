@@ -144,16 +144,16 @@
                 <select id="participant-select"><option value="">Add a colleague…</option></select>
                 <button type="button" class="btn btn-ghost btn-sm" id="participant-add-btn">Add</button>
               </div>
-              <div class="pt-add">
+              <div class="pt-add" id="participant-email-row">
                 <input type="email" id="participant-email" placeholder="or add by email…" autocomplete="off" />
                 <button type="button" class="btn btn-ghost btn-sm" id="participant-email-btn">Add</button>
               </div>
-              <p class="nt-attach-hint">Add a teammate or anyone by email. Everyone listed here is emailed when there's a new reply.</p>
+              <p class="nt-attach-hint" id="participant-hint">Add a teammate or anyone by email. Everyone listed here is emailed when there's a new reply.</p>
             </div>
             <div class="card">
               <h3 class="card-title">Attachments</h3>
               <div id="attach-list" class="attach-list"></div>
-              <label class="upload-box">
+              <label class="upload-box" id="attach-upload-box">
                 <input type="file" id="attach-input" hidden
                   accept=".doc,.pdf,.jpg,.jpeg,.gif,.png,.xls,.docx,.xlsx,.txt,.pcapng,.eml,.pcap,.wav,.csv,.mp4,.mp3,.heic" />
                 <span>📎 Add a file</span>
@@ -223,6 +223,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=28"></script>
+  <script src="/static/app.js?v=29"></script>
 </body>
 </html>

@@ -339,6 +339,8 @@ def org_users(db: Session = Depends(get_db), user: User = Depends(require_client
 def add_participant(ticket_id: int, data: ParticipantIn, db: Session = Depends(get_db),
                     user: User = Depends(require_client_user)):
     t = _owned_ticket(db, ticket_id, user)
+    if t.status == TicketStatus.closed:
+        raise HTTPException(status_code=409, detail="This case is closed.")
     target = None
     if data.user_id:
         # an existing member of the caller's own business
@@ -376,6 +378,8 @@ def add_participant(ticket_id: int, data: ParticipantIn, db: Session = Depends(g
 def remove_participant(ticket_id: int, user_id: int, db: Session = Depends(get_db),
                        user: User = Depends(require_client_user)):
     t = _owned_ticket(db, ticket_id, user)
+    if t.status == TicketStatus.closed:
+        raise HTTPException(status_code=409, detail="This case is closed.")
     if user_id == t.reporter_user_id:
         raise HTTPException(status_code=400, detail="The person who opened the ticket can't be removed.")
     w = db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket_id,
@@ -406,7 +410,9 @@ def upload_attachment(
     db: Session = Depends(get_db),
     user: User = Depends(require_client_user),
 ):
-    _owned_ticket(db, ticket_id, user)
+    t = _owned_ticket(db, ticket_id, user)
+    if t.status == TicketStatus.closed:
+        raise HTTPException(status_code=409, detail="This case is closed.")
     original = os.path.basename(file.filename or "file")
     ext = os.path.splitext(original)[1].lower()
     if ext not in ALLOWED_ATTACHMENT_EXTS:
