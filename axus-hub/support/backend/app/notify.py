@@ -153,6 +153,10 @@ def _participant_html(recipient_name, lead, block, t, link) -> str:
     title = _h.escape(t.title or "")
     msg = _h.escape((block or "").strip()).replace("\n", "<br>")
     lk = _h.escape(link or "", quote=True)
+    desc = _h.escape((t.description or "").strip()).replace("\n", "<br>")
+    desc_block = (f'<p style="margin:12px 0 2px;font-size:11px;color:#9aa1ac;letter-spacing:.5px;">DESCRIPTION</p>'
+                  f'<div style="margin:0 0 2px;font-size:13.5px;line-height:1.5;color:#3a4150;">{desc}</div>'
+                  ) if desc else ""
     btn = (f'<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
            f'<td style="border-radius:8px;background:#f26722;">'
            f'<a href="{lk}" style="display:inline-block;padding:11px 24px;font-size:14px;'
@@ -167,6 +171,7 @@ def _participant_html(recipient_name, lead, block, t, link) -> str:
     <tr><td style="padding:6px 32px 0;">
       <p style="margin:10px 0 2px;font-size:12px;color:#9aa1ac;letter-spacing:.4px;">TICKET {ref}</p>
       <h1 style="margin:2px 0 4px;font-size:18px;color:#1f2430;">{title}</h1>
+      {desc_block}
       <p style="margin:14px 0 4px;font-size:14px;line-height:1.55;color:#3a4150;">Hi {rn}, {ld}</p>
       <div style="margin:10px 0 20px;padding:14px 16px;background:#f7f8fa;border-left:3px solid #f26722;border-radius:6px;font-size:14px;line-height:1.55;color:#1f2430;">{msg}</div>
       {btn}
@@ -220,8 +225,9 @@ def _notify_participants(ticket_id, author_id, subject_word, lead, block):
         subject = f"[{t.reference}] {subject_word} · {t.title}"
         for name, email, is_staff in recips:
             link = staff_url if is_staff else portal_url
-            text = (f"Hi {name or 'there'}, {lead}\n\n{(block or '').strip()}\n\n"
-                    f"Ticket {t.reference} — {t.title}\n"
+            text = (f"Ticket {t.reference} — {t.title}\n"
+                    + (f"\nDescription:\n{(t.description or '').strip()}\n" if (t.description or '').strip() else "")
+                    + f"\nHi {name or 'there'}, {lead}\n\n{(block or '').strip()}\n\n"
                     + (f"View it: {link}\n" if link else "")
                     + "\nYou're receiving this because you're a participant on this ticket.\n")
             html = _participant_html(name, lead, block, t, link)
