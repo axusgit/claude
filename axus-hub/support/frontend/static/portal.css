@@ -421,3 +421,8 @@ html[data-theme="dark"] .tc-glow {
 /* Close-case confirmation modal */
 .close-modal-card { max-width: 520px; }
 .close-legal { font-size: 13px; line-height: 1.6; color: var(--text-soft); margin: 4px 0 20px; }
+
+/* Pin the legal footer to the bottom of the viewport (sticky footer) */
+#app-view { display: flex; flex-direction: column; min-height: 100vh; }
+#app-view .container { flex: 1 0 auto; }
+.portal-footer { flex-shrink: 0; }
