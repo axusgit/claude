@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=65" />
-  <link rel="stylesheet" href="/static/portal.css?v=4" />
+  <link rel="stylesheet" href="/static/portal.css?v=5" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
     .login-sent { text-align: center; }
@@ -71,13 +71,14 @@
     <main class="container">
       <!-- LIST -->
       <section id="list-view">
-        <div class="page-head">
+        <div class="portal-hero">
           <div>
-            <h2>Your Tickets</h2>
-            <p class="muted" id="list-summary"></p>
+            <h2 class="hero-title">Your <span class="accent">Tickets</span></h2>
+            <p class="hero-sub" id="list-summary"></p>
           </div>
           <button class="btn btn-primary" id="new-ticket-btn">+ New Ticket</button>
         </div>
+        <div class="hero-stats" id="hero-stats"></div>
         <div class="portal-filters">
           <input type="search" id="pf-search" class="pf-search" placeholder="Search tickets…" />
           <select id="pf-status"><option value="">All statuses</option><option value="open">Open</option><option value="closed">Closed</option></select>
@@ -227,7 +228,7 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=31"></script>
+  <script src="/static/app.js?v=32"></script>
   <script src="/static/tilt.js?v=2"></script>
 </body>
 </html>

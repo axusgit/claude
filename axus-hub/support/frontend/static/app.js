@@ -162,7 +162,13 @@ const App = (() => {
       return true;
     });
     const openCount = ticketsData.filter(t => t.status !== "closed").length;
-    $("list-summary").textContent = `${rows.length} shown · ${ticketsData.length} total · ${openCount} open`;
+    const closedCount = ticketsData.length - openCount;
+    $("list-summary").textContent = `Showing ${rows.length} of ${ticketsData.length}`;
+    const hs = $("hero-stats");
+    if (hs) hs.innerHTML =
+      `<div class="stat-pill is-open"><span class="stat-n">${openCount}</span><span class="stat-l">Open</span></div>` +
+      `<div class="stat-pill"><span class="stat-n">${closedCount}</span><span class="stat-l">Closed</span></div>` +
+      `<div class="stat-pill"><span class="stat-n">${ticketsData.length}</span><span class="stat-l">Total</span></div>`;
     if (!rows.length) {
       list.innerHTML = `<div class="muted" style="padding:24px 4px">No tickets match your filters.</div>`;
       return;
