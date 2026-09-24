@@ -1,0 +1,222 @@
+/* ============================================================================
+   Axus Client Portal — futuristic theme (layered ON TOP of styles.css).
+   Loaded ONLY by index.html, so the staff console is unaffected.
+   Glassmorphism, animated aurora, gradient accents, soft glow, micro-motion.
+   ========================================================================== */
+
+:root {
+  --cyan: #35c6ff;
+  --violet: #8b7bff;
+  --glass: rgba(255, 255, 255, .62);
+  --glass-brd: rgba(255, 255, 255, .70);
+  --glass-blur: saturate(150%) blur(18px);
+  --grad-brand: linear-gradient(120deg, #f26522, #f7941d);
+  --grad-aurora-1: rgba(242, 101, 34, .22);
+  --grad-aurora-2: rgba(53, 198, 255, .18);
+  --grad-aurora-3: rgba(139, 123, 255, .16);
+}
+html[data-theme="dark"] {
+  --glass: rgba(18, 25, 42, .55);
+  --glass-brd: rgba(255, 255, 255, .10);
+  --grad-aurora-1: rgba(242, 101, 34, .26);
+  --grad-aurora-2: rgba(53, 198, 255, .18);
+  --grad-aurora-3: rgba(139, 123, 255, .20);
+}
+
+/* ---------- Animated aurora backdrop (behind everything) ---------- */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20% -10% -10% -10%;
+  z-index: -2;
+  background:
+    radial-gradient(38% 42% at 18% 12%, var(--grad-aurora-1), transparent 60%),
+    radial-gradient(34% 40% at 84% 8%, var(--grad-aurora-2), transparent 60%),
+    radial-gradient(42% 46% at 70% 96%, var(--grad-aurora-3), transparent 62%),
+    radial-gradient(40% 44% at 8% 90%, var(--grad-aurora-1), transparent 60%);
+  filter: blur(28px);
+  animation: auroraDrift 26s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+/* faint grid to add "tech" depth */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgba(120, 140, 180, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 140, 180, .05) 1px, transparent 1px);
+  background-size: 46px 46px;
+  mask-image: radial-gradient(80% 70% at 50% 30%, #000 40%, transparent 100%);
+  pointer-events: none;
+}
+@keyframes auroraDrift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(1.5%, -1.5%, 0) scale(1.06); }
+  100% { transform: translate3d(-1.5%, 1%, 0) scale(1.03); }
+}
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; }
+}
+
+/* ---------- Login ---------- */
+.login-card {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd);
+  border-radius: 22px;
+  box-shadow: 0 30px 80px rgba(20, 30, 60, .18), inset 0 1px 0 rgba(255,255,255,.35);
+  position: relative;
+  overflow: hidden;
+}
+/* animated gradient hairline around the login card */
+.login-card::before {
+  content: "";
+  position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+  background: linear-gradient(130deg, rgba(242,101,34,.7), rgba(53,198,255,.6), rgba(139,123,255,.6), rgba(242,101,34,.7));
+  background-size: 300% 300%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: borderFlow 8s linear infinite;
+  pointer-events: none; opacity: .8;
+}
+@keyframes borderFlow { to { background-position: 300% 0; } }
+.login-logo { filter: drop-shadow(0 6px 18px rgba(242,101,34,.25)); }
+.login-card h1 {
+  background: linear-gradient(120deg, var(--text), var(--orange));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+
+/* ---------- Topbar (glass) ---------- */
+.topbar {
+  background: var(--glass) !important;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-brd);
+}
+.accent-strip { height: 3px; box-shadow: 0 0 18px rgba(242,101,34,.5); }
+
+/* ---------- Headings: gradient title ---------- */
+#list-view .page-head h2,
+#detail-view .ticket-title {
+  background: linear-gradient(115deg, var(--text) 30%, var(--orange));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+
+/* ---------- Cards (glass + luminous edge) ---------- */
+.card, .ticket-head {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(20,30,60,.10), inset 0 1px 0 rgba(255,255,255,.30);
+}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .ticket-head { box-shadow: 0 18px 50px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05); }
+
+/* ---------- Ticket list cards ---------- */
+.ticket-card {
+  position: relative;
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(20,30,60,.08);
+  transition: transform .22s cubic-bezier(.2,.7,.3,1), box-shadow .22s ease, border-color .22s ease;
+  overflow: hidden;
+}
+.ticket-card::after {  /* sheen sweep on hover */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.25) 48%, transparent 62%);
+  transform: translateX(-120%); transition: transform .6s ease; opacity: 0;
+}
+.ticket-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(242,101,34,.45);
+  box-shadow: 0 22px 50px rgba(20,30,60,.16), 0 0 0 1px rgba(242,101,34,.20);
+}
+.ticket-card:hover::after { transform: translateX(120%); opacity: 1; }
+.tc-prio-bar { width: 5px; border-radius: 6px; box-shadow: 0 0 12px currentColor; }
+.tc-title { font-weight: 650; letter-spacing: -.01em; }
+.tc-ref { font-family: ui-monospace, "Space Grotesk", monospace; }
+
+/* ---------- Badges & priority pills (glow) ---------- */
+.badge, .prio-badge {
+  border: 1px solid transparent;
+  box-shadow: 0 2px 10px rgba(20,30,60,.06);
+  backdrop-filter: blur(4px);
+}
+.prio-badge.critical { box-shadow: 0 0 14px rgba(229,72,77,.35); }
+.prio-badge.high     { box-shadow: 0 0 14px rgba(217,112,26,.30); }
+.badge.open          { box-shadow: 0 0 12px rgba(37,99,235,.22); }
+
+/* ---------- Buttons: gradient + sheen + glow ---------- */
+.btn-primary {
+  background: var(--grad-brand);
+  border: none;
+  box-shadow: 0 8px 22px rgba(242,101,34,.35), inset 0 1px 0 rgba(255,255,255,.4);
+  position: relative; overflow: hidden;
+  transition: transform .18s ease, box-shadow .22s ease, filter .2s ease;
+}
+.btn-primary::before {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.45) 50%, transparent 65%);
+  transform: translateX(-130%); transition: transform .55s ease;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(242,101,34,.5); filter: saturate(1.08); }
+.btn-primary:hover::before { transform: translateX(130%); }
+.btn-primary:active { transform: translateY(0); }
+.btn-ghost {
+  border: 1px solid var(--glass-brd);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  transition: transform .16s ease, border-color .2s ease, background .2s ease;
+}
+.btn-ghost:hover { transform: translateY(-1px); border-color: rgba(242,101,34,.4); }
+
+/* ---------- Inputs / filters / selects (glass + focus glow) ---------- */
+.portal-filters input, .portal-filters select,
+.reply-form textarea, #new-form input, #new-form textarea, #new-form select,
+.pt-add input, #login-form input {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-brd);
+  border-radius: 12px;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .12s ease;
+}
+.portal-filters input:focus, .portal-filters select:focus,
+.reply-form textarea:focus, #new-form input:focus, #new-form textarea:focus, #new-form select:focus,
+.pt-add input:focus, #login-form input:focus {
+  outline: none;
+  border-color: rgba(242,101,34,.55);
+  box-shadow: 0 0 0 4px var(--ring), 0 0 22px rgba(242,101,34,.22);
+}
+
+/* ---------- New-ticket modal (glass + blurred scrim) ---------- */
+.modal-overlay { background: rgba(10, 16, 30, .5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.modal {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd);
+  border-radius: 20px;
+  box-shadow: 0 40px 100px rgba(10,16,30,.4), inset 0 1px 0 rgba(255,255,255,.3);
+}
+
+/* ---------- Escalate select + ref pill glow ---------- */
+.raise-prio { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.ref-pill { box-shadow: 0 0 0 1px color-mix(in srgb, var(--orange) 22%, transparent) inset; }
+
+/* ---------- Empty state ---------- */
+.empty .empty-emoji { filter: drop-shadow(0 8px 20px rgba(242,101,34,.25)); }
+
+/* ---------- Custom scrollbar ---------- */
+* { scrollbar-width: thin; scrollbar-color: rgba(242,101,34,.5) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: linear-gradient(var(--orange), var(--orange-2)); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+::selection { background: rgba(242,101,34,.28); }
