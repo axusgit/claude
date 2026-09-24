@@ -400,3 +400,12 @@ html[data-theme="dark"] {
   --text-soft: #cfd9ec;
   --muted: #9fb0c9;
 }
+
+/* Dashboard tiles are <button>s — force readable text (buttons don't inherit color) */
+.dash-tile { color: var(--text); }
+.stat-num { color: var(--text); }   /* accent/danger/good keep their own colors */
+.stat-label { color: var(--muted); }
+
+/* Keep the Axus logo in original colors (don't invert to white) on the staff portal */
+html[data-theme="dark"] .topbar-logo,
+html[data-theme="dark"] .login-logo { filter: none; }
