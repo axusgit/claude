@@ -7,20 +7,29 @@
 :root {
   --cyan: #35c6ff;
   --violet: #8b7bff;
-  --glass: rgba(255, 255, 255, .62);
-  --glass-brd: rgba(255, 255, 255, .70);
-  --glass-blur: saturate(150%) blur(18px);
+  /* More OPAQUE glass so text stays high-contrast over the aurora. */
+  --glass: rgba(255, 255, 255, .90);
+  --glass-brd: rgba(255, 255, 255, .85);
+  --glass-blur: saturate(135%) blur(14px);
   --grad-brand: linear-gradient(120deg, #f26522, #f7941d);
-  --grad-aurora-1: rgba(242, 101, 34, .22);
-  --grad-aurora-2: rgba(53, 198, 255, .18);
-  --grad-aurora-3: rgba(139, 123, 255, .16);
+  --grad-aurora-1: rgba(242, 101, 34, .16);
+  --grad-aurora-2: rgba(53, 198, 255, .13);
+  --grad-aurora-3: rgba(139, 123, 255, .11);
+  /* Higher-contrast text on the portal (light). */
+  --text: #0e1420;
+  --text-soft: #384252;
+  --muted: #5b6779;
 }
 html[data-theme="dark"] {
-  --glass: rgba(18, 25, 42, .55);
-  --glass-brd: rgba(255, 255, 255, .10);
-  --grad-aurora-1: rgba(242, 101, 34, .26);
-  --grad-aurora-2: rgba(53, 198, 255, .18);
-  --grad-aurora-3: rgba(139, 123, 255, .20);
+  --glass: rgba(16, 23, 38, .86);
+  --glass-brd: rgba(255, 255, 255, .16);
+  --grad-aurora-1: rgba(242, 101, 34, .20);
+  --grad-aurora-2: rgba(53, 198, 255, .14);
+  --grad-aurora-3: rgba(139, 123, 255, .15);
+  /* Brighter text for dark-mode legibility. */
+  --text: #f3f7ff;
+  --text-soft: #cfd9ec;
+  --muted: #9fb0c9;
 }
 
 /* ---------- Animated aurora backdrop (behind everything) ---------- */
@@ -98,11 +107,12 @@ body::after {
 }
 .accent-strip { height: 3px; box-shadow: 0 0 18px rgba(242,101,34,.5); }
 
-/* ---------- Headings: gradient title ---------- */
+/* ---------- Headings: solid + high-contrast (sharper than gradient text) ---------- */
 #list-view .page-head h2,
 #detail-view .ticket-title {
-  background: linear-gradient(115deg, var(--text) 30%, var(--orange));
-  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  font-weight: 700;
 }
 
 /* ---------- Cards (glass + luminous edge) ---------- */
@@ -220,3 +230,47 @@ html[data-theme="dark"] .ticket-head { box-shadow: 0 18px 50px rgba(0,0,0,.5), i
 *::-webkit-scrollbar-track { background: transparent; }
 
 ::selection { background: rgba(242,101,34,.28); }
+
+/* ============================================================================
+   READABILITY — bigger, sharper, higher-contrast text (portal only).
+   ========================================================================== */
+body {
+  font-size: 15.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+/* Ticket list cards */
+.tc-title { font-size: 16px; font-weight: 650; color: var(--text); letter-spacing: -.01em; }
+.tc-sub, .tc-sub span { font-size: 13px; color: var(--text-soft); font-weight: 500; }
+.tc-ref { color: var(--orange); font-weight: 700; }
+/* Detail + conversation text */
+.detail-desc, #d-desc { font-size: 15px; line-height: 1.65; color: var(--text-soft); }
+.card-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.desc-label, .meta-lbl { color: var(--muted); font-weight: 700; }
+.chip { color: var(--text-soft); font-weight: 600; }
+.thread .msg, .thread .msg * { font-size: 14.5px; line-height: 1.6; }
+.thread .msg-body { color: var(--text); }
+.detail-desc, .msg-body, p { -webkit-font-smoothing: antialiased; }
+/* Forms + inputs read clearly */
+#new-form label, .reply-form label, .pt-add, .portal-filters { font-size: 14px; color: var(--text-soft); }
+input, textarea, select, button { font-size: 14.5px; }
+textarea#reply-body, #nt-desc { font-size: 15px; line-height: 1.6; color: var(--text); }
+.consent-check span { font-size: 12.5px; line-height: 1.5; color: var(--text-soft); }
+/* Muted / secondary text: lift contrast so it's still readable on glass */
+.muted { color: var(--muted); }
+#list-summary { color: var(--text-soft); font-weight: 500; }
+/* Top bar identity */
+.who-name { font-weight: 650; color: var(--text); }
+.who-company { color: var(--text-soft); }
+/* Badges: bold, legible */
+.badge, .prio-badge { font-weight: 700; }
+
+/* Dark mode: firmer surfaces + brighter secondary text for contrast */
+html[data-theme="dark"] .detail-desc,
+html[data-theme="dark"] #d-desc,
+html[data-theme="dark"] .tc-sub,
+html[data-theme="dark"] .chip { color: var(--text-soft); }
+html[data-theme="dark"] .thread .msg-body,
+html[data-theme="dark"] .msg.them .msg-body { color: var(--text); }
