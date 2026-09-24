@@ -312,3 +312,18 @@ html[data-theme="dark"] .pf-mark { filter: none; }
   box-shadow: var(--sh-sm);
 }
 .meta-group .meta-lbl { margin: 0; }
+
+/* Same pill-box shape for the ticket number + Raise-priority as the meta groups */
+.detail-head .ref-pill,
+.detail-head .raise-prio,
+.detail-head .meta-group {
+  min-height: 36px; display: inline-flex; align-items: center;
+  border: 1px solid var(--glass-brd); border-radius: 999px;
+  background: var(--glass-2); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  box-shadow: var(--sh-sm);
+}
+.detail-head .ref-pill {
+  padding: 0 14px; color: var(--orange); font-weight: 700;
+  font-family: ui-monospace, "Space Grotesk", monospace;
+}
+.detail-head .raise-prio { padding: 0 12px; color: var(--text); font-weight: 600; cursor: pointer; }
