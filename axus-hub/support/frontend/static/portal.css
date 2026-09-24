@@ -295,3 +295,6 @@ html[data-theme="dark"] .pf-mark { filter: none; }
 
 /* Sign-in button: shrink the orange rectangle to fit its text (centered) */
 #login-btn { display: block; width: -moz-fit-content; width: fit-content; min-width: 0; margin: 10px auto 0; padding: 13px 30px; }
+
+/* Center the passwordless hint text */
+.login-hint { text-align: center !important; display: block; margin-left: auto; margin-right: auto; }
