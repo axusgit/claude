@@ -358,3 +358,13 @@ html[data-theme="dark"] .pf-mark { filter: none; }
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="%238a97ab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>');
   background-repeat: no-repeat; background-position: right 11px center;
 }
+
+/* Stronger orange pointer glow on ticket cards (esp. light mode) */
+.ticket-card::before {
+  background: radial-gradient(240px circle at var(--mx,50%) var(--my,50%), rgba(242,101,34,.24), transparent 60%);
+}
+html[data-theme="dark"] .ticket-card::before {
+  background: radial-gradient(260px circle at var(--mx,50%) var(--my,50%), rgba(242,101,34,.34), transparent 62%);
+}
+/* Centre the footer legal text now the tagline is gone */
+.pf-inner { justify-content: center; }
