@@ -461,32 +461,14 @@ html[data-theme="light"] .login-card::after {
 }
 
 /* ============================================================================
-   BRANDED PHOTOGRAPHIC BACKDROP (added 2026-09-24)
-   Puts the Axus fleet / Tampa-skyline image behind every client panel. The
-   frosted-glass cards are intentionally left untouched — the photo shows through
-   the gutters and behind the login card, and the cards' own backdrop-blur turns
-   it into a soft, modern glass effect. Replaces the old animated aurora + grid.
+   BRANDED PHOTOGRAPHIC BACKDROP — LOGIN PAGE ONLY (added 2026-09-24)
+   The Axus fleet / NOC image sits behind the login card only. After sign-in, the
+   app view keeps its original animated aurora + grid backdrop (styles.css
+   --bg-image + body::before/::after above), so nothing here touches the body.
+   The frosted-glass login card is intentionally left untouched.
+   Light scrim by default; the dark-theme rule darkens it — so the login
+   background brightens/darkens with the theme toggle.
    ========================================================================== */
-body {
-  background:
-    linear-gradient(180deg, rgba(233,236,243,.50) 0%, rgba(233,236,243,.40) 42%, rgba(233,236,243,.66) 100%) fixed,
-    url('/static/portal-bg.jpg?v=2') center center / cover no-repeat fixed,
-    #dfe3ec !important;
-}
-html[data-theme="dark"] body {
-  background:
-    linear-gradient(180deg, rgba(7,11,20,.60) 0%, rgba(7,11,20,.48) 42%, rgba(7,11,20,.80) 100%) fixed,
-    url('/static/portal-bg.jpg?v=2') center center / cover no-repeat fixed,
-    #070b14 !important;
-}
-/* The photo replaces the animated aurora + grid backdrop. */
-body::before, body::after { display: none !important; }
-
-/* Login view: the .login-wrap had its own opaque dark gradient that hid the page
-   background — give it the same photographic backdrop so the frosted login card
-   floats over the image (this is the view background, not the card). */
-/* Light scrim by default; the dark-theme rule below darkens it — so the login
-   background brightens/darkens with the theme toggle, same as the app view. */
 .login-wrap {
   background:
     linear-gradient(180deg, rgba(233,236,243,.42) 0%, rgba(233,236,243,.30) 42%, rgba(233,236,243,.56) 100%) fixed,
@@ -498,9 +480,3 @@ html[data-theme="dark"] .login-wrap {
     url('/static/portal-bg.jpg?v=2') center center / cover no-repeat fixed !important;
 }
 .login-aurora { opacity: .5; }
-
-/* Keep page-level text that sits directly on the photo (not in any card) crisp. */
-.hero-title, .hero-sub, .pf-legal { text-shadow: 0 1px 2px rgba(255,255,255,.55); }
-html[data-theme="dark"] .hero-title,
-html[data-theme="dark"] .hero-sub,
-html[data-theme="dark"] .pf-legal { text-shadow: 0 1px 3px rgba(0,0,0,.55); }
