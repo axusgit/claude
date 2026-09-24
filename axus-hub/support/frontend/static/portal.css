@@ -480,3 +480,84 @@ html[data-theme="dark"] .login-wrap {
     url('/static/portal-bg.jpg?v=2') center center / cover no-repeat fixed !important;
 }
 .login-aurora { opacity: .5; }
+
+/* ============================================================================
+   MOBILE / TABLET OPTIMIZATION (added 2026-09-24)
+   Phone-first refinements for the client portal. Desktop layout is unchanged;
+   cards keep their frosted-glass styling.
+   ========================================================================== */
+
+/* iPad & down: stop iOS Safari from zooming when a field is focused (needs
+   >=16px), and let the detail-header pills size to their content instead of a
+   fixed 156px so three of them don't overflow a narrow screen. */
+@media (max-width: 768px) {
+  input, select, textarea,
+  #reply-body, #nt-desc { font-size: 16px; }
+
+  .detail-head .ref-pill,
+  .detail-head .raise-prio,
+  .detail-head .meta-group {
+    width: auto !important; min-width: 0 !important; max-width: none;
+    flex: 1 1 auto;
+  }
+}
+
+/* Phones & small tablets: single-column, thumb-friendly layout. */
+@media (max-width: 640px) {
+  html, body { max-width: 100%; overflow-x: hidden; }
+
+  /* Topbar: smaller logo + tighter padding so it stays one clean row. */
+  .topbar { padding: 10px 14px; gap: 10px; }
+  .topbar-logo { height: 40px !important; }
+  #logout-btn { padding: 8px 12px; }
+
+  /* Content gutters → 16px. */
+  .container { padding: 18px 16px 44px; }
+
+  /* Hero: stack the heading and the action; full-width New Ticket button. */
+  .portal-hero { flex-direction: column; align-items: stretch; gap: 12px; }
+  .portal-hero .btn-primary { width: 100%; }
+
+  /* Filters: each control full width and easy to tap. */
+  .portal-filters { flex-direction: column; align-items: stretch; gap: 10px; }
+  .portal-filters .pf-search,
+  .portal-filters select,
+  .portal-filters .pf-date { width: 100%; min-width: 0; }
+
+  /* Cards / modal: slightly tighter padding on small screens. */
+  .card { padding: 18px 16px; }
+  .ticket-head { padding: 18px 16px; }
+  #new-modal .modal, .modal { padding: 18px 16px; }
+  .modal-overlay { padding: 12px; }
+
+  /* Reply actions: stacked, full-width, thumb-friendly. */
+  .reply-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+  .reply-actions > .reply-attach,
+  .reply-actions > .btn { width: 100%; min-width: 0; }
+  .reply-actions .close-check { margin: 0 0 2px; }
+
+  /* Ticket cards: a bit more compact. */
+  .ticket-card { padding: 14px 15px; gap: 12px; }
+
+  /* Login: fit narrow screens. */
+  .login-wrap { padding: 16px; }
+  .login-card { padding: 28px 20px; max-width: 100%; }
+  .login-logo { height: 64px; margin-bottom: 14px; }
+}
+
+/* Very small phones. */
+@media (max-width: 400px) {
+  .hero-title { font-size: 21px; }
+  .topbar-logo { height: 34px !important; }
+  .stat-n { font-size: 24px; }
+}
+
+/* Touch devices: don't leave 3D hover transforms stuck after a tap. */
+@media (hover: none) {
+  .ticket-card:hover,
+  .ticket-card:hover .tc-body,
+  .ticket-card:hover .badge,
+  .stat-pill:hover,
+  .btn-primary:hover,
+  .btn-ghost:hover { transform: none; }
+}
