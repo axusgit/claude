@@ -426,3 +426,6 @@ html[data-theme="dark"] .tc-glow {
 #app-view { display: flex; flex-direction: column; min-height: 100vh; }
 #app-view .container { flex: 1 0 auto; }
 .portal-footer { flex-shrink: 0; }
+
+/* Restore the content column width lost when .container became a flex item */
+#app-view .container { width: 100%; }
