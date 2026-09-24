@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=65" />
-  <link rel="stylesheet" href="/static/portal.css?v=6" />
+  <link rel="stylesheet" href="/static/portal.css?v=7" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
     .login-sent { text-align: center; }
@@ -51,6 +51,7 @@
         <button type="button" class="btn btn-ghost btn-block" id="login-again">Use a different email</button>
       </div>
       <div class="login-foot">Simplifying <span>IT</span></div>
+      <div class="login-legal">© <span class="foot-year">2026</span> Axus Technologies, LLC · All rights reserved.</div>
     </div>
   </div>
 
@@ -171,6 +172,18 @@
         </div>
       </section>
     </main>
+
+    <footer class="portal-footer">
+      <div class="pf-inner">
+        <img class="pf-mark" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus Technologies" />
+        <p class="pf-legal">
+          © <span class="foot-year">2026</span> <strong>Axus Technologies, LLC</strong>. All rights reserved.
+          This client portal and its contents are the confidential and proprietary property of Axus Technologies, LLC.
+          Unauthorized access, use, or reproduction is prohibited.
+        </p>
+        <div class="pf-tag">Simplifying <span>IT</span></div>
+      </div>
+    </footer>
   </div>
 
   <!-- ===================== NEW TICKET MODAL ===================== -->
@@ -231,7 +244,7 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=32"></script>
+  <script src="/static/app.js?v=33"></script>
   <script src="/static/tilt.js?v=2"></script>
 </body>
 </html>

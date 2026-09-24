@@ -362,6 +362,7 @@ const App = (() => {
 
   /* ---------- Init / wiring ---------- */
   async function start() {
+    document.querySelectorAll(".foot-year").forEach(el => el.textContent = new Date().getFullYear());
     applyTheme(localStorage.getItem(THEME_KEY) || "light");
     $("theme-toggle").onclick = toggleTheme;
     $("theme-toggle-login").onclick = toggleTheme;
