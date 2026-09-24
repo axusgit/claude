@@ -327,3 +327,9 @@ html[data-theme="dark"] .pf-mark { filter: none; }
   font-family: ui-monospace, "Space Grotesk", monospace;
 }
 .detail-head .raise-prio { padding: 0 12px; color: var(--text); font-weight: 600; cursor: pointer; }
+
+/* Uniform pill size + bigger ticket-number font */
+.detail-head .ref-pill,
+.detail-head .raise-prio,
+.detail-head .meta-group { min-width: 150px; justify-content: center; }
+.detail-head .ref-pill { font-size: 15px; letter-spacing: .3px; }
