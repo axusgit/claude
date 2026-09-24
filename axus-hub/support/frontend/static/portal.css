@@ -432,3 +432,7 @@ html[data-theme="dark"] .tc-glow {
 
 /* Match the topbar Axus logo to the login-page logo size */
 .topbar-logo { height: 88px; }
+
+/* Close-case checkbox on the same row as Attach/Post, vertically centered */
+.reply-form .reply-actions { display: flex; align-items: center; gap: 12px; }
+.reply-form .reply-actions .close-check { margin: 0 auto 0 0; padding: 0; }
