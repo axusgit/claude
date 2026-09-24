@@ -298,3 +298,7 @@ html[data-theme="dark"] .pf-mark { filter: none; }
 
 /* Center the passwordless hint text */
 .login-hint { text-align: center !important; display: block; margin-left: auto; margin-right: auto; }
+
+/* Bigger Axus logo */
+.login-logo { height: 88px; margin-bottom: 22px; }
+.topbar-logo { height: 46px; }
