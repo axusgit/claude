@@ -351,3 +351,10 @@ html[data-theme="dark"] .pf-mark { filter: none; }
   line-height: 1;
 }
 .detail-head .raise-prio { -webkit-appearance: none; appearance: none; }
+
+/* Custom dropdown caret for the exact-size Raise-priority pill */
+.detail-head .raise-prio {
+  padding-right: 28px !important;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="%238a97ab" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+  background-repeat: no-repeat; background-position: right 11px center;
+}
