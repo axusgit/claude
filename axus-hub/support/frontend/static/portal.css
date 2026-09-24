@@ -485,9 +485,16 @@ body::before, body::after { display: none !important; }
 /* Login view: the .login-wrap had its own opaque dark gradient that hid the page
    background — give it the same photographic backdrop so the frosted login card
    floats over the image (this is the view background, not the card). */
+/* Light scrim by default; the dark-theme rule below darkens it — so the login
+   background brightens/darkens with the theme toggle, same as the app view. */
 .login-wrap {
   background:
-    linear-gradient(180deg, rgba(6,10,20,.44) 0%, rgba(6,10,20,.30) 40%, rgba(6,10,20,.62) 100%) fixed,
+    linear-gradient(180deg, rgba(233,236,243,.42) 0%, rgba(233,236,243,.30) 42%, rgba(233,236,243,.56) 100%) fixed,
+    url('/static/portal-bg.jpg?v=2') center center / cover no-repeat fixed !important;
+}
+html[data-theme="dark"] .login-wrap {
+  background:
+    linear-gradient(180deg, rgba(7,11,20,.62) 0%, rgba(7,11,20,.50) 42%, rgba(7,11,20,.80) 100%) fixed,
     url('/static/portal-bg.jpg?v=2') center center / cover no-repeat fixed !important;
 }
 .login-aurora { opacity: .5; }
