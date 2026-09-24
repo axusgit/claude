@@ -325,3 +325,67 @@ html[data-theme="dark"] .ticket-card:hover {
     transform: none !important; animation: none !important;
   }
 }
+
+/* ============================================================================
+   PREMIUM POLISH — pointer glare, card spotlight, live pulses, shimmer.
+   ========================================================================== */
+
+/* Moving specular glare on the tilting login card (tracks the pointer) */
+[data-tilt] { position: relative; }
+[data-tilt]::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: 3;
+  background: radial-gradient(circle at var(--gx,50%) var(--gy,50%),
+              rgba(255,255,255,.40), rgba(255,255,255,.06) 30%, transparent 55%);
+  mix-blend-mode: soft-light; opacity: 0; transition: opacity .3s ease; pointer-events: none;
+}
+[data-tilt].is-tilting::after { opacity: 1; }
+html[data-theme="dark"] [data-tilt]::after {
+  background: radial-gradient(circle at var(--gx,50%) var(--gy,50%),
+              rgba(120,190,255,.30), rgba(242,101,34,.10) 34%, transparent 56%);
+  mix-blend-mode: screen;
+}
+
+/* Cursor spotlight glow that follows the pointer across each ticket card */
+.ticket-card::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: 0; pointer-events: none;
+  background: radial-gradient(240px circle at var(--mx,50%) var(--my,50%),
+              rgba(242,101,34,.16), transparent 60%);
+  opacity: 0; transition: opacity .3s ease;
+}
+.ticket-card:hover::before { opacity: 1; }
+.ticket-card > * { position: relative; z-index: 1; }
+html[data-theme="dark"] .ticket-card::before {
+  background: radial-gradient(240px circle at var(--mx,50%) var(--my,50%),
+              rgba(242,101,34,.24), rgba(53,198,255,.10) 45%, transparent 62%);
+}
+
+/* Live pulsing dot on OPEN status badges */
+.badge.open { position: relative; padding-left: 20px; }
+.badge.open::before {
+  content: ""; position: absolute; left: 8px; top: 50%; width: 7px; height: 7px; margin-top: -3.5px;
+  border-radius: 50%; background: #2563eb; box-shadow: 0 0 0 0 rgba(37,99,235,.55);
+  animation: livePulse 1.8s ease-out infinite;
+}
+html[data-theme="dark"] .badge.open::before { background: #7aa7ff; }
+@keyframes livePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(37,99,235,.55); }
+  70%  { box-shadow: 0 0 0 7px rgba(37,99,235,0); }
+  100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+}
+
+/* Flowing shimmer across the accent strip */
+.accent-strip {
+  background:
+    linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent) 0 0 / 40% 100% no-repeat,
+    var(--grad);
+  animation: stripSweep 4.5s ease-in-out infinite;
+}
+@keyframes stripSweep { 0% { background-position: -60% 0, 0 0; } 60%,100% { background-position: 160% 0, 0 0; } }
+
+/* Primary buttons: soft breathing glow to draw the eye (subtle) */
+#new-ticket-btn, #login-btn { box-shadow: 0 8px 22px rgba(242,101,34,.35); }
+
+@media (prefers-reduced-motion: reduce) {
+  .badge.open::before, .accent-strip { animation: none !important; }
+  [data-tilt]::after, .ticket-card::before { display: none; }
+}
