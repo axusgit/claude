@@ -289,3 +289,6 @@ html[data-theme="dark"] .pf-mark { filter: none; }
 .login-card { max-width: 480px; }
 .login-hint { white-space: normal; }
 @media (min-width: 520px) { .login-hint { white-space: nowrap; } }
+
+/* Sign-in button: smaller text so it fits comfortably on one line */
+#login-btn { font-size: 14px; white-space: nowrap; letter-spacing: 0; }
