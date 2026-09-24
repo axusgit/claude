@@ -126,18 +126,28 @@ export const api = {
       },
     );
   },
-  // Complete a document from a manually (offline) signed copy — uploads the
-  // signed PDF, marks it Completed, and (for On Call quotes) notifies On Call.
-  uploadSignedCopy: (id: string, file: File) => {
+  // Upload a copy signed OFFLINE (wet ink). `manualSignerIds` = the recipients
+  // who actually signed on this paper copy; the rest still e-sign on it. Omitting
+  // them means everyone signed on the copy (completes it immediately).
+  uploadSignedCopy: (id: string, file: File, manualSignerIds?: string[]) => {
     const fd = new FormData();
     fd.append("file", file);
-    return fetch(`/api/envelopes/${id}/upload-signed`, { method: "POST", body: fd }).then(
+    const qs =
+      manualSignerIds && manualSignerIds.length
+        ? `?signers=${encodeURIComponent(manualSignerIds.join(","))}`
+        : "";
+    return fetch(`/api/envelopes/${id}/upload-signed${qs}`, { method: "POST", body: fd }).then(
       async (res) => {
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(body.error || `Upload failed (${res.status})`);
         }
-        return res.json() as Promise<{ ok: boolean; completed: boolean }>;
+        return res.json() as Promise<{
+          ok: boolean;
+          completed: boolean;
+          awaiting?: { name: string; email: string }[];
+          invited?: number;
+        }>;
       },
     );
   },

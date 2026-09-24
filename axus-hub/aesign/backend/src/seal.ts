@@ -25,7 +25,7 @@ export async function sealPdf(
   sourcePath: string,
   fields: SealField[],
   recipients: SealRecipient[],
-  meta: { title: string; envelopeId: string },
+  meta: { title: string; envelopeId: string; manualSignerEmails?: Set<string> },
   includeCert = true,
 ): Promise<{ bytes: Uint8Array; sha256: string }> {
   const src = await readFile(sourcePath);
@@ -98,21 +98,36 @@ export async function sealPdf(
   line(`Envelope ID: ${meta.envelopeId}`);
   y -= 8;
   line("Signers", { bold: true, size: 12, color: rgb(0.07, 0.09, 0.15) });
+  const manual = meta.manualSignerEmails;
+  let anyOffline = false;
   for (const r of recipients) {
+    const offline = manual?.has(r.email.toLowerCase()) ?? false;
+    if (offline) anyOffline = true;
     line(`• ${r.name} <${r.email}>`, { bold: true });
-    line(`    Signed: ${r.signed_at ?? "—"}     IP: ${r.ip ?? "—"}`);
+    if (offline) {
+      line(`    Signed on paper (offline), uploaded: ${r.signed_at ?? "—"}`);
+    } else {
+      line(`    Signed electronically: ${r.signed_at ?? "—"}     IP: ${r.ip ?? "—"}`);
+    }
     y -= 2;
   }
   y -= 6;
-  line("Executed electronically under the U.S. ESIGN Act and UETA. Each signer consented to", {
+  line("Executed under the U.S. ESIGN Act and UETA. Electronic signers consented to sign", {
     size: 9,
     color: rgb(0.45, 0.45, 0.45),
   });
-  line("sign electronically; identity was attributed via a unique emailed link, with timestamp and", {
+  line("electronically; identity was attributed via a unique emailed link, with timestamp and", {
     size: 9,
     color: rgb(0.45, 0.45, 0.45),
   });
   line("IP address recorded in the audit trail.", { size: 9, color: rgb(0.45, 0.45, 0.45) });
+  if (anyOffline) {
+    line('Signatures marked "on paper" were signed by hand on a printed copy and uploaded to', {
+      size: 9,
+      color: rgb(0.45, 0.45, 0.45),
+    });
+    line("this record by Axus staff.", { size: 9, color: rgb(0.45, 0.45, 0.45) });
+  }
   }
 
   const bytes = await pdf.save();

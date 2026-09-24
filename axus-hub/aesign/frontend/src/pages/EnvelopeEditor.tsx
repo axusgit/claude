@@ -498,27 +498,44 @@ export function EnvelopeEditor() {
       setRemindingId(null);
     }
   }
-  // Complete a document that was signed OFFLINE: staff upload the returned,
-  // manually signed PDF and it's marked Completed (On Call quotes flow back to
-  // On Call's Invoices, same as an e-signed completion).
+  // Upload a copy signed OFFLINE (wet ink). Staff pick WHICH signer(s) actually
+  // signed on the paper copy; anyone left keeps their fields and signs the
+  // uploaded copy electronically — the document only completes once all have
+  // signed. (On Call quotes flow back to On Call's Invoices on completion.)
   const [uploadingSigned, setUploadingSigned] = useState(false);
-  async function onUploadSigned(e: React.ChangeEvent<HTMLInputElement>) {
+  const [signedFile, setSignedFile] = useState<File | null>(null);
+  const [signedSel, setSignedSel] = useState<Set<string>>(new Set());
+  // Signers who could have signed on the paper copy: exclude copy-only viewers,
+  // decliners, and anyone who already signed.
+  const signableRecipients = recipients.filter(
+    (r) => r.id && r.role !== "viewer" && r.status !== "declined" && r.status !== "signed",
+  );
+  function onUploadSigned(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (e.target) e.target.value = ""; // allow re-selecting the same file later
     if (!file) return;
-    if (
-      !window.confirm(
-        "Mark this document Completed using the uploaded signed copy? This records it as signed offline and can't be undone.",
-      )
-    )
-      return;
+    // Default: assume everyone still outstanding signed on the copy; staff
+    // uncheck anyone who will instead sign electronically.
+    setSignedSel(new Set(signableRecipients.map((r) => r.id as string)));
+    setSignedFile(file);
+  }
+  async function submitSignedCopy() {
+    if (!signedFile) return;
     setError(null);
     setNotice(null);
     setUploadingSigned(true);
     try {
-      await api.uploadSignedCopy(id, file);
+      const res = await api.uploadSignedCopy(id, signedFile, Array.from(signedSel));
+      setSignedFile(null);
       await load();
-      setNotice("Signed copy uploaded — document marked Completed.");
+      if (res.completed) {
+        setNotice("Signed copy uploaded — document marked Completed.");
+      } else {
+        const names = (res.awaiting ?? []).map((a) => a.name).join(", ");
+        setNotice(
+          `Signed copy uploaded. ${names || "The remaining signer(s)"} still need to sign — they've been emailed a link to sign electronically on this copy.`,
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -767,7 +784,11 @@ export function EnvelopeEditor() {
           <div className="max-h-[calc(100vh-160px)] overflow-y-auto rounded-[var(--radius-card)] border border-line bg-canvas p-4">
             <PdfCanvas
               url={isNew ? api.templatePreviewUrl(docType, company, docNumber) : api.documentUrl(id)}
-              fields={fields}
+              // A completed document's sealed PDF already carries every signature/
+              // value — showing field boxes on top would just clutter it. Before
+              // then, boxes are shown but locked once the document leaves draft.
+              fields={detail.envelope.status === "completed" ? [] : fields}
+              readOnly={detail.envelope.status !== "draft"}
               recipients={recipients}
               colorFor={colorFor}
               labelFor={labelFor}
@@ -792,6 +813,81 @@ export function EnvelopeEditor() {
             void load();
           }}
         />
+      )}
+
+      {signedFile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => !uploadingSigned && setSignedFile(null)}
+        >
+          <Card className="w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-1 flex items-center gap-2 text-base font-semibold">
+              <Check className="h-4 w-4 text-brand" /> Upload signed copy
+            </div>
+            <p className="mb-3 text-sm text-muted">
+              Who signed on <span className="font-medium">{signedFile.name}</span>? The people you
+              check are recorded as having signed on paper and their fields are removed. Anyone left
+              unchecked keeps their fields and is emailed a link to sign this copy electronically.
+            </p>
+            {signableRecipients.length === 0 ? (
+              <p className="rounded-lg bg-canvas p-3 text-sm text-muted">
+                Everyone has already signed — this copy will be recorded as the final signed
+                document.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {signableRecipients.map((r) => {
+                  const checked = signedSel.has(r.id as string);
+                  return (
+                    <label
+                      key={r.id}
+                      className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-line p-2.5 text-sm hover:bg-canvas"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSignedSel((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(r.id as string)) next.delete(r.id as string);
+                            else next.add(r.id as string);
+                            return next;
+                          })
+                        }
+                      />
+                      <span
+                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ background: colorFor(r.id) }}
+                      />
+                      <span className="min-w-0">
+                        <span className="font-medium">{r.name}</span>{" "}
+                        <span className="text-muted">· {r.email}</span>
+                        <span className="ml-1 text-xs text-muted">
+                          {checked ? "signed on paper" : "will sign electronically"}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setSignedFile(null)}
+                disabled={uploadingSigned}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void submitSignedCopy()}
+                disabled={uploadingSigned || (signableRecipients.length > 0 && signedSel.size === 0)}
+              >
+                {uploadingSigned ? "Uploading…" : "Upload signed copy"}
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );

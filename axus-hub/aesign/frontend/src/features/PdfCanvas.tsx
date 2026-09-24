@@ -242,6 +242,9 @@ interface PdfCanvasProps {
   onUpdateField: (index: number, patch: Partial<Field>) => void;
   onDeleteField: (index: number) => void;
   onDetectLayout?: (slots: SignSlot[]) => void;
+  // When true, field boxes are shown but locked (no place / move / resize /
+  // delete) — used once a document has been sent and can no longer be edited.
+  readOnly?: boolean;
 }
 
 export function PdfCanvas(props: PdfCanvasProps) {
@@ -302,6 +305,7 @@ function PdfPage({
   onUpdateField,
   onDeleteField,
   onPageDetected,
+  readOnly,
 }: PdfCanvasProps & {
   doc: PDFDocumentProxy;
   pageNumber: number;
@@ -398,7 +402,7 @@ function PdfPage({
   }
 
   function handleClick(e: React.MouseEvent) {
-    if (!activeTool || !size) return;
+    if (!activeTool || !size || readOnly) return;
     const rect = overlayRef.current!.getBoundingClientRect();
     const cx = (e.clientX - rect.left) / rect.width;
     const cy = (e.clientY - rect.top) / rect.height;
@@ -415,7 +419,7 @@ function PdfPage({
       <div
         ref={overlayRef}
         className="absolute inset-0"
-        style={{ cursor: activeTool ? "crosshair" : "default" }}
+        style={{ cursor: activeTool && !readOnly ? "crosshair" : "default" }}
         onClick={handleClick}
       >
         {size &&
@@ -427,6 +431,7 @@ function PdfPage({
                 pageSize={size}
                 color={colorFor(f.recipient_id)}
                 label={labelFor(f.recipient_id)}
+                readOnly={readOnly}
                 onMove={(x, y) => onUpdateField(gi, { x, y })}
                 onResize={(w, h) => onUpdateField(gi, { w, h })}
                 onDelete={() => onDeleteField(gi)}
@@ -443,6 +448,7 @@ function FieldBox({
   pageSize,
   color,
   label,
+  readOnly,
   onMove,
   onResize,
   onDelete,
@@ -451,6 +457,7 @@ function FieldBox({
   pageSize: { w: number; h: number };
   color: string;
   label: string;
+  readOnly?: boolean;
   onMove: (x: number, y: number) => void;
   onResize: (w: number, h: number) => void;
   onDelete: () => void;
@@ -510,6 +517,30 @@ function FieldBox({
 
   const h = field.h * pageSize.h;
   const handle = "absolute hidden bg-white group-hover:block";
+  // Locked (post-send) — a static marker showing where a field sits, no editing.
+  if (readOnly) {
+    return (
+      <div
+        className="absolute rounded-sm font-medium select-none"
+        style={{
+          left: field.x * pageSize.w,
+          top: field.y * pageSize.h,
+          width: field.w * pageSize.w,
+          height: h,
+          border: `1.5px dashed ${color}`,
+          background: `${color}14`,
+          color,
+          cursor: "default",
+          fontSize: Math.max(8, Math.min(h * 0.62, 12)),
+        }}
+        title={`${label} — ${field.type} (awaiting signature)`}
+      >
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden px-1">
+          <span className="truncate leading-none">{FIELD_DEFAULTS[field.type].label}</span>
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       className="group absolute rounded-sm font-medium select-none"

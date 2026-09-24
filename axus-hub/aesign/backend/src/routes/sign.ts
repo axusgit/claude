@@ -27,7 +27,7 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     [envId],
   );
   const recs = await pool.query(
-    `select id, name, email, role, sign_token, ip, status,
+    `select id, name, email, role, sign_token, ip, status, consent_at,
             to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
      from recipient where envelope_id = $1 order by sign_order`,
     [envId],
@@ -38,11 +38,18 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
   const allSigned = signers.every((r) => r.status === "signed");
   logActivity(signerName, "Signed document", e.title, e.id);
 
+  // A signer who is 'signed' but never consented electronically signed OFFLINE
+  // (a paper copy uploaded by staff) — mark them so on the certificate.
+  const manualSignerEmails = new Set(
+    signers
+      .filter((r) => r.status === "signed" && !r.consent_at)
+      .map((r) => (r.email as string).toLowerCase()),
+  );
   const { bytes, sha256 } = await sealPdf(
     join(config.storageDir, e.pdf_file),
     fields.rows as SealField[],
     signers as SealRecipient[],
-    { title: e.title, envelopeId: e.id },
+    { title: e.title, envelopeId: e.id, manualSignerEmails },
     allSigned,
   );
   const attachment = { filename: `${envelopeDocName(e)}.pdf`, content: Buffer.from(bytes) };
