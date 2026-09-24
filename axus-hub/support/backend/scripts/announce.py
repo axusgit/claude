@@ -47,14 +47,14 @@ def _btn(label):
 
 def headsup(fn):
     n = _h.escape(fn)
-    subject = "We're upgrading your Axus support portal — live Monday, Sept 28"
+    subject = "We're upgrading your Axus service portal — live Monday, Sept 28"
     html = _shell(f"""
       <h1 style="margin:12px 0 6px;font-size:20px;">A better support experience — live Monday, Sept 28</h1>
       <p style="margin:10px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">Hi {n},</p>
-      <p style="margin:10px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">As part of our commitment to faster, more reliable service, Axus Technologies is launching a new support portal. It goes <strong>live on Monday, September 28, 2026</strong>. Until then, please continue to reach us as you do today — <strong>the new portal isn't available yet, so there's no need to do anything before Monday.</strong></p>
+      <p style="margin:10px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">As part of our commitment to faster, more reliable service, Axus Technologies is launching a new service portal. It goes <strong>live on Monday, September 28, 2026</strong>. Until then, please continue to reach us as you do today — <strong>the new portal isn't available yet, so there's no need to do anything before Monday.</strong></p>
       <p style="margin:16px 0 4px;font-size:14.5px;line-height:1.6;color:#3a4150;"><strong>What's changing on Monday</strong></p>
       <ul style="margin:4px 0 0;padding-left:20px;font-size:14.5px;line-height:1.7;color:#3a4150;">
-        <li>A modern, faster support portal at <a href="{PORTAL}" style="color:#f26722;">service.axustechnologies.com</a>.</li>
+        <li>A modern, faster service portal at <a href="{PORTAL}" style="color:#f26722;">service.axustechnologies.com</a>.</li>
         <li>Passwordless sign-in — no password to remember; we email you a secure one-time link.</li>
         <li>Your open tickets come with you — nothing is lost.</li>
       </ul>
@@ -67,10 +67,10 @@ def headsup(fn):
     """)
     text = (f"Hi {fn},\n\n"
             "As part of our commitment to faster, more reliable service, Axus Technologies is launching a new "
-            "support portal. It goes LIVE on Monday, September 28, 2026. Until then, please continue to reach us "
+            "service portal. It goes LIVE on Monday, September 28, 2026. Until then, please continue to reach us "
             "as you do today - the new portal isn't available yet, so there's no need to do anything before Monday.\n\n"
             "What's changing on Monday\n"
-            f"- A modern, faster support portal at {PORTAL}\n"
+            f"- A modern, faster service portal at {PORTAL}\n"
             "- Passwordless sign-in - no password to remember; we email you a secure one-time link.\n"
             "- Your open tickets come with you - nothing is lost.\n\n"
             "How you'll get there\n"
@@ -88,11 +88,11 @@ def headsup(fn):
 
 def golive(fn):
     n = _h.escape(fn)
-    subject = "Your new Axus support portal is now live"
+    subject = "Your new Axus service portal is now live"
     html = _shell(f"""
-      <h1 style="margin:12px 0 6px;font-size:20px;">Your new support portal is live</h1>
+      <h1 style="margin:12px 0 6px;font-size:20px;">Your new service portal is live</h1>
       <p style="margin:10px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">Hi {n}, welcome!</p>
-      <p style="margin:12px 0 16px;font-size:14.5px;line-height:1.6;color:#3a4150;">Our new support portal is live now. Sign in below to see your tickets and open new requests.</p>
+      <p style="margin:12px 0 16px;font-size:14.5px;line-height:1.6;color:#3a4150;">Our new service portal is live now. Sign in below to see your tickets and open new requests.</p>
       {_btn("Sign in to the portal")}
       <p style="margin:18px 0 4px;font-size:14.5px;line-height:1.6;color:#3a4150;"><strong>How to sign in (no password needed)</strong></p>
       <ol style="margin:4px 0 0;padding-left:20px;font-size:14.5px;line-height:1.7;color:#3a4150;">
@@ -106,7 +106,7 @@ def golive(fn):
       <p style="margin:18px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">Thank you for choosing our services.<br/>Axus Service Team</p>
     """)
     text = (f"Hi {fn}, welcome!\n\n"
-            f"Our new support portal is live now: {PORTAL}\n\n"
+            f"Our new service portal is live now: {PORTAL}\n\n"
             "How to sign in (no password needed):\n"
             "1. Go to the link above and enter your work email.\n"
             "2. We'll email you a secure sign-in link - click it and you're in.\n"
