@@ -393,3 +393,16 @@ html[data-theme="dark"] .ticket-card::before {
   border-color: rgba(242,101,34,.7) !important;
   box-shadow: var(--sh-lg), 0 0 0 1px rgba(242,101,34,.55), 0 0 36px -4px rgba(242,101,34,.6) !important;
 }
+
+/* Reliable pointer spotlight via a real child element (renders where ::before didn't) */
+.tc-glow {
+  position: absolute !important; inset: 0; z-index: 0 !important; pointer-events: none;
+  border-radius: inherit; opacity: 0; transition: opacity .16s ease;
+  background: radial-gradient(240px circle at var(--mx,50%) var(--my,50%),
+              rgba(242,101,34,.55), rgba(242,101,34,.18) 42%, transparent 68%);
+}
+html[data-theme="dark"] .tc-glow {
+  background: radial-gradient(260px circle at var(--mx,50%) var(--my,50%),
+              rgba(255,140,60,.6), rgba(242,101,34,.18) 42%, transparent 70%);
+}
+.ticket-card:hover .tc-glow { opacity: 1; }

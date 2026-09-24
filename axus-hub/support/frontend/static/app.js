@@ -175,6 +175,7 @@ const App = (() => {
     }
     list.innerHTML = rows.map(t => `
       <div class="ticket-card" data-id="${t.id}">
+        <span class="tc-glow"></span>
         <div class="tc-prio-bar prio ${t.priority}" style="background:currentColor"></div>
         <div class="tc-body">
           <div class="tc-title">${esc(t.title)}</div>
