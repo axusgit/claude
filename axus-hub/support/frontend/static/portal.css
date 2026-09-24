@@ -379,3 +379,17 @@ html[data-theme="dark"] .ticket-card::before {
   background: radial-gradient(250px circle at var(--mx,50%) var(--my,50%),
     rgba(242,101,34,.55), rgba(242,101,34,.16) 42%, transparent 68%) !important;
 }
+
+/* Push the pointer glow further: brighter fill + glowing orange card edge */
+.ticket-card::before {
+  background: radial-gradient(280px circle at var(--mx,50%) var(--my,50%),
+    rgba(242,101,34,.6), rgba(242,101,34,.24) 40%, transparent 70%) !important;
+}
+html[data-theme="dark"] .ticket-card::before {
+  background: radial-gradient(300px circle at var(--mx,50%) var(--my,50%),
+    rgba(242,101,34,.72), rgba(255,150,60,.22) 42%, transparent 72%) !important;
+}
+.ticket-card:hover {
+  border-color: rgba(242,101,34,.7) !important;
+  box-shadow: var(--sh-lg), 0 0 0 1px rgba(242,101,34,.55), 0 0 36px -4px rgba(242,101,34,.6) !important;
+}
