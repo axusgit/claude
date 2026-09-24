@@ -409,3 +409,9 @@ html[data-theme="dark"] {
 /* Keep the Axus logo in original colors (don't invert to white) on the staff portal */
 html[data-theme="dark"] .topbar-logo,
 html[data-theme="dark"] .login-logo { filter: none; }
+
+/* Profile button text (button element — force readable colors) */
+.profile-btn { color: var(--text); }
+.profile-btn .who-name { color: var(--text); font-weight: 600; }
+.profile-btn .who-company, .profile-btn .who-role { color: var(--muted); }
+.profile-caret { color: var(--muted); }
