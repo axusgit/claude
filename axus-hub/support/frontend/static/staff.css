@@ -415,3 +415,6 @@ html[data-theme="dark"] .login-logo { filter: none; }
 .profile-btn .who-name { color: var(--text); font-weight: 600; }
 .profile-btn .who-company, .profile-btn .who-role { color: var(--muted); }
 .profile-caret { color: var(--muted); }
+
+/* Match the staff topbar logo size to the client portal (88px) */
+.topbar-logo { height: 88px; }
