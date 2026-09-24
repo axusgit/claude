@@ -406,3 +406,14 @@ html[data-theme="dark"] .tc-glow {
               rgba(255,140,60,.6), rgba(242,101,34,.18) 42%, transparent 70%);
 }
 .ticket-card:hover .tc-glow { opacity: 1; }
+
+/* Footer: no box/border, single centered line */
+.portal-footer { margin-top: 40px; padding: 14px 20px 20px; }
+.pf-inner {
+  max-width: none !important; margin: 0 !important; padding: 0 !important;
+  border: none !important; background: none !important; box-shadow: none !important; border-radius: 0 !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  justify-content: center; text-align: center;
+}
+.pf-legal { flex: none; min-width: 0; margin: 0 auto; text-align: center; white-space: nowrap; font-size: 11px; }
+@media (max-width: 1000px) { .pf-legal { white-space: normal; } }
