@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=65" />
-  <link rel="stylesheet" href="/static/portal.css?v=12" />
+  <link rel="stylesheet" href="/static/portal.css?v=13" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
     .login-sent { text-align: center; }
@@ -113,8 +113,8 @@
             <div class="card ticket-head">
               <div class="detail-head">
                 <span id="d-ref" class="ref-pill"></span>
-                <span class="meta-lbl">Status</span><span id="d-status" class="badge"></span>
-                <span class="meta-lbl">Priority</span><span id="d-priority" class="prio-badge"></span>
+                <span class="meta-group"><span class="meta-lbl">Status</span><span id="d-status" class="badge"></span></span>
+                <span class="meta-group"><span class="meta-lbl">Priority</span><span id="d-priority" class="prio-badge"></span></span>
                 <select id="d-raise-prio" class="raise-prio" title="Escalate this ticket — you can raise the priority, not lower it" hidden></select>
               </div>
               <h2 id="d-title" class="ticket-title"></h2>

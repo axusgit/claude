@@ -302,3 +302,13 @@ html[data-theme="dark"] .pf-mark { filter: none; }
 /* Bigger Axus logo */
 .login-logo { height: 88px; margin-bottom: 22px; }
 .topbar-logo { height: 46px; }
+
+/* Delimit Status / Priority as bordered pill boxes */
+.detail-head { gap: 10px; }
+.meta-group {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px; border: 1px solid var(--glass-brd); border-radius: 999px;
+  background: var(--glass-2); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  box-shadow: var(--sh-sm);
+}
+.meta-group .meta-lbl { margin: 0; }
