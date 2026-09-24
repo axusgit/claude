@@ -333,3 +333,8 @@ html[data-theme="dark"] .pf-mark { filter: none; }
 .detail-head .raise-prio,
 .detail-head .meta-group { min-width: 150px; justify-content: center; }
 .detail-head .ref-pill { font-size: 15px; letter-spacing: .3px; }
+
+/* Lock all header pills to one fixed size */
+.detail-head .ref-pill,
+.detail-head .raise-prio,
+.detail-head .meta-group { flex: 0 0 auto; width: 156px; min-width: 156px; }

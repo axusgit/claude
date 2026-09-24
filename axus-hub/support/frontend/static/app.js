@@ -23,7 +23,7 @@ const App = (() => {
     const cur = PRIO_ORDER.indexOf(t.priority);
     const higher = (t.status === "closed" || cur < 0) ? [] : PRIO_ORDER.slice(cur + 1);
     if (!higher.length) { sel.hidden = true; sel.innerHTML = ""; return; }
-    sel.innerHTML = `<option value="">⬆ Raise priority…</option>` +
+    sel.innerHTML = `<option value="">Raise priority</option>` +
       higher.map(p => `<option value="${p}">${prioLabel(p)}</option>`).join("");
     sel.hidden = false;
   }
