@@ -470,13 +470,13 @@ html[data-theme="light"] .login-card::after {
 body {
   background:
     linear-gradient(180deg, rgba(233,236,243,.50) 0%, rgba(233,236,243,.40) 42%, rgba(233,236,243,.66) 100%) fixed,
-    url('/static/portal-bg.jpg') center center / cover no-repeat fixed,
+    url('/static/portal-bg.jpg?v=2') center center / cover no-repeat fixed,
     #dfe3ec !important;
 }
 html[data-theme="dark"] body {
   background:
     linear-gradient(180deg, rgba(7,11,20,.60) 0%, rgba(7,11,20,.48) 42%, rgba(7,11,20,.80) 100%) fixed,
-    url('/static/portal-bg.jpg') center center / cover no-repeat fixed,
+    url('/static/portal-bg.jpg?v=2') center center / cover no-repeat fixed,
     #070b14 !important;
 }
 /* The photo replaces the animated aurora + grid backdrop. */
@@ -488,7 +488,7 @@ body::before, body::after { display: none !important; }
 .login-wrap {
   background:
     linear-gradient(180deg, rgba(6,10,20,.44) 0%, rgba(6,10,20,.30) 40%, rgba(6,10,20,.62) 100%) fixed,
-    url('/static/portal-bg.jpg') center center / cover no-repeat fixed !important;
+    url('/static/portal-bg.jpg?v=2') center center / cover no-repeat fixed !important;
 }
 .login-aurora { opacity: .5; }
 
