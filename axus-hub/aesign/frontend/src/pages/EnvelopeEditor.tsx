@@ -204,17 +204,34 @@ function DeliveryCard({ log }: { log: EmailLogEntry[] }) {
             </div>
             <div className="break-words text-muted">to {m.to_email}</div>
             {m.success ? (
-              <div className="mt-0.5 flex items-start gap-1 text-green-600">
+              <div className="mt-0.5 flex min-w-0 items-start gap-1 text-green-600">
                 <Check className="mt-0.5 h-3 w-3 shrink-0" />
-                <span className="break-words">
+                <span className="min-w-0 break-words">
                   Accepted by mail server
-                  {m.smtp_response ? ` · ${m.smtp_response}` : ""}
+                  {m.smtp_response ? (
+                    <>
+                      {" · "}
+                      <span className="break-all">{m.smtp_response}</span>
+                    </>
+                  ) : (
+                    ""
+                  )}
                 </span>
               </div>
             ) : (
-              <div className="mt-0.5 flex items-start gap-1 text-red-600">
+              <div className="mt-0.5 flex min-w-0 items-start gap-1 text-red-600">
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                <span className="break-words">Send failed{m.error ? ` · ${m.error}` : ""}</span>
+                <span className="min-w-0 break-words">
+                  Send failed
+                  {m.error ? (
+                    <>
+                      {" · "}
+                      <span className="break-all">{m.error}</span>
+                    </>
+                  ) : (
+                    ""
+                  )}
+                </span>
               </div>
             )}
           </li>
