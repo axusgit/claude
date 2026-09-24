@@ -71,8 +71,16 @@ const App = (() => {
   const initials = n => (n || "?").split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
   function fmtDate(s) {
     if (!s) return "";
-    const d = new Date(s);
-    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    // Always show activity times in Axus's timezone (US Eastern, EDT/EST), not the
+    // viewer's local zone. Treat timezone-naive values (no Z / offset) as UTC.
+    let iso = String(s);
+    if (/T\d{2}:\d{2}/.test(iso) && !/([zZ]|[+-]\d{2}:?\d{2})$/.test(iso)) iso += "Z";
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toLocaleString("en-US", {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+      timeZone: "America/New_York", timeZoneName: "short"
+    });
   }
   function fileSize(b) {
     if (b < 1024) return b + " B";

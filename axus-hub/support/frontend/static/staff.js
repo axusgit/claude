@@ -97,7 +97,16 @@ const Staff = (() => {
     low: "Low — a minor or non-urgent request scheduled after higher-priority work.",
   };
   const statusLabel = s => cap(s);
-  function fmtDate(s) { if (!s) return ""; return new Date(s).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
+  function fmtDate(s) {
+    if (!s) return "";
+    // Always show activity times in Axus's timezone (US Eastern, EDT/EST), not the
+    // viewer's local zone. Treat timezone-naive values (no Z / offset) as UTC.
+    let iso = String(s);
+    if (/T\d{2}:\d{2}/.test(iso) && !/([zZ]|[+-]\d{2}:?\d{2})$/.test(iso)) iso += "Z";
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" });
+  }
   function fileSize(b) { if (b < 1024) return b + " B"; if (b < 1048576) return (b / 1024).toFixed(0) + " KB"; return (b / 1048576).toFixed(1) + " MB"; }
   function toast(m) { const t = $("toast"); t.textContent = m; t.classList.remove("hidden"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.add("hidden"), 2400); }
   const ACTIVE = ["open", "in_progress", "waiting"];
