@@ -444,3 +444,18 @@ html[data-theme="dark"] .tc-glow {
 .ticket-card:hover::before,
 .ticket-card:hover::after,
 .ticket-card:hover .tc-glow { opacity: 0 !important; }
+
+/* Login card pointer-glow: white/soft-light is invisible on the light card.
+   In light mode use an orange tint with normal blend so the glow reads. */
+html[data-theme="light"] .login-card::after {
+  background: radial-gradient(circle at var(--gx,50%) var(--gy,50%),
+    rgba(242,101,34,.30), rgba(242,101,34,.08) 34%, transparent 58%);
+  mix-blend-mode: normal;
+}
+@media (prefers-color-scheme: light) {
+  html:not([data-theme="dark"]) .login-card::after {
+    background: radial-gradient(circle at var(--gx,50%) var(--gy,50%),
+      rgba(242,101,34,.30), rgba(242,101,34,.08) 34%, transparent 58%);
+    mix-blend-mode: normal;
+  }
+}
