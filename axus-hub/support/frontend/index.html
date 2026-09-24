@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=65" />
-  <link rel="stylesheet" href="/static/portal.css?v=36" />
+  <link rel="stylesheet" href="/static/portal.css?v=37" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
     .login-sent { text-align: center; }
@@ -62,6 +62,7 @@
         <div class="who">
           <span id="who-name" class="who-name"></span>
           <span id="who-company" class="who-company"></span>
+          <span id="who-phone" class="who-phone" hidden></span>
         </div>
         <button class="btn btn-ghost" id="logout-btn">Sign out</button>
         <button class="theme-toggle" id="theme-toggle" title="Toggle dark / light">
@@ -256,7 +257,7 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=36"></script>
+  <script src="/static/app.js?v=37"></script>
   <script src="/static/tilt.js?v=2"></script>
 </body>
 </html>

@@ -123,6 +123,9 @@ const App = (() => {
     me = { id: portal.id, full_name: portal.full_name, role: portal.role };
     $("who-name").textContent = portal.full_name || portal.email;
     $("who-company").textContent = portal.company || "";
+    const phoneEl = $("who-phone");
+    if (portal.phone) { phoneEl.textContent = portal.phone; phoneEl.hidden = false; }
+    else { phoneEl.textContent = ""; phoneEl.hidden = true; }
   }
 
   /* ---------- Tickets list ---------- */

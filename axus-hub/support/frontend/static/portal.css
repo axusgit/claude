@@ -82,6 +82,7 @@ html[data-theme="dark"] .topbar-logo { filter: none; }
 html[data-theme="dark"] .login-logo { filter: drop-shadow(0 8px 20px rgba(242,101,34,.28)); }
 .who-name { font-weight: 650; color: var(--text); }
 .who-company { color: var(--muted); }
+.who-phone { color: var(--muted); font-size: 12px; }
 .accent-strip {
   height: 3px; border: 0;
   background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent) 0/38% 100% no-repeat, var(--grad);

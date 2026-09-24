@@ -203,6 +203,7 @@ def whoami(user: User = Depends(require_client_user), db: Session = Depends(get_
         "role": role,
         "full_name": user.full_name,
         "email": user.email,
+        "phone": user.phone or None,
         "company": client.company_name if client else None,
     }
 
