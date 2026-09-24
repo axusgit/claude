@@ -539,9 +539,11 @@ html[data-theme="dark"] .login-wrap {
   /* Ticket cards: a bit more compact. */
   .ticket-card { padding: 14px 15px; gap: 12px; }
 
-  /* Login: fit narrow screens. */
-  .login-wrap { padding: 16px; }
-  .login-card { padding: 28px 20px; max-width: 100%; }
+  /* Login: fit narrow screens. The login-wrap is a centered grid; give it a
+     real 1fr track and let the card shrink (min-width:0) so it never overflows
+     the viewport on a phone. */
+  .login-wrap { padding: 16px; grid-template-columns: minmax(0, 1fr); }
+  .login-card { padding: 28px 20px; width: 100%; max-width: 100%; min-width: 0; }
   .login-logo { height: 64px; margin-bottom: 14px; }
 }
 
