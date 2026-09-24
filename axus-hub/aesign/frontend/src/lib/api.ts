@@ -212,6 +212,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  // Email a plain PDF copy to non-signers (sends the sealed copy if completed,
+  // otherwise the current working PDF).
+  sendCopy: (id: string, emails: string[], note?: string) =>
+    req<{ ok: boolean; sent: number; failed: string[] }>(`/envelopes/${id}/send-copy`, {
+      method: "POST",
+      body: JSON.stringify({ emails, note }),
+    }),
+  // Replace the copy-only "viewer" recipients (get the signed PDF on completion,
+  // never sign).
+  saveCc: (id: string, recipients: { name: string; email: string }[]) =>
+    req<{ recipients: Recipient[] }>(`/envelopes/${id}/cc`, {
+      method: "PUT",
+      body: JSON.stringify({ recipients }),
+    }).then((r) => r.recipients),
   documentUrl: (id: string) => `/api/envelopes/${id}/document`,
   templatePreviewUrl: (type: string, company: string, docNumber = "") =>
     `/api/envelopes/template-preview?type=${encodeURIComponent(type)}&company=${encodeURIComponent(company)}&doc_number=${encodeURIComponent(docNumber)}`,

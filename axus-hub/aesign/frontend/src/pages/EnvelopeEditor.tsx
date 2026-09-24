@@ -9,6 +9,7 @@ import {
   Check,
   Download,
   History,
+  Mail,
   MailCheck,
   PenLine,
   Pencil,
@@ -130,6 +131,7 @@ const EVENT_LABELS: Record<string, string> = {
   declined: "Declined",
   expired: "Expired",
   voided: "Voided",
+  copy_sent: "Copy emailed",
 };
 
 // Audit trail — the full history of the signing process, for compliance/audit.
@@ -173,6 +175,7 @@ const EMAIL_KIND_LABELS: Record<string, string> = {
   completed: "Completed copy",
   progress: "Progress update",
   declined: "Declined notice",
+  copy: "PDF copy",
 };
 
 // Outbound email delivery log — shows, per attempt, whether the mail server
@@ -235,6 +238,10 @@ export function EnvelopeEditor() {
   const isNew = id === "new";
   const [detail, setDetail] = useState<EnvelopeDetail | null>(null);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
+  // Copy-only recipients (role 'viewer'): receive the signed PDF on completion,
+  // never sign. Kept separate from the (max 2) signer list above.
+  const [ccRecipients, setCcRecipients] = useState<{ name: string; email: string }[]>([]);
+  const [showCopy, setShowCopy] = useState(false);
   const [fields, setFields] = useState<Field[]>([]);
   const [activeTool, setActiveTool] = useState<FieldType | null>(null);
   const [activeRecipientId, setActiveRecipientId] = useState<string | null>(null);
@@ -277,7 +284,10 @@ export function EnvelopeEditor() {
     }
     const d = await api.getEnvelope(id);
     setDetail(d);
-    setRecipients(d.recipients);
+    setRecipients(d.recipients.filter((r) => r.role !== "viewer"));
+    setCcRecipients(
+      d.recipients.filter((r) => r.role === "viewer").map((r) => ({ name: r.name, email: r.email })),
+    );
     setFields(d.fields);
     setSequential(!!d.envelope.sequential);
     setDocType(d.envelope.doc_type ?? "SOW");
@@ -286,7 +296,9 @@ export function EnvelopeEditor() {
     setReminderTime(d.envelope.reminder_time ?? "09:00");
     setReminderDow(d.envelope.reminder_dow ?? 1);
     setReminderDom(d.envelope.reminder_dom ?? 1);
-    setActiveRecipientId((prev) => prev ?? d.recipients[0]?.id ?? null);
+    setActiveRecipientId(
+      (prev) => prev ?? d.recipients.find((r) => r.role !== "viewer")?.id ?? null,
+    );
   }, [id, isNew, sp]);
 
   useEffect(() => {
@@ -423,6 +435,7 @@ export function EnvelopeEditor() {
     }
     const saved = await api.saveRecipients(realId, recipients);
     setRecipients(saved);
+    await api.saveCc(realId, ccRecipients);
     await api.saveFields(realId, fields);
     await api.updateEnvelope(realId, {
       sequential,
@@ -577,6 +590,15 @@ export function EnvelopeEditor() {
               </Button>
             </a>
           )}
+          {!isNew && !!detail.envelope.pdf_file && (
+            <Button
+              variant="outline"
+              onClick={() => setShowCopy(true)}
+              title="Email a PDF copy to people who don't need to sign"
+            >
+              <Mail className="h-4 w-4" /> Send a copy
+            </Button>
+          )}
           {(detail.envelope.status === "draft" ||
             detail.envelope.status === "sent" ||
             detail.envelope.status === "partially_completed") &&
@@ -686,6 +708,14 @@ export function EnvelopeEditor() {
               onRemind={remind}
               remindingId={remindingId}
             />
+            <CcPanel
+              recipients={ccRecipients}
+              editable={detail.envelope.status === "draft"}
+              onChange={(list) => {
+                setCcRecipients(list);
+                setDirty(true);
+              }}
+            />
             {detail.envelope.status === "draft" ? (
               <Card className="p-3">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
@@ -751,7 +781,205 @@ export function EnvelopeEditor() {
           </div>
         </div>
       )}
+
+      {showCopy && (
+        <SendCopyDialog
+          envelopeId={id}
+          onClose={() => setShowCopy(false)}
+          onDone={(msg) => {
+            setNotice(msg);
+            setShowCopy(false);
+            void load();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// Modal: email a plain PDF copy to one or more non-signers, with an optional note.
+function SendCopyDialog({
+  envelopeId,
+  onClose,
+  onDone,
+}: {
+  envelopeId: string;
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
+  const [emails, setEmails] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function submit() {
+    const list = emails
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!list.length) {
+      setErr("Enter at least one email address.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api.sendCopy(envelopeId, list, note.trim() || undefined);
+      if (res.sent > 0) {
+        onDone(
+          `Copy emailed to ${res.sent} recipient${res.sent === 1 ? "" : "s"}` +
+            (res.failed.length ? ` · ${res.failed.length} failed` : "") +
+            ".",
+        );
+      } else {
+        setErr(
+          res.failed.length
+            ? `Could not send to: ${res.failed.join(", ")}`
+            : "Could not send the copy.",
+        );
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Send failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <Card className="w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center gap-2 text-base font-semibold">
+          <Mail className="h-4 w-4 text-brand" /> Send a copy
+        </div>
+        <p className="mb-3 text-sm text-muted">
+          Email a PDF copy to people who don’t need to sign — they just get the document.
+        </p>
+        <label className="mb-1 block text-xs font-medium text-muted">Email addresses</label>
+        <Input
+          value={emails}
+          onChange={(e) => setEmails(e.target.value)}
+          placeholder="jane@acme.com, bob@acme.com"
+          autoFocus
+        />
+        <p className="mt-1 text-[11px] text-muted">Separate multiple addresses with commas.</p>
+        <label className="mb-1 mt-3 block text-xs font-medium text-muted">Note (optional)</label>
+        <textarea
+          className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20"
+          rows={3}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Add a short message…"
+        />
+        {err && <div className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{err}</div>}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={() => void submit()} disabled={busy}>
+            <Mail className="h-4 w-4" /> {busy ? "Sending…" : "Send copy"}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Sidebar panel: copy-only recipients (role 'viewer') who receive the signed PDF
+// on completion but never sign. Editable while the document is a draft.
+function CcPanel({
+  recipients,
+  editable,
+  onChange,
+}: {
+  recipients: { name: string; email: string }[];
+  editable: boolean;
+  onChange: (list: { name: string; email: string }[]) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  function add() {
+    const e = email.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return;
+    onChange([...recipients, { name: name.trim() || e, email: e }]);
+    setName("");
+    setEmail("");
+    setAdding(false);
+  }
+  function remove(i: number) {
+    onChange(recipients.filter((_, idx) => idx !== i));
+  }
+  if (!editable && recipients.length === 0) return null;
+  return (
+    <Card className="p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Copy recipients <span className="normal-case text-muted/70">(no signature)</span>
+        </div>
+        {editable && (
+          <button
+            className="text-muted hover:text-brand"
+            onClick={() => setAdding((v) => !v)}
+            title="Add a copy recipient"
+          >
+            <UserPlus className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+      {recipients.length === 0 && !adding ? (
+        <p className="text-xs text-muted">
+          Add people who should receive the signed PDF but don’t sign.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {recipients.map((r, i) => (
+            <div
+              key={`${r.email}-${i}`}
+              className="group flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-sm"
+            >
+              <Mail className="h-3.5 w-3.5 shrink-0 text-muted" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{r.name}</span>
+                <span className="block truncate text-xs text-muted">{r.email}</span>
+              </span>
+              {editable && (
+                <button
+                  onClick={() => remove(i)}
+                  className="shrink-0 text-muted opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100"
+                  title="Remove"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {adding && editable && (
+        <div className="mt-2 space-y-2 rounded-lg border border-brand/40 p-2">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Full name (optional)"
+          />
+          <Input
+            value={email}
+            type="email"
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="email@company.com"
+          />
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={add} disabled={!email.trim()}>
+              <Check className="h-3.5 w-3.5" /> Add
+            </Button>
+            <Button variant="ghost" onClick={() => setAdding(false)}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 

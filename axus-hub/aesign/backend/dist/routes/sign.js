@@ -17,12 +17,15 @@ async function sealAndNotify(envId, signerName) {
     if (!e?.pdf_file)
         return false;
     const fields = await pool.query(`select type, page, x, y, w, h, value from field where envelope_id = $1`, [envId]);
-    const recs = await pool.query(`select id, name, email, sign_token, ip, status,
+    const recs = await pool.query(`select id, name, email, role, sign_token, ip, status,
             to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
      from recipient where envelope_id = $1 order by sign_order`, [envId]);
-    const allSigned = recs.rows.every((r) => r.status === "signed");
+    // Copy-only viewers (role 'viewer') don't sign — exclude them from completion
+    // logic and from the certificate's Signers list.
+    const signers = recs.rows.filter((r) => r.role !== "viewer");
+    const allSigned = signers.every((r) => r.status === "signed");
     logActivity(signerName, "Signed document", e.title, e.id);
-    const { bytes, sha256 } = await sealPdf(join(config.storageDir, e.pdf_file), fields.rows, recs.rows, { title: e.title, envelopeId: e.id }, allSigned);
+    const { bytes, sha256 } = await sealPdf(join(config.storageDir, e.pdf_file), fields.rows, signers, { title: e.title, envelopeId: e.id }, allSigned);
     const attachment = { filename: `${envelopeDocName(e)}.pdf`, content: Buffer.from(bytes) };
     if (allSigned) {
         const sealedName = `${envId}-sealed.pdf`;
@@ -48,6 +51,8 @@ async function sealAndNotify(envId, signerName) {
         // Notify EVERY participant that a part was completed; anyone who hasn't
         // signed yet also gets a "please complete your part" email with their link.
         for (const r of recs.rows) {
+            if (r.role === "viewer")
+                continue; // copy-only — nothing to sign, no nudge
             if (r.status === "signed") {
                 await sendProgress({
                     to: r.email,

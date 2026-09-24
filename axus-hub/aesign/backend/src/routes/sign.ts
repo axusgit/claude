@@ -27,18 +27,21 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     [envId],
   );
   const recs = await pool.query(
-    `select id, name, email, sign_token, ip, status,
+    `select id, name, email, role, sign_token, ip, status,
             to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
      from recipient where envelope_id = $1 order by sign_order`,
     [envId],
   );
-  const allSigned = recs.rows.every((r) => r.status === "signed");
+  // Copy-only viewers (role 'viewer') don't sign — exclude them from completion
+  // logic and from the certificate's Signers list.
+  const signers = recs.rows.filter((r) => r.role !== "viewer");
+  const allSigned = signers.every((r) => r.status === "signed");
   logActivity(signerName, "Signed document", e.title, e.id);
 
   const { bytes, sha256 } = await sealPdf(
     join(config.storageDir, e.pdf_file),
     fields.rows as SealField[],
-    recs.rows as SealRecipient[],
+    signers as SealRecipient[],
     { title: e.title, envelopeId: e.id },
     allSigned,
   );
@@ -76,6 +79,7 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     // Notify EVERY participant that a part was completed; anyone who hasn't
     // signed yet also gets a "please complete your part" email with their link.
     for (const r of recs.rows) {
+      if (r.role === "viewer") continue; // copy-only — nothing to sign, no nudge
       if (r.status === "signed") {
         await sendProgress({
           to: r.email,

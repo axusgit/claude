@@ -8,3 +8,31 @@
 a[href*="goauthentik"] {
   display: none !important;
 }
+
+/* Tampa Bay, FL background for the login flow — downtown skyline across the bay.
+   Swap the URL below to change the image. */
+:root {
+  --axus-login-bg: url("https://images.unsplash.com/photo-1614056905561-0004a2bb2b74?q=80&w=2400&auto=format&fit=crop");
+}
+
+.pf-c-background-image {
+  background: var(--axus-login-bg) center / cover no-repeat !important;
+  --pf-c-background-image--BackgroundImage: var(--axus-login-bg) !important;
+  --pf-c-background-image--BackgroundImage-2x: var(--axus-login-bg) !important;
+  --pf-c-background-image--BackgroundImage--sm: var(--axus-login-bg) !important;
+  --pf-c-background-image--BackgroundImage--sm-2x: var(--axus-login-bg) !important;
+  --pf-c-background-image--BackgroundImage--lg: var(--axus-login-bg) !important;
+}
+/* PatternFly paints the image on the ::before layer via an inline SVG filter —
+   neutralize it so our photo shows through. */
+.pf-c-background-image::before {
+  background: var(--axus-login-bg) center / cover no-repeat !important;
+  filter: none !important;
+}
+
+/* More rounded login card corners. */
+.pf-c-login__main,
+.pf-c-login__main .pf-c-card {
+  border-radius: 20px !important;
+  overflow: hidden !important;
+}

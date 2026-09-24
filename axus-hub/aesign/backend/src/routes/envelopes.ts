@@ -7,7 +7,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { getIdentity, hasEsignAccess, type Identity } from "../identity.js";
-import { sendSigningInvite, sendPendingReminder } from "../mail.js";
+import { sendSigningInvite, sendPendingReminder, sendCompleted, sendCopy } from "../mail.js";
 import { generateBaaPdf, etTodayLong } from "../baapdf.js";
 import { generateCocPdf } from "../cocpdf.js";
 import { generateSlaPdf } from "../slapdf.js";
@@ -351,10 +351,11 @@ export async function envelopeRoutes(app: FastifyInstance) {
       `update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`,
       [stored, sha256, envId],
     );
-    // Record every recipient (who hasn't declined) as signed offline.
+    // Record every SIGNER (who hasn't declined) as signed offline. Copy-only
+    // viewers are left untouched — they didn't sign.
     await pool.query(
       `update recipient set status = 'signed', signed_at = coalesce(signed_at, now())
-       where envelope_id = $1 and status <> 'declined'`,
+       where envelope_id = $1 and status <> 'declined' and role <> 'viewer'`,
       [envId],
     );
     await pool.query(
@@ -362,6 +363,25 @@ export async function envelopeRoutes(app: FastifyInstance) {
       [envId, id.email, `Manually signed copy uploaded (signed offline). SHA-256 ${sha256}`],
     );
     logActivity(id.email, "Completed document (manual signed copy)", e.title, envId);
+
+    // Email copy-only viewers the finished PDF, same as the e-signed path does.
+    const viewers = await pool.query(
+      `select id, name, email from recipient where envelope_id = $1 and role = 'viewer'`,
+      [envId],
+    );
+    if (viewers.rowCount) {
+      const attachment = { filename: `${envelopeDocName(e)}.pdf`, content: bytes };
+      for (const v of viewers.rows) {
+        await sendCompleted({
+          to: v.email,
+          recipientName: v.name,
+          title: e.title,
+          attachment,
+          envelopeId: envId,
+          recipientId: v.id,
+        });
+      }
+    }
 
     // On Call-originated quote: notify On Call so it shows under Invoices, same as
     // an e-signed completion. Fire-and-forget (the helper never throws).
@@ -712,14 +732,16 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const client = await pool.connect();
     try {
       await client.query("begin");
+      // Only manage SIGNER rows here — copy-only viewers (role 'viewer') are
+      // maintained separately via PUT /:id/cc and must survive a signer save.
       const ids = recips.map((r) => r.id).filter(Boolean) as string[];
       if (ids.length) {
         await client.query(
-          `delete from recipient where envelope_id = $1 and not (id = any($2::uuid[]))`,
+          `delete from recipient where envelope_id = $1 and role <> 'viewer' and not (id = any($2::uuid[]))`,
           [envId, ids],
         );
       } else {
-        await client.query(`delete from recipient where envelope_id = $1`, [envId]);
+        await client.query(`delete from recipient where envelope_id = $1 and role <> 'viewer'`, [envId]);
       }
       for (const [i, r] of recips.entries()) {
         await client.query(
@@ -819,7 +841,11 @@ export async function envelopeRoutes(app: FastifyInstance) {
       `select * from recipient where envelope_id = $1 order by sign_order`,
       [envId],
     );
-    if (!recips.rowCount) return reply.code(400).send({ error: "Add at least one recipient." });
+    // Signers get a signing link; copy-only viewers (role 'viewer') just receive
+    // the finished PDF when the document completes — they never sign.
+    const signers = recips.rows.filter((r) => r.role !== "viewer");
+    const viewers = recips.rows.filter((r) => r.role === "viewer");
+    if (!signers.length) return reply.code(400).send({ error: "Add at least one signer." });
 
     const fieldCounts = await pool.query(
       `select recipient_id, count(*)::int n from field where envelope_id = $1 group by recipient_id`,
@@ -837,7 +863,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
 
     const results: { email: string; sent: boolean }[] = [];
     const tokens = new Map<string, string>();
-    for (const r of recips.rows) tokens.set(r.id, randomBytes(24).toString("base64url"));
+    for (const r of signers) tokens.set(r.id, randomBytes(24).toString("base64url"));
 
     const invite = (r: { id: string; name: string; email: string }) =>
       sendSigningInvite({
@@ -851,18 +877,18 @@ export async function envelopeRoutes(app: FastifyInstance) {
       });
 
     if (env.sequential) {
-      // Only the first recipient is emailed now; the rest advance as each signs.
-      const firstId = recips.rows[0].id;
-      for (const r of recips.rows) {
+      // Only the first signer is emailed now; the rest advance as each signs.
+      const firstId = signers[0].id;
+      for (const r of signers) {
         await pool.query(`update recipient set sign_token = $1, status = $2 where id = $3`, [
           tokens.get(r.id),
           r.id === firstId ? "sent" : "pending",
           r.id,
         ]);
       }
-      results.push({ email: recips.rows[0].email, sent: (await invite(recips.rows[0])).success });
+      results.push({ email: signers[0].email, sent: (await invite(signers[0])).success });
     } else {
-      for (const r of recips.rows) {
+      for (const r of signers) {
         await pool.query(`update recipient set sign_token = $1, status = 'sent' where id = $2`, [
           tokens.get(r.id),
           r.id,
@@ -870,13 +896,109 @@ export async function envelopeRoutes(app: FastifyInstance) {
         results.push({ email: r.email, sent: (await invite(r)).success });
       }
     }
+    // Mark copy-only viewers as such (no signing link) so they're excluded from
+    // signing/completion logic and reminders.
+    if (viewers.length) {
+      await pool.query(
+        `update recipient set status = 'viewer', sign_token = null where envelope_id = $1 and role = 'viewer'`,
+        [envId],
+      );
+    }
     await pool.query(`update envelope set status = 'sent', sent_at = now() where id = $1`, [envId]);
     await pool.query(
       `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'sent', $3)`,
-      [envId, id.email, `Sent to ${recips.rowCount} recipient(s)`],
+      [envId, id.email, `Sent to ${signers.length} signer(s)${viewers.length ? ` · ${viewers.length} copy recipient(s)` : ""}`],
     );
-    logActivity(id.email, "Sent for signature", `${env.title} → ${recips.rowCount} recipient(s)`, envId);
+    logActivity(id.email, "Sent for signature", `${env.title} → ${signers.length} signer(s)`, envId);
     return { ok: true, results };
+  });
+
+  // Email a plain PDF copy of the document to one or more people who are NOT
+  // signers (they just need a copy). Works at any status: sends the sealed copy
+  // once completed, otherwise the current working PDF.
+  const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  app.post("/:id/send-copy", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const body = (req.body ?? {}) as { emails?: string[] | string; note?: string };
+    const raw = Array.isArray(body.emails) ? body.emails.join(",") : (body.emails ?? "");
+    const tokens = raw.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+    const valid = Array.from(new Set(tokens.filter((e) => EMAIL_RE.test(e)).map((e) => e.toLowerCase())));
+    const invalid = tokens.filter((e) => !EMAIL_RE.test(e));
+    if (!valid.length) {
+      return reply.code(400).send({
+        error: invalid.length
+          ? `No valid email addresses. Check: ${invalid.join(", ")}`
+          : "Enter at least one email address.",
+      });
+    }
+    const envq = await pool.query(
+      `select id, title, status, pdf_file, source_file, sealed_file, doc_type, company, quote_data
+       from envelope where id = $1`,
+      [envId],
+    );
+    if (!envq.rowCount) return reply.code(404).send({ error: "Not found" });
+    const e = envq.rows[0];
+    const fileName: string | null =
+      e.status === "completed" && e.sealed_file ? e.sealed_file : (e.pdf_file ?? e.source_file);
+    if (!fileName) return reply.code(400).send({ error: "This document has no PDF to send yet." });
+    const full = join(config.storageDir, fileName);
+    if (!existsSync(full)) return reply.code(404).send({ error: "Document file is missing on disk." });
+    const content = await readFile(full);
+    const attachment = { filename: `${envelopeDocName(e)}.pdf`, content };
+    const note = typeof body.note === "string" && body.note.trim() ? body.note : undefined;
+
+    let sent = 0;
+    const failed: string[] = [];
+    for (const to of valid) {
+      const res = await sendCopy({ to, senderName: id.name, title: e.title, note, attachment, envelopeId: envId });
+      if (res.success) sent++;
+      else failed.push(to);
+    }
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'copy_sent', $3)`,
+      [envId, id.email, `Emailed a copy to ${valid.length} recipient(s): ${valid.join(", ")}`],
+    );
+    logActivity(id.email, "Emailed a copy", `${e.title} → ${valid.join(", ")}`, envId);
+    return { ok: true, sent, failed };
+  });
+
+  // Replace the copy-only "viewer" recipient list (people who receive the signed
+  // PDF on completion but never sign). Kept separate from the signer list.
+  app.put("/:id/cc", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const body = (req.body ?? {}) as { recipients?: { name?: string; email: string }[] };
+    const list = (body.recipients ?? [])
+      .map((r) => ({ name: (r.name ?? "").trim(), email: (r.email ?? "").trim() }))
+      .filter((r) => EMAIL_RE.test(r.email))
+      .map((r) => ({ name: r.name || r.email, email: r.email }));
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(`delete from recipient where envelope_id = $1 and role = 'viewer'`, [envId]);
+      for (const r of list) {
+        await client.query(
+          `insert into recipient (envelope_id, name, email, role, sign_order, status)
+           values ($1, $2, $3, 'viewer', 0, 'viewer')`,
+          [envId, r.name, r.email],
+        );
+      }
+      await client.query("commit");
+    } catch (err) {
+      await client.query("rollback");
+      throw err;
+    } finally {
+      client.release();
+    }
+    const rows = await pool.query(
+      `select id, name, email, role, sign_order, status from recipient
+       where envelope_id = $1 and role = 'viewer' order by name`,
+      [envId],
+    );
+    return { recipients: rows.rows };
   });
 
   // Manually email a reminder to a single recipient who hasn't completed their

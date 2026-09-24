@@ -143,6 +143,37 @@ export async function sendProgress(opts) {
             : []),
     }, { kind: "progress", envelopeId: opts.envelopeId, recipientId: opts.recipientId });
 }
+// Email a plain PDF copy to someone who is NOT a signer (an ad-hoc "send a copy"
+// recipient, or a copy-only viewer). No signing link — just the document attached.
+export async function sendCopy(opts) {
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br />");
+    const greeting = opts.recipientName?.trim() ? `Hi ${opts.recipientName.trim()},` : "Hello,";
+    const noteHtml = opts.note?.trim()
+        ? '<div style="border-left:3px solid #ea580c;background:#fff7ed;padding:10px 14px;font-size:14px;color:#374151;border-radius:0 8px 8px 0;margin:0 0 8px;">' +
+            esc(opts.note.trim()) +
+            "</div>"
+        : "";
+    const html = shell("A document has been shared with you", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">' +
+        greeting +
+        '</p><p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#374151;"><strong>' +
+        opts.senderName +
+        "</strong> has shared a copy of <strong>" +
+        opts.title +
+        "</strong> with you. A PDF copy is attached for your records.</p>" +
+        noteHtml);
+    const text = `${greeting}\n\n${opts.senderName} has shared a copy of "${opts.title}" with you. A PDF copy is attached for your records.` +
+        (opts.note?.trim() ? `\n\nNote:\n${opts.note.trim()}` : "") +
+        `\n\n— Axus eSign`;
+    return runSend(opts.to, {
+        from: config.mail.from,
+        envelope: { from: config.mail.sender, to: opts.to },
+        to: opts.to,
+        subject: `Document: ${opts.title}`,
+        text,
+        html,
+        attachments: withLogo([{ filename: opts.attachment.filename, content: opts.attachment.content }]),
+    }, { kind: "copy", envelopeId: opts.envelopeId, recipientId: opts.recipientId });
+}
 // Sent to a participant who hasn't signed yet, once the other party completes.
 export async function sendReminder(opts) {
     const html = shell("Your signature is needed", '<p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#374151;">Hi ' +
