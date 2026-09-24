@@ -338,3 +338,16 @@ html[data-theme="dark"] .pf-mark { filter: none; }
 .detail-head .ref-pill,
 .detail-head .raise-prio,
 .detail-head .meta-group { flex: 0 0 auto; width: 156px; min-width: 156px; }
+
+/* Force ALL header pills to identical width AND height */
+.detail-head .ref-pill,
+.detail-head .raise-prio,
+.detail-head .meta-group {
+  box-sizing: border-box;
+  width: 156px !important; min-width: 156px !important; max-width: 156px;
+  height: 38px !important; min-height: 38px !important;
+  padding-top: 0 !important; padding-bottom: 0 !important;
+  display: inline-flex !important; align-items: center; justify-content: center;
+  line-height: 1;
+}
+.detail-head .raise-prio { -webkit-appearance: none; appearance: none; }
