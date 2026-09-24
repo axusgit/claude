@@ -429,3 +429,6 @@ html[data-theme="dark"] .tc-glow {
 
 /* Restore the content column width lost when .container became a flex item */
 #app-view .container { width: 100%; }
+
+/* Match the topbar Axus logo to the login-page logo size */
+.topbar-logo { height: 88px; }
