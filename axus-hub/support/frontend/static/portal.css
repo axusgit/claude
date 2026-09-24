@@ -417,3 +417,7 @@ html[data-theme="dark"] .tc-glow {
 }
 .pf-legal { flex: none; min-width: 0; margin: 0 auto; text-align: center; white-space: nowrap; font-size: 11px; }
 @media (max-width: 1000px) { .pf-legal { white-space: normal; } }
+
+/* Close-case confirmation modal */
+.close-modal-card { max-width: 520px; }
+.close-legal { font-size: 13px; line-height: 1.6; color: var(--text-soft); margin: 4px 0 20px; }

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=65" />
-  <link rel="stylesheet" href="/static/portal.css?v=23" />
+  <link rel="stylesheet" href="/static/portal.css?v=24" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
     .login-sent { text-align: center; }
@@ -132,7 +132,7 @@
               <form id="reply-form" class="reply-form">
                 <textarea id="reply-body" rows="3" placeholder="Write a reply to our team…" required></textarea>
                 <label class="consent-check close-check" id="reply-close-row"><input type="checkbox" id="reply-close" />
-                  <span>Close this case. By checking this box, I confirm that the requested services have been completed to my satisfaction and I authorize Axus Technologies to close this ticket. I understand that any further assistance will require a new request, governed by the applicable Master Services Agreement, Statement of Work, and/or the applicable Service Level Agreement (SLA) or Service Level Commitment (SLC) in effect between my organization and Axus Technologies, or provided on a best-effort, time-and-materials basis where none is in effect.</span></label>
+                  <span><strong>Close this case.</strong></span></label>
                 <div class="reply-actions">
                   <label class="reply-attach" title="Attach files"><input type="file" id="reply-files" multiple hidden
                     accept=".doc,.pdf,.jpg,.jpeg,.gif,.png,.xls,.docx,.xlsx,.txt,.pcapng,.eml,.pcap,.wav,.csv,.mp4,.mp3,.heic" />📎 <span id="reply-files-label">Attach</span></label>
@@ -239,9 +239,24 @@
     </div>
   </div>
 
+  <!-- ===================== CLOSE-CASE CONFIRMATION ===================== -->
+  <div id="close-modal" class="modal-overlay hidden">
+    <div class="modal close-modal-card">
+      <div class="modal-head">
+        <h2>Confirm case closure</h2>
+        <button class="modal-x" id="close-x" type="button">×</button>
+      </div>
+      <p class="close-legal">By confirming, I certify that the requested services have been completed to my satisfaction and I authorize Axus Technologies to close this ticket. I understand that any further assistance will require a new request, governed by the applicable Master Services Agreement, Statement of Work, and/or the applicable Service Level Agreement (SLA) or Service Level Commitment (SLC) in effect between my organization and Axus Technologies, or provided on a best-effort, time-and-materials basis where none is in effect.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="close-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="close-confirm">Confirm &amp; close</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=35"></script>
+  <script src="/static/app.js?v=36"></script>
   <script src="/static/tilt.js?v=2"></script>
 </body>
 </html>

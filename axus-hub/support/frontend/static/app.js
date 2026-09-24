@@ -314,6 +314,21 @@ const App = (() => {
   }
 
   /* ---------- Actions ---------- */
+  // Show the close-case attestation modal; resolves true (Confirm) / false (Cancel).
+  function confirmClose() {
+    return new Promise(resolve => {
+      const modal = $("close-modal");
+      modal.classList.remove("hidden");
+      const finish = val => {
+        modal.classList.add("hidden");
+        $("close-confirm").onclick = $("close-cancel").onclick = $("close-x").onclick = null;
+        resolve(val);
+      };
+      $("close-confirm").onclick = () => finish(true);
+      $("close-cancel").onclick = () => finish(false);
+      $("close-x").onclick = () => finish(false);
+    });
+  }
   async function reply(bodyText, files, close) {
     await api(`/api/portal/tickets/${currentTicket}/comments`, { method: "POST", body: { body: bodyText || null, close: !!close } });
     for (const f of (files || [])) {
@@ -426,6 +441,7 @@ const App = (() => {
       const body = $("reply-body").value.trim();
       const close = $("reply-close").checked;
       if (!body) { toast(close ? "Please add a note in the Conversation field before closing the case." : "Please enter your message before posting."); return; }
+      if (close && !(await confirmClose())) return;   // require attestation to close
       const files = Array.from($("reply-files").files || []);
       $("reply-body").value = ""; $("reply-close").checked = false;
       $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
