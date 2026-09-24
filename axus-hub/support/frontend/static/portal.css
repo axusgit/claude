@@ -274,3 +274,54 @@ html[data-theme="dark"] .tc-sub,
 html[data-theme="dark"] .chip { color: var(--text-soft); }
 html[data-theme="dark"] .thread .msg-body,
 html[data-theme="dark"] .msg.them .msg-body { color: var(--text); }
+
+/* ============================================================================
+   3D PERSPECTIVE — depth + tilt (portal only). Tilts fire on hover/pointer so
+   text is flat & sharp at rest.
+   ========================================================================== */
+.ticket-list { perspective: 1500px; perspective-origin: 50% 0%; }
+.ticket-card { transform-style: preserve-3d; will-change: transform; }
+/* rise & tilt toward the viewer on hover (overrides the flat lift) */
+.ticket-card:hover {
+  transform: translateY(-6px) rotateX(6deg) scale(1.015);
+  transform-origin: 50% 100%;
+  box-shadow: 0 34px 64px -14px rgba(20,30,60,.34), 0 0 0 1px rgba(242,101,34,.22);
+}
+html[data-theme="dark"] .ticket-card:hover {
+  box-shadow: 0 38px 74px -16px rgba(0,0,0,.72), 0 0 0 1px rgba(242,101,34,.38);
+}
+/* lift the card's contents off its face for a layered parallax (hover only) */
+.ticket-card .tc-body, .ticket-card .badge, .ticket-card .tc-prio-bar { transition: transform .25s ease; }
+.ticket-card:hover .tc-body   { transform: translateZ(28px); }
+.ticket-card:hover .badge     { transform: translateZ(40px); }
+.ticket-card:hover .tc-prio-bar { transform: translateZ(46px); }
+
+/* Pointer-follow tilt surface (login card) — children pop when tilted */
+[data-tilt] { transform-style: preserve-3d; transition: transform .3s cubic-bezier(.2,.8,.25,1); will-change: transform; }
+[data-tilt] > * { transform: translateZ(26px); }
+
+/* Buttons: subtle 3D press */
+.btn-primary, .btn-ghost, .btn { transform-style: preserve-3d; }
+.btn-primary:active, .btn:active { transform: translateY(1px) rotateX(10deg); }
+
+/* New-ticket modal: 3D flip-in */
+.modal-overlay { perspective: 1600px; }
+#new-modal .modal { transform-origin: 50% 0%; animation: modalIn3d .5s cubic-bezier(.2,.85,.25,1); }
+@keyframes modalIn3d {
+  from { opacity: 0; transform: perspective(1300px) rotateX(-16deg) translateY(26px) scale(.95); }
+  to   { opacity: 1; transform: perspective(1300px) rotateX(0) translateY(0) scale(1); }
+}
+
+/* Login logo gentle 3D float */
+.login-logo { animation: logoFloat 6.5s ease-in-out infinite; transform-style: preserve-3d; }
+@keyframes logoFloat {
+  0%,100% { transform: translateY(0) rotateX(0); }
+  50%     { transform: translateY(-5px) rotateX(8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticket-card:hover, .ticket-card:hover .tc-body, .ticket-card:hover .badge,
+  .ticket-card:hover .tc-prio-bar, [data-tilt], .login-logo, #new-modal .modal {
+    transform: none !important; animation: none !important;
+  }
+}
