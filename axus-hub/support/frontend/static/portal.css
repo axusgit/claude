@@ -436,3 +436,11 @@ html[data-theme="dark"] .tc-glow {
 /* Close-case checkbox on the same row as Attach/Post, vertically centered */
 .reply-form .reply-actions { display: flex; align-items: center; gap: 12px; }
 .reply-form .reply-actions .close-check { margin: 0 auto 0 0; padding: 0; }
+
+/* Remove the orange spotlight/shine highlight on ticket hover (keep the gentle lift + border) */
+.ticket-card::before,
+.ticket-card::after,
+.ticket-card .tc-glow { display: none !important; }
+.ticket-card:hover::before,
+.ticket-card:hover::after,
+.ticket-card:hover .tc-glow { opacity: 0 !important; }
