@@ -101,7 +101,7 @@ def golive(fn):
         <li>The link works once and expires in 15 minutes; your session then stays active for 30 days.</li>
       </ol>
       <p style="margin:16px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">You can also reach the portal anytime from our website — go to <a href="https://axustechnologies.com/" style="color:#f26722;">axustechnologies.com</a> and click the <strong>Service Login</strong> button (top right).</p>
-      <p style="margin:16px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">Your existing open tickets are already there. To open a new request, sign in and click <strong>New Ticket</strong>. You'll get email updates whenever we reply, with a link back to the conversation.</p>
+      <p style="margin:16px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">Your existing open and closed tickets are already there. To open a new request, sign in and click <strong>New Ticket</strong>. You'll get email updates whenever we reply, with a link back to the conversation.</p>
       <p style="margin:16px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">Questions or trouble signing in? Just reply to this email.</p>
       <p style="margin:18px 0 0;font-size:14.5px;line-height:1.6;color:#3a4150;">Thank you for choosing our services.<br/>Axus Service Team</p>
     """)
@@ -113,7 +113,7 @@ def golive(fn):
             "3. The link works once and expires in 15 minutes; your session then stays active for 30 days.\n\n"
             "You can also reach the portal anytime from our website - go to https://axustechnologies.com/ and "
             "click the Service Login button (top right).\n\n"
-            "Your existing open tickets are already there. To open a new request, sign in and click New Ticket. "
+            "Your existing open and closed tickets are already there. To open a new request, sign in and click New Ticket. "
             "You'll get email updates whenever we reply, with a link back to the conversation.\n\n"
             "Questions or trouble signing in? Just reply to this email.\n\n"
             "Thank you for choosing our services.\nAxus Service Team")
