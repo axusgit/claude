@@ -368,3 +368,14 @@ html[data-theme="dark"] .ticket-card::before {
 }
 /* Centre the footer legal text now the tagline is gone */
 .pf-inner { justify-content: center; }
+
+/* Make the orange pointer glow clearly visible in LIGHT mode */
+.ticket-card::before {
+  background: radial-gradient(220px circle at var(--mx,50%) var(--my,50%),
+    rgba(242,101,34,.45), rgba(242,101,34,.16) 42%, transparent 66%) !important;
+  transition: opacity .18s ease !important;
+}
+html[data-theme="dark"] .ticket-card::before {
+  background: radial-gradient(250px circle at var(--mx,50%) var(--my,50%),
+    rgba(242,101,34,.55), rgba(242,101,34,.16) 42%, transparent 68%) !important;
+}
