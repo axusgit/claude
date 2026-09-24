@@ -811,6 +811,20 @@ function SendCopyDialog({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  useEffect(() => {
+    contactsApi.list().then(setContacts).catch(() => {});
+  }, []);
+  // Add a saved contact's email to the list (deduped), so several can be picked.
+  function addContact(cid: string) {
+    const c = contacts.find((x) => x.id === cid);
+    if (!c) return;
+    setEmails((prev) => {
+      const list = prev.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+      if (list.some((x) => x.toLowerCase() === c.email.toLowerCase())) return prev;
+      return [...list, c.email].join(", ");
+    });
+  }
   async function submit() {
     const list = emails
       .split(/[,;\s]+/)
@@ -856,13 +870,32 @@ function SendCopyDialog({
           Email a PDF copy to people who don’t need to sign — they just get the document.
         </p>
         <label className="mb-1 block text-xs font-medium text-muted">Email addresses</label>
+        {contacts.length > 0 && (
+          <select
+            value=""
+            onChange={(e) => {
+              addContact(e.target.value);
+              e.target.value = "";
+            }}
+            className="mb-2 w-full rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+          >
+            <option value="">Choose from contacts…</option>
+            {contacts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} — {c.email}
+              </option>
+            ))}
+          </select>
+        )}
         <Input
           value={emails}
           onChange={(e) => setEmails(e.target.value)}
           placeholder="jane@acme.com, bob@acme.com"
           autoFocus
         />
-        <p className="mt-1 text-[11px] text-muted">Separate multiple addresses with commas.</p>
+        <p className="mt-1 text-[11px] text-muted">
+          Pick from contacts above, or type addresses separated by commas.
+        </p>
         <label className="mb-1 mt-3 block text-xs font-medium text-muted">Note (optional)</label>
         <textarea
           className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20"
@@ -899,6 +932,17 @@ function CcPanel({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  useEffect(() => {
+    contactsApi.list().then(setContacts).catch(() => {});
+  }, []);
+  function pickContact(cid: string) {
+    const c = contacts.find((x) => x.id === cid);
+    if (c) {
+      setName(c.name);
+      setEmail(c.email);
+    }
+  }
   function add() {
     const e = email.trim();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return;
@@ -958,6 +1002,20 @@ function CcPanel({
       )}
       {adding && editable && (
         <div className="mt-2 space-y-2 rounded-lg border border-brand/40 p-2">
+          {contacts.length > 0 && (
+            <select
+              value=""
+              onChange={(e) => pickContact(e.target.value)}
+              className="w-full rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+            >
+              <option value="">Choose from contacts…</option>
+              {contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} — {c.email}
+                </option>
+              ))}
+            </select>
+          )}
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
