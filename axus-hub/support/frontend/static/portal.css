@@ -76,7 +76,10 @@ body::after {
   background: var(--glass) !important; -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
   border-bottom: 1px solid var(--hair); box-shadow: var(--sh-sm);
 }
-.topbar-logo { height: 32px; }
+.topbar-logo { height: 42px; }
+/* Keep the Axus logo in FULL COLOR on dark mode (never invert to white). */
+html[data-theme="dark"] .topbar-logo { filter: none; }
+html[data-theme="dark"] .login-logo { filter: drop-shadow(0 8px 20px rgba(242,101,34,.28)); }
 .who-name { font-weight: 650; color: var(--text); }
 .who-company { color: var(--muted); }
 .accent-strip {
@@ -240,7 +243,7 @@ textarea#reply-body, #nt-desc { font-size: 15px; line-height: 1.6; color: var(--
 @keyframes flow { to { background-position: 300% 0; } }
 .login-card h1 { font-size: 28px; font-weight: 750; background: var(--grad-brand); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .login-sub { color: var(--muted); }
-.login-logo { animation: float 6.5s ease-in-out infinite; filter: drop-shadow(0 8px 20px rgba(242,101,34,.28)); }
+.login-logo { height: 64px; margin-bottom: 20px; animation: float 6.5s ease-in-out infinite; filter: drop-shadow(0 8px 20px rgba(242,101,34,.28)); }
 @keyframes float { 0%,100% { transform: translateY(0) rotateX(0); } 50% { transform: translateY(-6px) rotateX(8deg); } }
 
 /* ---------- Empty state ---------- */
