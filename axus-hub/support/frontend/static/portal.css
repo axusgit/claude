@@ -284,3 +284,8 @@ html[data-theme="dark"] .pf-mark { filter: none; }
 .pf-tag span { background: var(--grad-brand); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .login-legal { margin-top: 8px; font-size: 11px; color: var(--muted); text-align: center; }
 @media (max-width: 620px) { .pf-inner { flex-direction: column; gap: 10px; } }
+
+/* Wider login card so the hint + legal fit on one line (desktop). */
+.login-card { max-width: 480px; }
+.login-hint { white-space: normal; }
+@media (min-width: 520px) { .login-hint { white-space: nowrap; } }
