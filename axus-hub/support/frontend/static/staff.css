@@ -394,3 +394,9 @@ html[data-theme="dark"] #ticket-table thead th { background: #222b40; }
 /* Canned picker sits above the reply textarea */
 .reply-canned-row { margin-bottom: 8px; }
 .reply-canned-row .canned-select { min-width: 200px; }
+
+/* Higher-contrast secondary text in dark mode (clearer letters) */
+html[data-theme="dark"] {
+  --text-soft: #cfd9ec;
+  --muted: #9fb0c9;
+}
