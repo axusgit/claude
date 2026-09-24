@@ -33,7 +33,7 @@ def _shell(inner_html: str) -> str:
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#1f2430;">
     <tr><td style="padding:26px 32px 6px;"><img src="{LOGO}" alt="Axus Technologies" height="32" style="height:32px;display:block;border:0;" /></td></tr>
     <tr><td style="padding:6px 32px 26px;">{inner_html}</td></tr>
-    <tr><td style="padding:18px 32px 26px;border-top:1px solid #eef0f3;"><p style="margin:14px 0 0;font-size:12px;color:#9aa1ac;">Axus Technologies &middot; Simplifying IT<br/>You're receiving this because Axus provides IT support for your organization.</p></td></tr>
+    <tr><td style="padding:18px 32px 26px;border-top:1px solid #eef0f3;"><p style="margin:14px 0 0;font-size:12px;color:#9aa1ac;">Axus Technologies &middot; Simplifying IT<br/>You're receiving this because Axus provides IT Services for your organization.</p></td></tr>
   </table>
 </td></tr></table>
 </body></html>"""
