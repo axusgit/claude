@@ -37,27 +37,27 @@ import { Button, Card, Input, StatusBadge } from "@/components/ui";
 import { recipientColor } from "@/lib/utils";
 import { PdfCanvas } from "@/features/PdfCanvas";
 
-// BAA is generated on the fly (backend/src/baapdf.ts) on the Axus letterhead with
-// two signers (Covered Entity, then Axus Technologies) at FIXED positions on a
-// dedicated final page (page 5 — stable regardless of the baked company name).
-// Add recipients IN THIS ORDER for auto-placement.
+// BAA is generated on the fly (backend/src/baapdf.ts, Hardened Form v1.2) on the Axus
+// letterhead with two signers (Customer, then Axus Technologies) STACKED on a dedicated
+// final page (page 8), each with Signature/Date on one row and Print Name/Title on the next.
+// Coordinates match the generator's returned layout exactly. Add recipients IN THIS ORDER.
 const BAA_LAYOUT: SignSlot[] = [
   {
-    role: "Covered Entity",
+    role: "Customer",
     fields: [
-      { type: "signature", page: 5, x: 0.1889, y: 0.3965, w: 0.2589, h: 0.0189 },
-      { type: "name", page: 5, x: 0.2009, y: 0.4293, w: 0.2468, h: 0.0189 },
-      { type: "title", page: 5, x: 0.1498, y: 0.4621, w: 0.2979, h: 0.0189 },
-      { type: "date", page: 5, x: 0.1534, y: 0.4949, w: 0.2943, h: 0.0189 },
+      { type: "signature", page: 8, x: 0.1889, y: 0.3965, w: 0.3275, h: 0.0189 },
+      { type: "date", page: 8, x: 0.5979, y: 0.3965, w: 0.2975, h: 0.0189 },
+      { type: "name", page: 8, x: 0.2009, y: 0.4318, w: 0.3155, h: 0.0189 },
+      { type: "title", page: 8, x: 0.5942, y: 0.4318, w: 0.3012, h: 0.0189 },
     ],
   },
   {
     role: "Axus Technologies",
     fields: [
-      { type: "signature", page: 5, x: 0.5974, y: 0.3965, w: 0.2589, h: 0.0189 },
-      { type: "name", page: 5, x: 0.6094, y: 0.4293, w: 0.2468, h: 0.0189 },
-      { type: "title", page: 5, x: 0.5583, y: 0.4621, w: 0.2979, h: 0.0189 },
-      { type: "date", page: 5, x: 0.5619, y: 0.4949, w: 0.2943, h: 0.0189 },
+      { type: "signature", page: 8, x: 0.1889, y: 0.5177, w: 0.3275, h: 0.0189 },
+      { type: "date", page: 8, x: 0.5979, y: 0.5177, w: 0.2975, h: 0.0189 },
+      { type: "name", page: 8, x: 0.2009, y: 0.553, w: 0.3155, h: 0.0189 },
+      { type: "title", page: 8, x: 0.5942, y: 0.553, w: 0.3012, h: 0.0189 },
     ],
   },
 ];
@@ -86,27 +86,27 @@ const COC_LAYOUT: SignSlot[] = [
   },
 ];
 
-// SLA (After Hours On Call) has two signers (Client, then Axus Technologies) STACKED on a
-// dedicated final page (page 4), each with Signature/Date on one row and Print Name/Title on
-// the next — mirrors the Axus SOW block and backend slapdf.generateSlaPdf(). Coordinates match
-// the generator's returned layout exactly. Add recipients IN THIS ORDER for auto-placement.
+// SLA (After Hours On Call, Hardened Form v1.2) has two signers (Client, then Axus
+// Technologies) STACKED on a dedicated final page (page 7), each with Signature/Date on one
+// row and Print Name/Title on the next — mirrors the Axus SOW block and backend
+// slapdf.generateSlaPdf(). Coordinates match the generator's returned layout exactly.
 const SLA_LAYOUT: SignSlot[] = [
   {
     role: "Client",
     fields: [
-      { type: "signature", page: 4, x: 0.1889, y: 0.3965, w: 0.3275, h: 0.0189 },
-      { type: "date", page: 4, x: 0.5979, y: 0.3965, w: 0.2975, h: 0.0189 },
-      { type: "name", page: 4, x: 0.2009, y: 0.4318, w: 0.3155, h: 0.0189 },
-      { type: "title", page: 4, x: 0.5942, y: 0.4318, w: 0.3012, h: 0.0189 },
+      { type: "signature", page: 7, x: 0.1889, y: 0.3965, w: 0.3275, h: 0.0189 },
+      { type: "date", page: 7, x: 0.5979, y: 0.3965, w: 0.2975, h: 0.0189 },
+      { type: "name", page: 7, x: 0.2009, y: 0.4318, w: 0.3155, h: 0.0189 },
+      { type: "title", page: 7, x: 0.5942, y: 0.4318, w: 0.3012, h: 0.0189 },
     ],
   },
   {
     role: "Axus Technologies",
     fields: [
-      { type: "signature", page: 4, x: 0.1889, y: 0.5177, w: 0.3275, h: 0.0189 },
-      { type: "date", page: 4, x: 0.5979, y: 0.5177, w: 0.2975, h: 0.0189 },
-      { type: "name", page: 4, x: 0.2009, y: 0.553, w: 0.3155, h: 0.0189 },
-      { type: "title", page: 4, x: 0.5942, y: 0.553, w: 0.3012, h: 0.0189 },
+      { type: "signature", page: 7, x: 0.1889, y: 0.5177, w: 0.3275, h: 0.0189 },
+      { type: "date", page: 7, x: 0.5979, y: 0.5177, w: 0.2975, h: 0.0189 },
+      { type: "name", page: 7, x: 0.2009, y: 0.553, w: 0.3155, h: 0.0189 },
+      { type: "title", page: 7, x: 0.5942, y: 0.553, w: 0.3012, h: 0.0189 },
     ],
   },
 ];
