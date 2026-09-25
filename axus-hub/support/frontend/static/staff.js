@@ -1041,11 +1041,52 @@ const Staff = (() => {
     fillClientSelects();   // keep the business dropdowns current (new business shows up)
   }
 
+  // ---- Column sorting (Business + Users tables) ----
+  let custSort = { key: "name", dir: 1 };
+  let userSort = { key: "name", dir: 1 };
+  function cmpVals(a, b) {
+    if (typeof a === "number" && typeof b === "number") return a - b;
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+  }
+  function bindSort(tableId, state, renderFn) {
+    const table = $(tableId);
+    if (!table) return;
+    table.querySelectorAll("thead th.sortable").forEach(th => {
+      th.onclick = () => {
+        const key = th.dataset.sort;
+        if (state.key === key) state.dir *= -1; else { state.key = key; state.dir = 1; }
+        renderFn();
+        markSort(tableId, state);
+      };
+    });
+    markSort(tableId, state);
+  }
+  function markSort(tableId, state) {
+    const table = $(tableId);
+    if (!table) return;
+    table.querySelectorAll("thead th.sortable").forEach(th => {
+      th.classList.remove("sorted-asc", "sorted-desc");
+      if (th.dataset.sort === state.key) th.classList.add(state.dir === 1 ? "sorted-asc" : "sorted-desc");
+    });
+  }
+
+  function custVal(c, key) {
+    switch (key) {
+      case "name": return c.company_name || "";
+      case "location": return c.location || "";
+      case "phone": return c.phone || "";
+      case "website": return c.website || "";
+      case "tickets": return tickets.filter(t => t.client_id === c.id
+        || (t.source === "xcitium" && (t.client_name || "") === c.company_name)).length;
+      case "added": return c.created_at ? new Date(c.created_at).getTime() : 0;
+      default: return "";
+    }
+  }
   function renderCustomers() {
     const q = ($("cust-search").value || "").toLowerCase();
     const rows = clientsData
       .filter(c => !q || `${c.company_name} ${c.location || ""} ${c.website || ""}`.toLowerCase().includes(q))
-      .sort((a, b) => a.company_name.localeCompare(b.company_name));
+      .sort((a, b) => custSort.dir * cmpVals(custVal(a, custSort.key), custVal(b, custSort.key)));
     $("cust-summary").textContent = `${clientsData.length} business${clientsData.length === 1 ? "" : "es"}`;
     const tbody = $("customer-rows"); tbody.innerHTML = "";
     $("customers-empty").classList.toggle("hidden", rows.length > 0);
@@ -1159,6 +1200,18 @@ const Staff = (() => {
     $("c-users").textContent = usersData.filter(u => !u.hidden).length;
   }
 
+  function userVal(u, key) {
+    switch (key) {
+      case "name": return u.full_name || "";
+      case "email": return u.email || "";
+      case "phone": return u.phone || "";
+      case "role": return u.role || "";
+      case "business": return u.client_id ? (clientMap[u.client_id] || "") : "";
+      case "tickets": return u.assigned_tickets || 0;
+      case "status": return u.is_active ? 1 : 0;
+      default: return "";
+    }
+  }
   function renderUsers() {
     const q = ($("user-search").value || "").toLowerCase();
     const fr = $("uf-role").value;
@@ -1168,7 +1221,7 @@ const Staff = (() => {
     const rows = usersData
       .filter(roleMatch)
       .filter(u => !q || `${u.full_name} ${u.email}`.toLowerCase().includes(q))
-      .sort((a, b) => a.full_name.localeCompare(b.full_name));
+      .sort((a, b) => userSort.dir * cmpVals(userVal(a, userSort.key), userVal(b, userSort.key)));
     const label = fr === "staff" ? "staff" : fr ? fr : "user";
     $("users-summary").textContent =
       `${rows.length} ${label}${rows.length === 1 ? "" : "s"} · ${usersData.length} total`;
@@ -1418,6 +1471,7 @@ const Staff = (() => {
 
     // customers
     $("cust-search").oninput = renderCustomers;
+    bindSort("customer-table", custSort, renderCustomers);
     $("new-customer-btn").onclick = () => { $("business-dd-menu").classList.add("hidden"); showCustModal(null); };
     $("cust-modal-close").onclick = closeCustModal; $("cf-cancel").onclick = closeCustModal;
     $("cust-back-btn").onclick = () => { showCustomers(); renderCustomers(); };
@@ -1449,6 +1503,7 @@ const Staff = (() => {
     // users
     $("user-search").oninput = renderUsers;
     $("uf-role").onchange = renderUsers;
+    bindSort("user-table", userSort, renderUsers);
     $("show-hidden").onchange = async () => { await refreshUsers(); renderUsers(); };
     $("new-user-btn").onclick = () => { $("users-dd-menu").classList.add("hidden"); showUserModal(null); };
     $("um-close").onclick = closeUserModal; $("uf-cancel").onclick = closeUserModal;

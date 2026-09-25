@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=64" />
-  <link rel="stylesheet" href="/static/staff.css?v=72" />
+  <link rel="stylesheet" href="/static/staff.css?v=73" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -299,7 +299,7 @@
           </div>
           <div class="table-wrap">
             <table class="ticket-table" id="customer-table">
-              <thead><tr><th class="col-name">Business Name</th><th class="col-location">Location</th><th class="col-phone">Phone</th><th class="col-website">Website</th><th class="col-tickets">Tickets</th><th class="col-added">Added</th></tr></thead>
+              <thead><tr><th class="col-name sortable" data-sort="name">Business Name</th><th class="col-location sortable" data-sort="location">Location</th><th class="col-phone sortable" data-sort="phone">Phone</th><th class="col-website sortable" data-sort="website">Website</th><th class="col-tickets sortable" data-sort="tickets">Tickets</th><th class="col-added sortable" data-sort="added">Added</th></tr></thead>
               <tbody id="customer-rows"></tbody>
             </table>
             <div id="customers-empty" class="empty hidden"><div class="empty-emoji">🏢</div><h3>No businesses</h3><p class="muted">Add your first business to get started.</p></div>
@@ -357,7 +357,7 @@
           </div>
           <div class="table-wrap">
             <table class="ticket-table" id="user-table">
-              <thead><tr><th class="col-name">Name</th><th class="col-email">Email</th><th class="col-phone">Phone</th><th class="col-role">Role</th><th class="col-business">Business</th><th class="col-tickets">Tickets</th><th class="col-status">Status</th><th class="col-actions">Actions</th></tr></thead>
+              <thead><tr><th class="col-name sortable" data-sort="name">Name</th><th class="col-email sortable" data-sort="email">Email</th><th class="col-phone sortable" data-sort="phone">Phone</th><th class="col-role sortable" data-sort="role">Role</th><th class="col-business sortable" data-sort="business">Business</th><th class="col-tickets sortable" data-sort="tickets">Tickets</th><th class="col-status sortable" data-sort="status">Status</th><th class="col-actions">Actions</th></tr></thead>
               <tbody id="user-rows"></tbody>
             </table>
             <div id="users-empty" class="empty hidden"><div class="empty-emoji">👥</div><h3>No users</h3><p class="muted">Add a staff member or portal user.</p></div>
@@ -531,6 +531,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/staff.js?v=84"></script>
+  <script src="/static/staff.js?v=85"></script>
 </body>
 </html>
