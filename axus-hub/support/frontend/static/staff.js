@@ -121,22 +121,29 @@ const Staff = (() => {
     $("login-form").classList.toggle("hidden", !local);
     $("login-sso").classList.toggle("hidden", local);
   };
-  const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); requestAnimationFrame(syncTopbarH); };
+  const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); };
   const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view", "glossary-view"];
   const hideViews = () => VIEWS.forEach(id => $(id).classList.add("hidden"));
   const showDashboard = () => { hideViews(); $("dashboard-view").classList.remove("hidden"); renderDashboard(); };
   const showQueue = () => { hideViews(); $("queue-view").classList.remove("hidden"); };
   const showDetail = () => { hideViews(); $("detail-view").classList.remove("hidden"); };
-  const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); requestAnimationFrame(() => { syncTopbarH(); makeResizable("#customer-table", "axus-biz-widths"); }); };
+  const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); requestAnimationFrame(() => { fitScroller("#customers-view"); makeResizable("#customer-table", "axus-biz-widths"); }); };
   const showCustomerDetail = () => { hideViews(); $("customer-detail-view").classList.remove("hidden"); };
-  const showUsers = () => { hideViews(); $("users-view").classList.remove("hidden"); requestAnimationFrame(() => { syncTopbarH(); makeResizable("#user-table", "axus-usr-widths"); }); };
-  // Keep the sticky table headers glued just below the (variable-height) topbar.
-  function syncTopbarH() {
-    const tb = document.querySelector(".topbar");
-    if (tb && tb.offsetHeight) document.documentElement.style.setProperty("--topbar-h", tb.offsetHeight + "px");
+  const showUsers = () => { hideViews(); $("users-view").classList.remove("hidden"); requestAnimationFrame(() => { fitScroller("#users-view"); makeResizable("#user-table", "axus-usr-widths"); }); };
+  // Size the scrolling table area so it fills exactly to the bottom of the viewport.
+  // This makes .table-wrap the SOLE scroll container (the sticky header sticks to its
+  // top) — so there's no second, page-level scroll that would drag the header away.
+  function fitScroller(viewSel) {
+    const view = document.querySelector(viewSel);
+    if (!view || view.classList.contains("hidden")) return;
+    const wrap = view.querySelector(".table-wrap");
+    if (!wrap) return;
+    const top = wrap.getBoundingClientRect().top;
+    wrap.style.maxHeight = Math.max(200, window.innerHeight - top - 24) + "px";
   }
-  window.addEventListener("resize", syncTopbarH);
-  window.addEventListener("load", syncTopbarH);
+  function fitVisibleScroller() { ["#customers-view", "#users-view"].forEach(fitScroller); }
+  window.addEventListener("resize", fitVisibleScroller);
+  window.addEventListener("load", fitVisibleScroller);
   const showGlossary = () => { hideViews(); $("glossary-view").classList.remove("hidden"); loadGlossary(); };
 
   /* ---------- Auth ---------- */

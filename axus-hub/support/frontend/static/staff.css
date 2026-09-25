@@ -300,12 +300,14 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
 
 /* Sticky header row on Business & Users: the body scrolls within the card, the top
    row stays put. (The page-level sticky can't work because .table-wrap clips.) */
-/* Page-level sticky: the whole page scrolls and the header row glues to just below
-   the topbar (whose height varies with the logo — measured into --topbar-h by JS).
-   The wrap must NOT clip (overflow visible) or sticky can't escape it. */
-#customers-view .table-wrap, #users-view .table-wrap { overflow: visible; max-height: none; }
+/* The table body scrolls WITHIN the card and the header row stays put. This works
+   (unlike page-level sticky) because .table-wrap has backdrop-filter, which traps
+   position:sticky to its own box — so .table-wrap must be the scroll container
+   (overflow:auto) and the header sticks to its top. JS sets max-height so the wrap
+   fills exactly to the bottom of the viewport (no second, page-level scrollbar). */
+#customers-view .table-wrap, #users-view .table-wrap { overflow: auto; max-height: calc(100vh - 240px); }
 #customer-table thead th, #user-table thead th {
-  position: sticky; top: var(--topbar-h, 104px); z-index: 3; background: #eef1f8;
+  position: sticky; top: 0; z-index: 6; background: #eef1f8;
   box-shadow: inset 0 -1px 0 var(--border), 0 4px 8px -4px rgba(0,0,0,.20);
 }
 html[data-theme="dark"] #customer-table thead th, html[data-theme="dark"] #user-table thead th { background: #222b40; }
