@@ -86,26 +86,27 @@ const COC_LAYOUT: SignSlot[] = [
   },
 ];
 
-// SLA (After Hours On Call) has two signers (Client, then Axus Technologies) with
-// FIXED signature-block positions on a dedicated final page (page 4) — mirrors backend
-// slapdf.generateSlaPdf(). Add recipients IN THIS ORDER for auto-placement.
+// SLA (After Hours On Call) has two signers (Client, then Axus Technologies) STACKED on a
+// dedicated final page (page 4), each with Signature/Date on one row and Print Name/Title on
+// the next — mirrors the Axus SOW block and backend slapdf.generateSlaPdf(). Coordinates match
+// the generator's returned layout exactly. Add recipients IN THIS ORDER for auto-placement.
 const SLA_LAYOUT: SignSlot[] = [
   {
     role: "Client",
     fields: [
-      { type: "signature", page: 4, x: 0.1889, y: 0.3965, w: 0.2589, h: 0.0189 },
-      { type: "name", page: 4, x: 0.2009, y: 0.4293, w: 0.2468, h: 0.0189 },
-      { type: "title", page: 4, x: 0.1498, y: 0.4621, w: 0.2979, h: 0.0189 },
-      { type: "date", page: 4, x: 0.1534, y: 0.4949, w: 0.2943, h: 0.0189 },
+      { type: "signature", page: 4, x: 0.1889, y: 0.3965, w: 0.3275, h: 0.0189 },
+      { type: "date", page: 4, x: 0.5979, y: 0.3965, w: 0.2975, h: 0.0189 },
+      { type: "name", page: 4, x: 0.2009, y: 0.4318, w: 0.3155, h: 0.0189 },
+      { type: "title", page: 4, x: 0.5942, y: 0.4318, w: 0.3012, h: 0.0189 },
     ],
   },
   {
     role: "Axus Technologies",
     fields: [
-      { type: "signature", page: 4, x: 0.5974, y: 0.3965, w: 0.2589, h: 0.0189 },
-      { type: "name", page: 4, x: 0.6094, y: 0.4293, w: 0.2468, h: 0.0189 },
-      { type: "title", page: 4, x: 0.5583, y: 0.4621, w: 0.2979, h: 0.0189 },
-      { type: "date", page: 4, x: 0.5619, y: 0.4949, w: 0.2943, h: 0.0189 },
+      { type: "signature", page: 4, x: 0.1889, y: 0.5177, w: 0.3275, h: 0.0189 },
+      { type: "date", page: 4, x: 0.5979, y: 0.5177, w: 0.2975, h: 0.0189 },
+      { type: "name", page: 4, x: 0.2009, y: 0.553, w: 0.3155, h: 0.0189 },
+      { type: "title", page: 4, x: 0.5942, y: 0.553, w: 0.3012, h: 0.0189 },
     ],
   },
 ];

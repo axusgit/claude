@@ -80,13 +80,6 @@ function buildBody(company: string, dateLong: string, state: string): Block[] {
   ];
 }
 
-const SIG_ROWS: { label: string; type: SignField["type"] }[] = [
-  { label: "Signature:", type: "signature" },
-  { label: "Print Name:", type: "name" },
-  { label: "Title:", type: "title" },
-  { label: "Date:", type: "date" },
-];
-
 export async function generateSlaPdf(
   d: SlaData = {},
   opts: { assetsDir?: string } = {},
@@ -175,43 +168,59 @@ export async function generateSlaPdf(
     }
   }
 
-  // ================= SIGNATURES — dedicated final page, fixed positions =================
-  // Force a fresh page so the two blocks always land at the same coordinates regardless of
-  // how the body paginated (keeps the returned layout / hardcoded SLA_LAYOUT deterministic).
+  // ================= SIGNATURES — dedicated final page, SOW-style blocks =================
+  // Two parties STACKED vertically, each with a heading and a compact two-row block:
+  //   Signature: ______   Date: ______
+  //   Print Name: _____   Title: ______
+  // Mirrors the Axus SOW signature block so every Axus agreement signs the same way. A fresh
+  // page keeps the positions (and the returned layout / frontend SLA_LAYOUT) deterministic.
   newPage();
   block("9. SIGNATURES", { size: 11.5, font: bold, color: ORANGE, lead: 15, after: 4 });
   block("IN WITNESS WHEREOF, the parties have caused this SLA to be executed by their duly authorized representatives as of the Effective Date.", { after: 12 });
 
-  const sigTop = 300; // fixed top of the signature area on the dedicated page (from top)
-  const colW = 210;
-  const leftX = M; // 64
-  const rightX = M + colW + 40; // 314
   const sigPage = pages.length; // 1-based page number of this (final) page
+  const leftLabelX = M; // 64 — Signature / Print Name column
+  const rightLabelX = 336; // Date / Title column
+  const leftLineEnd = 316; // end of the Signature / Print Name lines
+  const rightLineEnd = W - M; // 548 — end of the Date / Title lines
 
-  const sigBlock = (role: string, heading: string, x0: number): SignSlot => {
-    const xEnd = x0 + colW;
-    page.drawText(heading, { x: x0, y: T(sigTop), size: 10.5, font: bold, color: INK });
-    const fields: SignField[] = [];
-    let ry = sigTop + 26;
-    for (const r of SIG_ROWS) {
-      page.drawText(r.label, { x: x0, y: T(ry), size: 10, font: helv, color: INK });
-      const fx = x0 + helv.widthOfTextAtSize(r.label, 10) + 6;
-      page.drawLine({ start: { x: fx, y: T(ry) - 2 }, end: { x: xEnd, y: T(ry) - 2 }, thickness: 0.6, color: rgb(0.55, 0.57, 0.6) });
-      fields.push({
-        type: r.type,
-        page: sigPage,
-        x: +(fx / W).toFixed(4),
-        y: +((ry - 12) / H).toFixed(4),
-        w: +((xEnd - fx) / W).toFixed(4),
-        h: +(15 / H).toFixed(4),
-      });
-      ry += 26;
-    }
+  const fieldFor = (
+    type: SignField["type"],
+    labelX: number,
+    label: string,
+    lineEnd: number,
+    ry: number,
+  ): SignField => {
+    page.drawText(label, { x: labelX, y: T(ry), size: 10, font: helv, color: INK });
+    const fx = labelX + helv.widthOfTextAtSize(label, 10) + 6;
+    page.drawLine({ start: { x: fx, y: T(ry) - 2 }, end: { x: lineEnd, y: T(ry) - 2 }, thickness: 0.6, color: rgb(0.55, 0.57, 0.6) });
+    return {
+      type,
+      page: sigPage,
+      x: +(fx / W).toFixed(4),
+      y: +((ry - 12) / H).toFixed(4),
+      w: +((lineEnd - fx) / W).toFixed(4),
+      h: +(15 / H).toFixed(4),
+    };
+  };
+
+  // Each party: a bold heading, then Signature/Date on one row and Print Name/Title on the next.
+  const sigBlock = (role: string, heading: string, topY: number): SignSlot => {
+    page.drawText(heading, { x: leftLabelX, y: T(topY), size: 10.5, font: bold, color: ORANGE });
+    const r1 = topY + 26; // Signature / Date
+    const r2 = topY + 54; // Print Name / Title
+    const fields: SignField[] = [
+      fieldFor("signature", leftLabelX, "Signature:", leftLineEnd, r1),
+      fieldFor("date", rightLabelX, "Date:", rightLineEnd, r1),
+      fieldFor("name", leftLabelX, "Print Name:", leftLineEnd, r2),
+      fieldFor("title", rightLabelX, "Title:", rightLineEnd, r2),
+    ];
     return { role, fields };
   };
 
-  const clientSlot = sigBlock("Client", company === "the Client" ? "Client" : company, leftX);
-  const axusSlot = sigBlock("Axus Technologies", "Axus Technologies", rightX);
+  const clientName = company === "the Client" ? "Client" : company;
+  const clientSlot = sigBlock("Client", `${clientName} - Authorized Representative`, 300);
+  const axusSlot = sigBlock("Axus Technologies", "Axus Technologies - Authorized Representative", 396);
 
   // ---- Page numbers, tucked just above the letterhead's contact strip ----
   // (The letterhead footer already carries the Axus address / phone / web.)
