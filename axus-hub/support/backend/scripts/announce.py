@@ -19,8 +19,22 @@ from app import mailer
 CAMP = os.getenv("CAMP", "headsup")
 DRY = os.getenv("DRY", "1") == "1"
 TEST_TO = (os.getenv("TEST_TO") or "").strip()
-THROTTLE = float(os.getenv("THROTTLE", "1.5"))
+THROTTLE = float(os.getenv("THROTTLE", "1.5"))          # delay between sends within a batch
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "10"))          # recipients per batch
+BATCH_PAUSE_SEC = int(os.getenv("BATCH_PAUSE_SEC", "120"))  # pause between batches (2 min)
+MAX_PER_DOMAIN = int(os.getenv("MAX_PER_DOMAIN", "3"))    # cap same-domain recipients per batch
 SENTLOG = f"/data/uploads/announce_sent_{CAMP}.txt"
+
+# Addresses to never mail: our own inboxes, the test account, and known typo/dupe
+# addresses. Extra comma-separated addresses can be added via the EXCLUDE env var.
+DEFAULT_EXCLUDE = {
+    "support@axustechnologies.com",
+    "info@axustechnologies.com",
+    "yohandycarrazana@yahoo.com",
+    "aan.smith@rlcarriers.com",            # typo of alan.smith@rlcarriers.com
+    "telecommnunications@rlcarriers.com",  # misspelled dupe of telecommunications@rlcarriers.com
+}
+EXCLUDE = DEFAULT_EXCLUDE | {e.strip().lower() for e in (os.getenv("EXCLUDE", "").split(",")) if e.strip()}
 PORTAL = "https://service.axustechnologies.com"
 LOGO = "https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png"
 
@@ -128,6 +142,35 @@ def first_name(full):
     return parts[0] if parts else "there"
 
 
+def build_batches(recips):
+    """Order recipients into batches of BATCH_SIZE with at most MAX_PER_DOMAIN from
+    any single company/domain per batch, so no receiving mail server is hit with a
+    burst (reduces blacklist risk). Domains are round-robined across batches."""
+    from collections import defaultdict, deque
+    byd, order = defaultdict(deque), []
+    for name, em in recips:
+        d = em.rsplit("@", 1)[-1]
+        if d not in byd:
+            order.append(d)
+        byd[d].append((name, em))
+    remaining = sum(len(q) for q in byd.values())
+    batches = []
+    while remaining > 0:
+        batch, pd, progressed = [], defaultdict(int), True
+        while len(batch) < BATCH_SIZE and progressed:
+            progressed = False
+            for d in order:
+                if len(batch) >= BATCH_SIZE:
+                    break
+                if byd[d] and pd[d] < MAX_PER_DOMAIN:
+                    batch.append(byd[d].popleft())
+                    pd[d] += 1
+                    remaining -= 1
+                    progressed = True
+        batches.append(batch)
+    return batches
+
+
 def main():
     if CAMP not in BUILDERS:
         print("unknown CAMP:", CAMP); return
@@ -136,40 +179,57 @@ def main():
         sent = {l.strip().lower() for l in open(SENTLOG) if l.strip()}
 
     db = SessionLocal()
-    seen, recips = set(), []
+    seen, recips, excluded = set(), [], 0
     for u in db.query(User).filter(User.role == UserRole.client, User.is_active == True).all():  # noqa: E712
         em = (u.email or "").strip().lower()
         if not em or "@" not in em or "." not in em.rsplit("@", 1)[-1] or em in seen:
             continue
         seen.add(em)
+        if em in EXCLUDE:
+            excluded += 1
+            continue
         recips.append((u.full_name, em))
     db.close()
 
     if TEST_TO:
         recips = [("Andy Carrazana", TEST_TO)]
 
-    print(f"campaign={CAMP} eligible={len(recips)} already_sent={len(sent)} DRY={DRY} TEST={TEST_TO or '-'} throttle={THROTTLE}s")
+    # Drop already-sent before batching so the pacing reflects the real work left.
+    pending = recips if TEST_TO else [r for r in recips if r[1] not in sent]
+    batches = build_batches(pending)
+    total = sum(len(b) for b in batches)
+    print(f"campaign={CAMP} eligible={len(recips)} excluded={excluded} pending={total} "
+          f"already_sent={len(sent)} DRY={DRY} TEST={TEST_TO or '-'} "
+          f"batches={len(batches)} size={BATCH_SIZE} pause={BATCH_PAUSE_SEC}s max/domain={MAX_PER_DOMAIN}")
+
     processed = ok_n = 0
-    for name, em in recips:
-        if not TEST_TO and em in sent:
-            continue
-        fn = first_name(name)
-        subject, text, html = BUILDERS[CAMP](fn)
-        if DRY:
-            print("  would send ->", em, "|", fn)
-            continue
-        ok = False
-        try:
-            ok = mailer.send_email([em], subject, text, html)
-        except Exception as e:
-            print("  ERROR ->", em, e)
-        if ok and not TEST_TO:
-            with open(SENTLOG, "a") as f:
-                f.write(em + "\n")
-        ok_n += 1 if ok else 0
-        processed += 1
-        print(("  sent" if ok else "  FAIL"), "->", em)
-        time.sleep(THROTTLE)
+    for bi, batch in enumerate(batches, 1):
+        doms = {}
+        for _, em in batch:
+            doms[em.rsplit("@", 1)[-1]] = doms.get(em.rsplit("@", 1)[-1], 0) + 1
+        print(f"--- batch {bi}/{len(batches)} ({len(batch)} recips; "
+              f"domains: {', '.join(f'{d}x{n}' for d, n in sorted(doms.items()))}) ---")
+        for name, em in batch:
+            fn = first_name(name)
+            subject, text, html = BUILDERS[CAMP](fn)
+            if DRY:
+                print("  would send ->", em, "|", fn)
+                continue
+            ok = False
+            try:
+                ok = mailer.send_email([em], subject, text, html)
+            except Exception as e:
+                print("  ERROR ->", em, e)
+            if ok and not TEST_TO:
+                with open(SENTLOG, "a") as f:
+                    f.write(em + "\n")
+            ok_n += 1 if ok else 0
+            processed += 1
+            print(("  sent" if ok else "  FAIL"), "->", em)
+            time.sleep(THROTTLE)
+        if bi < len(batches) and not DRY:
+            print(f"  ... pausing {BATCH_PAUSE_SEC}s before next batch ...")
+            time.sleep(BATCH_PAUSE_SEC)
     print(f"done. processed={processed} ok={ok_n}")
 
 
