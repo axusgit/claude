@@ -127,9 +127,15 @@ const Staff = (() => {
   const showDashboard = () => { hideViews(); $("dashboard-view").classList.remove("hidden"); renderDashboard(); };
   const showQueue = () => { hideViews(); $("queue-view").classList.remove("hidden"); };
   const showDetail = () => { hideViews(); $("detail-view").classList.remove("hidden"); };
-  const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); requestAnimationFrame(() => makeResizable("#customer-table", "axus-biz-widths")); };
+  const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); requestAnimationFrame(() => { syncTopbarH(); makeResizable("#customer-table", "axus-biz-widths"); }); };
   const showCustomerDetail = () => { hideViews(); $("customer-detail-view").classList.remove("hidden"); };
-  const showUsers = () => { hideViews(); $("users-view").classList.remove("hidden"); requestAnimationFrame(() => makeResizable("#user-table", "axus-usr-widths")); };
+  const showUsers = () => { hideViews(); $("users-view").classList.remove("hidden"); requestAnimationFrame(() => { syncTopbarH(); makeResizable("#user-table", "axus-usr-widths"); }); };
+  // Keep the sticky table headers glued just below the (variable-height) topbar.
+  function syncTopbarH() {
+    const tb = document.querySelector(".topbar");
+    if (tb && tb.offsetHeight) document.documentElement.style.setProperty("--topbar-h", tb.offsetHeight + "px");
+  }
+  window.addEventListener("resize", syncTopbarH);
   const showGlossary = () => { hideViews(); $("glossary-view").classList.remove("hidden"); loadGlossary(); };
 
   /* ---------- Auth ---------- */
@@ -420,7 +426,10 @@ const Staff = (() => {
     try { saved = JSON.parse(localStorage.getItem(storageKey) || "{}"); } catch (e) {}
     ths.forEach((th, i) => {
       if (i < ths.length - 1) th.style.width = (saved[i] || th.offsetWidth) + "px";
-      th.style.position = "relative";
+      // Don't clobber position:sticky (an inline value would defeat the sticky
+      // header). Sticky already establishes a containing block for the absolute
+      // resize handle, so only add relative when the header isn't positioned.
+      if (getComputedStyle(th).position === "static") th.style.position = "relative";
     });
     table.style.tableLayout = "fixed";
     ths.forEach((th, i) => {
