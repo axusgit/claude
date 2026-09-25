@@ -28,3 +28,30 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/* Dark theme — override the semantic tokens; brand orange stays. Toggled via
+   data-theme="dark" on <html> (see App.tsx / index.html no-flash script). */
+html[data-theme="dark"] {
+  --color-ink: #e9f0fb;
+  --color-muted: #8b94a5;
+  --color-line: rgba(255, 255, 255, 0.1);
+  --color-surface: #131a2a;
+  --color-canvas: #0a0e17;
+  color-scheme: dark;
+}
+
+/* Status badges use fixed gray/slate literals; give them dark equivalents. */
+html[data-theme="dark"] .bg-gray-100,
+html[data-theme="dark"] .bg-slate-200 {
+  background-color: #1e2a44;
+}
+html[data-theme="dark"] .bg-gray-200 {
+  background-color: #263349;
+}
+html[data-theme="dark"] .text-gray-700,
+html[data-theme="dark"] .text-slate-700 {
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .text-gray-600 {
+  color: #b6c0d0;
+}

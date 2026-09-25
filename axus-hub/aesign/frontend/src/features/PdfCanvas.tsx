@@ -412,7 +412,7 @@ function PdfPage({
 
   return (
     <div
-      className="relative border border-line bg-white shadow-sm"
+      className="relative border border-line bg-surface shadow-sm"
       style={{ width: size?.w ?? TARGET_WIDTH, height: size?.h ?? TARGET_WIDTH * 1.29 }}
     >
       <canvas ref={canvasRef} className="block" />
@@ -516,7 +516,7 @@ function FieldBox({
   }
 
   const h = field.h * pageSize.h;
-  const handle = "absolute hidden bg-white group-hover:block";
+  const handle = "absolute hidden bg-surface group-hover:block";
   // Locked (post-send) — a static marker showing where a field sits, no editing.
   if (readOnly) {
     return (
@@ -564,7 +564,7 @@ function FieldBox({
         <span className="truncate leading-none">{FIELD_DEFAULTS[field.type].label}</span>
       </span>
       <button
-        className="absolute -right-2 -top-2 hidden h-4 w-4 place-items-center rounded-full bg-white text-red-600 shadow group-hover:grid"
+        className="absolute -right-2 -top-2 hidden h-4 w-4 place-items-center rounded-full bg-surface text-red-600 shadow group-hover:grid"
         onClick={(e) => {
           e.stopPropagation();
           onDelete();

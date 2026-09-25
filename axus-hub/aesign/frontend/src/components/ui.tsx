@@ -12,7 +12,7 @@ export function Button({
     "inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none px-3.5 py-2";
   const variants: Record<ButtonVariant, string> = {
     primary: "bg-brand text-brand-fg hover:bg-brand-hover",
-    outline: "border border-line bg-white text-ink hover:bg-canvas",
+    outline: "border border-line bg-surface text-ink hover:bg-canvas",
     ghost: "text-ink hover:bg-canvas",
     danger: "bg-red-600 text-white hover:bg-red-700",
   };
@@ -22,7 +22,7 @@ export function Button({
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("rounded-[var(--radius-card)] border border-line bg-white", className)}
+      className={cn("rounded-[var(--radius-card)] border border-line bg-surface", className)}
       {...props}
     />
   );
@@ -32,7 +32,7 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
   return (
     <input
       className={cn(
-        "w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20",
+        "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20",
         className,
       )}
       {...props}

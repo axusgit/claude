@@ -234,7 +234,7 @@ export function EnvelopeList() {
               <select
                 value={docType}
                 onChange={(e) => setDocType(e.target.value)}
-                className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
               >
                 {DOC_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -251,7 +251,7 @@ export function EnvelopeList() {
                 <select
                   value=""
                   onChange={(e) => e.target.value && setCompany(e.target.value)}
-                  className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                  className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
                 >
                   <option value="">Pick from your companies…</option>
                   {companies.map((c) => (
@@ -299,12 +299,12 @@ export function EnvelopeList() {
             placeholder="Search title or company…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-64 max-w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+            className="w-64 max-w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
           />
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+            className="rounded-lg border border-line bg-surface px-2 py-2 text-sm outline-none focus:border-brand"
           >
             <option value="all">All types</option>
             {DOC_TYPES.map((t) => (
@@ -316,7 +316,7 @@ export function EnvelopeList() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+            className="rounded-lg border border-line bg-surface px-2 py-2 text-sm outline-none focus:border-brand"
           >
             <option value="all">All statuses</option>
             <option value="draft">Draft</option>
@@ -390,7 +390,7 @@ export function EnvelopeList() {
                     <span className="group relative inline-block">
                       <StatusBadge status={e.status} />
                       {e.recipients && e.recipients.length > 0 && (
-                        <span className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-max min-w-[190px] rounded-lg border border-line bg-white p-2 text-xs shadow-lg group-hover:block">
+                        <span className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-max min-w-[190px] rounded-lg border border-line bg-surface p-2 text-xs shadow-lg group-hover:block">
                           {e.recipients.map((r, i) => (
                             <span key={i} className="flex items-center gap-1.5 py-0.5">
                               {r.status === "signed" ? (
@@ -506,7 +506,7 @@ export function EnvelopeList() {
           onClick={() => setEditDoc(null)}
         >
           <div
-            className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-white p-5"
+            className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-surface p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-3 font-semibold">Edit document</h3>
@@ -520,7 +520,7 @@ export function EnvelopeList() {
                 <select
                   value={editType}
                   onChange={(e) => setEditType(e.target.value)}
-                  className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                  className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
                 >
                   {DOC_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -535,7 +535,7 @@ export function EnvelopeList() {
                   <select
                     value=""
                     onChange={(e) => e.target.value && setEditCompany(e.target.value)}
-                    className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
                   >
                     <option value="">Pick from your companies…</option>
                     {companies.map((c) => (
@@ -569,7 +569,7 @@ export function EnvelopeList() {
 
       {showArchive && (
         <div className="fixed inset-0 z-30 grid place-items-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-white p-5">
+          <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-surface p-5">
             <h3 className="font-semibold">Archive old documents</h3>
             <p className="mt-1 text-sm text-muted">
               Move every document older than the selected age to the <span className="font-medium">Archive</span> tab.
@@ -583,7 +583,7 @@ export function EnvelopeList() {
                 setArchiveDays(d);
                 void loadArchiveCount(d);
               }}
-              className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
             >
               {ARCHIVE_OPTIONS.map((o) => (
                 <option key={o.days} value={o.days}>

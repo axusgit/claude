@@ -284,7 +284,7 @@ export function ContactsPage() {
             <select
               value={company}
               onChange={(e) => setCompany(e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
             >
               <option value="">— No company —</option>
               {companies.map((c) => (
@@ -318,7 +318,7 @@ export function ContactsPage() {
         <select
           value={companyFilter}
           onChange={(e) => setCompanyFilter(e.target.value)}
-          className="rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+          className="rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
         >
           <option value="">All companies</option>
           <option value="__none__">— No company —</option>
@@ -395,7 +395,7 @@ export function ContactsPage() {
                       <select
                         value={editCompany}
                         onChange={(e) => setEditCompany(e.target.value)}
-                        className="w-full rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+                        className="w-full rounded-lg border border-line bg-surface px-2 py-2 text-sm outline-none focus:border-brand"
                       >
                         <option value="">— No company —</option>
                         {editCompany && !companies.some((c) => c.name === editCompany) && (

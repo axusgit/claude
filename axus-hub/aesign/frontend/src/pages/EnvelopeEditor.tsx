@@ -991,7 +991,7 @@ function SendCopyDialog({
               addContact(e.target.value);
               e.target.value = "";
             }}
-            className="mb-2 w-full rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+            className="mb-2 w-full rounded-lg border border-line bg-surface px-2 py-2 text-sm outline-none focus:border-brand"
           >
             <option value="">Choose from contacts…</option>
             {contacts.map((c) => (
@@ -1012,7 +1012,7 @@ function SendCopyDialog({
         </p>
         <label className="mb-1 mt-3 block text-xs font-medium text-muted">Note (optional)</label>
         <textarea
-          className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20"
+          className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20"
           rows={3}
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -1120,7 +1120,7 @@ function CcPanel({
             <select
               value=""
               onChange={(e) => pickContact(e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+              className="w-full rounded-lg border border-line bg-surface px-2 py-2 text-sm outline-none focus:border-brand"
             >
               <option value="">Choose from contacts…</option>
               {contacts.map((c) => (
@@ -1176,12 +1176,12 @@ function ReminderControl({
   const [open, setOpen] = useState(false);
   const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const inputCls =
-    "w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-brand";
+    "w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-sm outline-none focus:border-brand";
   return (
     <div className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm hover:bg-canvas"
+        className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm hover:bg-canvas"
         title="Automatic reminders to recipients who haven't signed"
       >
         <Bell className="h-3.5 w-3.5 text-muted" />
@@ -1192,7 +1192,7 @@ function ReminderControl({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-1 w-64 space-y-3 rounded-[var(--radius-card)] border border-line bg-white p-3 shadow-lg">
+          <div className="absolute right-0 z-20 mt-1 w-64 space-y-3 rounded-[var(--radius-card)] border border-line bg-surface p-3 shadow-lg">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted">Remind unsigned recipients</label>
               <select
@@ -1470,7 +1470,7 @@ function RecipientsPanel({
             <select
               defaultValue=""
               onChange={(e) => pickContact(e.target.value)}
-              className="w-full rounded-lg border border-line bg-white px-2 py-2 text-sm outline-none focus:border-brand"
+              className="w-full rounded-lg border border-line bg-surface px-2 py-2 text-sm outline-none focus:border-brand"
             >
               <option value="">Choose from contacts…</option>
               {contacts.map((c) => (

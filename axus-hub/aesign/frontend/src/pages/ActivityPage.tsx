@@ -76,7 +76,7 @@ export function ActivityPage() {
         </div>
         <button
           onClick={() => void load()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-2 text-sm text-muted transition-colors hover:text-ink"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-muted transition-colors hover:text-ink"
           title="Refresh"
         >
           <RefreshCw className="h-4 w-4" /> Refresh

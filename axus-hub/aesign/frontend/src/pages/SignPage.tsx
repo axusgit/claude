@@ -175,7 +175,7 @@ export function SignPage() {
           Next field ({remaining.length})
         </button>
       )}
-      <header className="sticky top-0 z-10 border-b border-line bg-white/95 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3">
           <div className="flex items-center gap-2">
             <img src="/assets/axus-logo.png" alt="Axus Technologies" className="h-7 w-auto" />
@@ -210,7 +210,7 @@ export function SignPage() {
       </div>
 
       {/* Sign bar */}
-      <div className="fixed inset-x-0 bottom-0 border-t border-line bg-white">
+      <div className="fixed inset-x-0 bottom-0 border-t border-line bg-surface">
         <div className="mx-auto flex max-w-4xl flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
           <label className="flex items-start gap-2 text-xs text-muted">
             <input
@@ -243,7 +243,7 @@ export function SignPage() {
       {/* Decline modal */}
       {showDecline && (
         <div className="fixed inset-0 z-30 grid place-items-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-[var(--radius-card)] border border-line bg-white p-5">
+          <div className="w-full max-w-lg rounded-[var(--radius-card)] border border-line bg-surface p-5">
             <h3 className="font-semibold">Decline to sign</h3>
             <p className="mt-1 text-sm text-muted">
               Please explain why you're declining{" "}
@@ -255,7 +255,7 @@ export function SignPage() {
               onChange={(e) => setDeclineReason(e.target.value)}
               rows={4}
               autoFocus
-              className="mt-3 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              className="mt-3 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
               placeholder="I'm declining because…"
             />
             <div className={"mt-1 text-xs " + (declineWords >= 10 ? "text-muted" : "text-red-600")}>
@@ -281,7 +281,7 @@ export function SignPage() {
       {/* Signature modal */}
       {sigField && (
         <div className="fixed inset-0 z-20 grid place-items-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-[var(--radius-card)] border border-line bg-white p-5">
+          <div className="w-full max-w-lg rounded-[var(--radius-card)] border border-line bg-surface p-5">
             <h3 className="mb-3 font-semibold">
               Add your {sigField.type === "initials" ? "initials" : "signature"}
             </h3>
@@ -308,7 +308,7 @@ export function SignPage() {
                   value={typedName}
                   onChange={(e) => setTypedName(e.target.value)}
                   placeholder={sigField.type === "initials" ? "Your initials" : "Type your full name"}
-                  className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+                  className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
                 />
                 <div className="grid h-28 place-items-center rounded-lg border border-line bg-canvas">
                   <span style={{ fontFamily: SCRIPT_FONT, fontStyle: "italic", fontSize: 40 }}>
@@ -342,7 +342,7 @@ export function SignPage() {
 function Centered({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-screen place-items-center bg-canvas p-6">
-      <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-white p-10 text-center">
+      <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-surface p-10 text-center">
         {children}
       </div>
     </div>
@@ -449,7 +449,7 @@ function SignerPage({
 
   return (
     <div
-      className="relative border border-line bg-white shadow-sm"
+      className="relative border border-line bg-surface shadow-sm"
       style={{ width: size?.w ?? TARGET_WIDTH, height: size?.h ?? TARGET_WIDTH * 1.29 }}
     >
       <canvas ref={canvasRef} className="block" />
@@ -525,8 +525,8 @@ function FieldInput({
       className={
         "absolute rounded-sm border-[1.5px] px-1 leading-none outline-none " +
         (filled
-          ? "border-green-500 bg-green-50 focus:bg-white"
-          : "border-yellow-500 bg-yellow-200/70 focus:bg-white")
+          ? "border-green-500 bg-green-50 focus:bg-surface"
+          : "border-yellow-500 bg-yellow-200/70 focus:bg-surface")
       }
       style={{ ...style, fontSize }}
       value={value}

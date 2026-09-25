@@ -60,7 +60,7 @@ export function SignaturePad({
         ref={canvasRef}
         width={width}
         height={height}
-        className="w-full touch-none rounded-lg border border-line bg-white"
+        className="w-full touch-none rounded-lg border border-line bg-surface"
         style={{ aspectRatio: `${width} / ${height}` }}
         onPointerDown={down}
         onPointerMove={move}
