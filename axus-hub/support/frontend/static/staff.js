@@ -121,7 +121,7 @@ const Staff = (() => {
     $("login-form").classList.toggle("hidden", !local);
     $("login-sso").classList.toggle("hidden", local);
   };
-  const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); };
+  const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); requestAnimationFrame(syncTopbarH); };
   const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view", "glossary-view"];
   const hideViews = () => VIEWS.forEach(id => $(id).classList.add("hidden"));
   const showDashboard = () => { hideViews(); $("dashboard-view").classList.remove("hidden"); renderDashboard(); };
@@ -136,6 +136,7 @@ const Staff = (() => {
     if (tb && tb.offsetHeight) document.documentElement.style.setProperty("--topbar-h", tb.offsetHeight + "px");
   }
   window.addEventListener("resize", syncTopbarH);
+  window.addEventListener("load", syncTopbarH);
   const showGlossary = () => { hideViews(); $("glossary-view").classList.remove("hidden"); loadGlossary(); };
 
   /* ---------- Auth ---------- */
