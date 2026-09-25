@@ -11,7 +11,7 @@ export function Button({
   const base =
     "inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none px-3.5 py-2";
   const variants: Record<ButtonVariant, string> = {
-    primary: "bg-brand text-brand-fg hover:bg-brand-hover",
+    primary: "btn-primary-grad text-brand-fg",
     outline: "border border-line bg-surface text-ink hover:bg-canvas",
     ghost: "text-ink hover:bg-canvas",
     danger: "bg-red-600 text-white hover:bg-red-700",
@@ -22,7 +22,7 @@ export function Button({
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("rounded-[var(--radius-card)] border border-line bg-surface", className)}
+      className={cn("glass-card rounded-[var(--radius-card)]", className)}
       {...props}
     />
   );

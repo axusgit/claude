@@ -33,8 +33,9 @@ function useTheme() {
 
 export function App() {
   const { theme, toggle } = useTheme();
+  const { pathname } = useLocation();
   // The signer experience is a standalone full-page flow (no staff chrome).
-  const isSigning = useLocation().pathname.startsWith("/sign/");
+  const isSigning = pathname.startsWith("/sign/");
   if (isSigning) {
     return (
       <Routes>
@@ -44,11 +45,11 @@ export function App() {
   }
   return (
     <div className="min-h-full">
-      <header className="border-b border-line bg-surface">
+      <header className="esign-topbar">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-5">
           <Link to="/" className="flex items-center gap-2">
             <img src="/assets/axus-logo.png" alt="Axus Technologies" className="h-8 w-auto" />
-            <span className="text-[15px] font-semibold text-muted">eSign</span>
+            <span className="brand-gradient text-[15px] font-semibold">eSign</span>
           </Link>
           <nav className="flex items-center gap-1">
             <NavLink to="/" end className={navCls}>
@@ -92,9 +93,9 @@ export function App() {
             </a>
           </div>
         </div>
-        <div className="h-0.5 bg-brand" />
+        <div className="accent-strip h-0.5" />
       </header>
-      <main className="mx-auto max-w-6xl px-5 py-6">
+      <main key={pathname} className="view-in mx-auto max-w-6xl px-5 py-6">
         <Routes>
           <Route path="/" element={<EnvelopeList />} />
           <Route path="/envelopes/:id" element={<EnvelopeEditor />} />
