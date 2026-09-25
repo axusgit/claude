@@ -501,8 +501,9 @@ export async function envelopeRoutes(app: FastifyInstance) {
         recipientId: r.id,
       });
     }
-    if (e.created_by && !recsQ.rows.some((r) => r.email === e.created_by)) {
-      await sendCompleted({ to: e.created_by, recipientName: "Axus Team", title: e.title, attachment, envelopeId: envId });
+    const notifyTo = config.mail.notifyTo;
+    if (notifyTo && !recsQ.rows.some((r) => (r.email as string).toLowerCase() === notifyTo.toLowerCase())) {
+      await sendCompleted({ to: notifyTo, recipientName: "Axus Team", title: e.title, attachment, envelopeId: envId });
     }
 
     // On Call-originated quote: notify On Call so it shows under Invoices, same as

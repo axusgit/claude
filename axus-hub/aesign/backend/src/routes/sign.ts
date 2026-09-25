@@ -69,9 +69,11 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     for (const r of recs.rows) {
       await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment, envelopeId: envId, recipientId: r.id });
     }
-    // Also notify the sender (staff) with the final signed copy.
-    if (e.created_by && !recs.rows.some((r) => r.email === e.created_by)) {
-      await sendCompleted({ to: e.created_by, recipientName: "Axus Team", title: e.title, attachment, envelopeId: envId });
+    // Also notify the Axus team inbox (info@) with the final signed copy — always,
+    // regardless of who created the envelope. Skip only if it's already a recipient.
+    const notifyTo = config.mail.notifyTo;
+    if (notifyTo && !recs.rows.some((r) => (r.email as string).toLowerCase() === notifyTo.toLowerCase())) {
+      await sendCompleted({ to: notifyTo, recipientName: "Axus Team", title: e.title, attachment, envelopeId: envId });
     }
     // If this is an On Call quote, notify On Call so it shows under Invoices.
     // Fire-and-forget (the helper never throws) so completion stays snappy.
@@ -267,11 +269,15 @@ export async function signRoutes(app: FastifyInstance) {
       [envId, r.id],
     );
     const notify = [
-      { name: "Axus Team", email: env.created_by as string },
+      { name: "Axus Team", email: config.mail.notifyTo },
       ...others.rows.map((o) => ({ name: o.name as string, email: o.email as string })),
     ];
+    const seen = new Set<string>();
     for (const p of notify) {
       if (!p.email) continue;
+      const key = p.email.toLowerCase();
+      if (seen.has(key)) continue; // don't double-send if info@ is also a participant
+      seen.add(key);
       await sendDeclined({ to: p.email, recipientName: p.name, declinerName: r.name, title: env.title, reason, envelopeId: envId });
     }
     return { ok: true, declined: true };

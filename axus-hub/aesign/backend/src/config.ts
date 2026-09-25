@@ -28,6 +28,9 @@ export const config = {
     from: process.env.MAIL_FROM ?? "Axus eSign <no-reply@axustechnologies.com>",
     // Envelope MAIL FROM / bounce address = the authenticated mailbox (support@).
     sender: process.env.MAIL_SENDER ?? process.env.SMTP_USER ?? "support@axustechnologies.com",
+    // Internal inbox that receives EVERY document notification (signed / declined),
+    // regardless of who created the envelope. Override with DOC_NOTIFY_EMAIL.
+    notifyTo: process.env.DOC_NOTIFY_EMAIL ?? "info@axustechnologies.com",
   },
   // Dev-only identity fallback when not behind the Authentik forward-auth proxy.
   dev: {
