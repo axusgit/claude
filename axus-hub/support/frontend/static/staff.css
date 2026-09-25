@@ -7,11 +7,14 @@
 }
 
 /* ---------- Layout: sidebar + content ---------- */
-.layout { display: grid; grid-template-columns: 232px 1fr; min-height: calc(100vh - 63px); }
+.layout { display: grid; grid-template-columns: 232px 1fr; min-height: calc(100vh - var(--top-h, 117px)); }
 .sidebar {
   border-right: 1px solid var(--border); background: var(--surface);
-  padding: 20px 16px; position: sticky; top: 63px; align-self: start;
-  height: calc(100vh - 63px);
+  padding: 20px 16px; position: sticky; top: var(--top-h, 117px); align-self: start;
+  height: calc(100vh - var(--top-h, 117px));
+  /* Only scroll the sidebar when its own content is taller than the area — when it
+     fits, it stays perfectly still while the main content scrolls. */
+  overflow-y: auto;
 }
 .side-nav { margin-top: 20px; display: flex; flex-direction: column; gap: 2px; }
 .nav-group { display: flex; flex-direction: column; }

@@ -121,7 +121,7 @@ const Staff = (() => {
     $("login-form").classList.toggle("hidden", !local);
     $("login-sso").classList.toggle("hidden", local);
   };
-  const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); };
+  const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); requestAnimationFrame(setTopH); };
   const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view", "glossary-view"];
   const hideViews = () => VIEWS.forEach(id => $(id).classList.add("hidden"));
   const showDashboard = () => { hideViews(); $("dashboard-view").classList.remove("hidden"); renderDashboard(); };
@@ -142,8 +142,15 @@ const Staff = (() => {
     wrap.style.maxHeight = Math.max(200, window.innerHeight - top - 24) + "px";
   }
   function fitVisibleScroller() { ["#customers-view", "#users-view"].forEach(fitScroller); }
-  window.addEventListener("resize", fitVisibleScroller);
-  window.addEventListener("load", fitVisibleScroller);
+  // Publish the real topbar height so the sidebar sticks right below it (the 88px
+  // logo makes the topbar taller than the old hard-coded 63px offset).
+  function setTopH() {
+    const tb = document.querySelector(".topbar");
+    if (tb && tb.offsetHeight) document.documentElement.style.setProperty("--top-h", tb.offsetHeight + "px");
+  }
+  function syncChrome() { setTopH(); fitVisibleScroller(); }
+  window.addEventListener("resize", syncChrome);
+  window.addEventListener("load", syncChrome);
   const showGlossary = () => { hideViews(); $("glossary-view").classList.remove("hidden"); loadGlossary(); };
 
   /* ---------- Auth ---------- */
