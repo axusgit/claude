@@ -535,6 +535,12 @@ def add_comment(
         _log_activity(db, ticket_id, current_user.id, "status_changed", "Closed by staff on reply")
         closed = True
 
+    # A child comment doesn't trigger Ticket.onupdate — bump updated_at so the queue
+    # "Updated" time reflects the latest activity. Skip internal-only notes so the
+    # client-visible "Updated" time isn't moved by activity clients can't see.
+    if (comment and not data.is_internal) or closed:
+        ticket.updated_at = datetime.now(timezone.utc)
+
     db.commit()
     if comment:
         db.refresh(comment)

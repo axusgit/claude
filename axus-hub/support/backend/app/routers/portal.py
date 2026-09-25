@@ -300,6 +300,10 @@ def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
         t.closed_at = datetime.now(timezone.utc)
         _log_activity(db, ticket_id, user.id, "status_changed", "Client closed the case via portal")
         closed = True
+    # A child comment doesn't trigger Ticket.onupdate, so bump updated_at explicitly
+    # — the queue/list "Updated" time must reflect the latest activity.
+    if comment or closed:
+        t.updated_at = datetime.now(timezone.utc)
     db.commit()
     if comment:
         db.refresh(comment)
