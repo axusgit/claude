@@ -42,3 +42,6 @@ copy-trading/
 Audio Recorder/recordings/
 Audio Recorder/transcripts/
 auto-push-all.log
+
+# On Call decommissioned archive — contains .env secrets + deploy key + DB, NEVER commit
+oncall-archive/
