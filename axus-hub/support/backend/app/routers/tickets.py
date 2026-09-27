@@ -38,10 +38,10 @@ def _default_origin(user: User) -> str:
 
 
 def _unique_ticket_number(db: Session) -> int:
-    """A 6-digit number unique across *all* references (any prefix), so the number
+    """A 7-digit number unique across *all* references (any prefix), so the number
     can be re-prefixed when a ticket changes role (T- ticket, C- child, P- project)."""
     for _ in range(50):
-        n = random.randint(100000, 999999)
+        n = random.randint(1000000, 9999999)
         if not db.query(Ticket).filter(Ticket.reference.like(f"%-{n}")).first():
             return n
     raise HTTPException(status_code=500, detail="Could not allocate a ticket reference")
