@@ -234,11 +234,8 @@ def submit_ticket(
     db: Session = Depends(get_db),
     user: User = Depends(require_client_user),
 ):
-    address = (data.contact_address or "").strip()
-    phone = (data.contact_phone or "").strip()
-    if not address or not phone:
-        raise HTTPException(status_code=400,
-                            detail="Please include your address and phone number.")
+    address = (data.contact_address or "").strip() or None   # optional
+    phone = (data.contact_phone or "").strip() or None       # optional
     ticket = Ticket(
         title=data.title,
         description=data.description,

@@ -221,11 +221,11 @@
             </select>
           </label>
         </div>
-        <label>Service address
-          <input type="text" id="nt-address" required placeholder="Street, city, state, ZIP" autocomplete="street-address" />
+        <label>Service address <span class="nt-optional">(optional)</span>
+          <input type="text" id="nt-address" placeholder="Street, city, state, ZIP" autocomplete="street-address" />
         </label>
-        <label>Phone number
-          <input type="tel" id="nt-phone" required placeholder="(xxx) xxx-xxxx" autocomplete="tel" />
+        <label>Phone number <span class="nt-optional">(optional)</span>
+          <input type="tel" id="nt-phone" placeholder="(xxx) xxx-xxxx" autocomplete="tel" />
         </label>
         <label>Attachments <span class="nt-optional">(optional)</span>
           <input type="file" id="nt-files" multiple
@@ -263,7 +263,7 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=40"></script>
+  <script src="/static/app.js?v=41"></script>
   <script src="/static/tilt.js?v=2"></script>
 </body>
 </html>
