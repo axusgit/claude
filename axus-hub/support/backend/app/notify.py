@@ -167,9 +167,15 @@ def _portal_url() -> str:
 DEFAULT_SIGNOFF = "Thank you for choosing our services.\nAxus Service Team"
 
 
+def _first_name(name):
+    """First name only for greetings ('Dean Sucher' -> 'Dean'); 'there' if blank."""
+    parts = (name or "").strip().split()
+    return parts[0] if parts else "there"
+
+
 def _participant_html(recipient_name, lead, block, t, link, note=None, signoff=None) -> str:
     import html as _h
-    rn = _h.escape(recipient_name or "there")
+    rn = _h.escape(_first_name(recipient_name))
     ld = _h.escape(lead or "")
     ref = _h.escape(t.reference or "")
     title = _h.escape(t.title or "")
@@ -294,7 +300,7 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             link = ("" if not can_view else (staff_url if is_staff else portal_url))
             text = (f"Ticket {t.reference} — {t.title}\n"
                     + (f"\nDescription:\n{(t.description or '').strip()}\n" if (t.description or '').strip() else "")
-                    + f"\nHi {name or 'there'},\n\n{lead}\n\n{(block or '').strip()}\n\n"
+                    + f"\nHi {_first_name(name)},\n\n{lead}\n\n{(block or '').strip()}\n\n"
                     + (f"View it: {link}\n" if link else "")
                     + "\nYou're receiving this because you're a participant on this ticket.\n")
             html = _participant_html(name, lead, block, t, link)
