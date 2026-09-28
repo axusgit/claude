@@ -68,7 +68,7 @@ def upgrade() -> None:
         sa.Column("email", sa.String(), nullable=True),
         sa.Column("phone", sa.String(), nullable=True),
         sa.Column("title", sa.String(), nullable=True),
-        sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
     op.create_index("ix_subcontractor_contacts_subcontractor_id", "subcontractor_contacts", ["subcontractor_id"])
