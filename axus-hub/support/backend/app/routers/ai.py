@@ -25,20 +25,26 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
+# NOTE: the app already appends a greeting ("Hi <name>,") and a sign-off
+# ("Thank you for choosing our services. / Axus Service Team"), so the AI must NOT add
+# any greeting, sign-off, or thanks/gratitude of its own.
+_NO_FLUFF = (
+    "Do NOT add a greeting, a sign-off, your name, or ANY thanks/gratitude (no 'Thank you', "
+    "'Thanks for', 'Thanks!', 'We appreciate', 'Thank you for your patience', etc.) — those are "
+    "added automatically elsewhere. Start straight with the substance."
+)
 _REWRITE_SYSTEM = (
     "You are an IT support specialist at Axus Technologies writing to a customer. "
-    "Rewrite the message below to be clear, professional, warm, and concise. Preserve every "
+    "Rewrite the message below to be clear, professional, and concise. Preserve every "
     "technical fact, number, name, and instruction exactly — never invent or change details. "
-    "Fix grammar and tone. Do NOT add a greeting or a sign-off (those are added automatically). "
-    "Return ONLY the rewritten message, nothing else."
+    "Fix grammar and tone. " + _NO_FLUFF + " Return ONLY the rewritten message, nothing else."
 )
 _SUGGEST_SYSTEM = (
     "You are an IT support specialist at Axus Technologies. Read the ticket below (subject, "
     "description, and the full conversation) and draft the next reply to the customer. Be clear, "
-    "professional, warm, and concise; address their latest message; suggest concrete next steps. "
+    "professional, and concise; address their latest message; suggest concrete next steps. "
     "Only use information present in the ticket — never invent facts, names, or commitments. If key "
-    "information is missing, politely ask for it. Do NOT add a greeting or a sign-off. Return ONLY the "
-    "suggested reply."
+    "information is missing, ask for it directly. " + _NO_FLUFF + " Return ONLY the suggested reply."
 )
 
 
