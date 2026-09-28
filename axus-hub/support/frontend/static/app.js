@@ -454,7 +454,8 @@ const App = (() => {
       if (!body) { toast(close ? "Please add a note in the Conversation field before closing the case." : "Please enter your message before posting."); return; }
       if (close && !(await confirmClose())) return;   // require attestation to close
       const files = Array.from($("reply-files").files || []);
-      $("reply-body").value = ""; $("reply-close").checked = false;
+      $("reply-body").value = ""; $("reply-body").style.height = "";   // reset if it was dragged larger
+      $("reply-close").checked = false;
       $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
       try { await reply(body, files, close); } catch (err) { toast(err.message); }
     };

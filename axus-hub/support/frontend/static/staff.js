@@ -1707,7 +1707,8 @@ const Staff = (() => {
       try {
         await postReply(b, internal, files, close, withSig);
         // Clear the form only AFTER a successful post, so nothing is lost on error.
-        $("reply-body").value = ""; $("reply-internal").checked = false; $("reply-close").checked = false;
+        $("reply-body").value = ""; $("reply-body").style.height = "";   // reset if it was dragged larger
+        $("reply-internal").checked = false; $("reply-close").checked = false;
         $("reply-signature").checked = false;   // default: sign as "Axus Service Team"
         $("reply-form").classList.remove("internal-mode");
         $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
