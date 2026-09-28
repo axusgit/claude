@@ -569,6 +569,8 @@ const Staff = (() => {
     $("p-category").textContent = t.category || "Uncategorized";
     $("p-type").textContent = "Imported (Xcitium)";
     $("p-hours").textContent = "—";
+    $("p-phone").textContent = "—";
+    $("p-address").textContent = "—";
     $("p-created").textContent = fmtDate(t.created);
     // render the conversation read-only
     const el = $("thread");
@@ -609,6 +611,8 @@ const Staff = (() => {
     $("delete-ticket-btn").hidden = !(me && me.role === "admin");      // admins only
     $("promote-btn").hidden = true;                                    // native tickets are already editable
     $("p-hours").textContent = (current.total_hours || 0) + " h";
+    $("p-phone").textContent = current.contact_phone || "—";
+    $("p-address").textContent = current.contact_address || "—";
     $("p-created").textContent = fmtDate(current.created_at);
     // resolve the reporting user's name
     if (current.reporter_user_id) {

@@ -453,3 +453,8 @@ html[data-theme="dark"] .login-logo { filter: none; }
 
 /* Wider Canned Responses modal (more room for the list + long reply bodies) */
 #canned-modal .modal { width: 960px; max-width: 94vw; }
+
+/* Properties moved into the wide main column — lay out 2 label/value pairs per row */
+.props-wide { grid-template-columns: max-content minmax(160px,1fr) max-content minmax(160px,1fr); gap: 10px 20px; }
+.props-wide dd { text-align: left; word-break: break-word; }
+@media (max-width: 760px) { .props-wide { grid-template-columns: max-content 1fr; } }

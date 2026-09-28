@@ -473,12 +473,20 @@ const App = (() => {
         $("nt-error").textContent = "These files aren't an accepted format: " + bad.map(f => f.name).join(", ");
         return;
       }
+      const address = $("nt-address").value.trim();
+      const phone = $("nt-phone").value.trim();
+      if (!address || !phone) {
+        $("nt-error").textContent = "Please include your service address and phone number.";
+        return;
+      }
       try {
         await createTicket({
           title: $("nt-title").value.trim(),
           description: $("nt-desc").value.trim() || null,
           category: $("nt-category").value || null,
           priority: $("nt-priority").value,
+          contact_address: address,
+          contact_phone: phone,
         }, files);
       } catch (err) { $("nt-error").textContent = err.message; }
     };

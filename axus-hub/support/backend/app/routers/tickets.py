@@ -212,6 +212,9 @@ class TicketOut(BaseModel):
     source: str = "native"
     client_name: Optional[str] = None
     reporter_name: Optional[str] = None
+    # Customer-provided contact info captured at portal open (shown in staff Properties).
+    contact_address: Optional[str] = None
+    contact_phone: Optional[str] = None
 
     class Config:
         from_attributes = True

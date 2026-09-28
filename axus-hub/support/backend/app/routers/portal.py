@@ -174,6 +174,8 @@ class PortalTicketIn(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     priority: str = "medium"
+    contact_address: Optional[str] = None
+    contact_phone: Optional[str] = None
 
 
 class PortalReplyIn(BaseModel):
@@ -232,11 +234,18 @@ def submit_ticket(
     db: Session = Depends(get_db),
     user: User = Depends(require_client_user),
 ):
+    address = (data.contact_address or "").strip()
+    phone = (data.contact_phone or "").strip()
+    if not address or not phone:
+        raise HTTPException(status_code=400,
+                            detail="Please include your address and phone number.")
     ticket = Ticket(
         title=data.title,
         description=data.description,
         category=data.category,
         priority=data.priority,
+        contact_address=address,
+        contact_phone=phone,
         client_id=user.client_id,        # forced to the user's own company
         created_by_id=user.id,
         reporter_user_id=user.id,         # the client who opened it (for scoping + participants)
