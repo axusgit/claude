@@ -958,6 +958,23 @@ const Staff = (() => {
     if (close) await openTicket(current.id);   // refresh status/priority badges after closing
     toast(close ? "Case closed" : (internal ? "Internal note added" : "Reply posted"));
   }
+  /* ---------- AI assist (staff only) ---------- */
+  async function aiAssist(btn, endpoint, body, targetEl) {
+    if (!btn || btn.disabled) return;
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = "✨ Thinking…";
+    try {
+      const r = await api("/api/ai/" + endpoint, { method: "POST", body });
+      if (r && r.result) {
+        targetEl.value = r.result;
+        targetEl.style.height = "";
+        targetEl.focus();
+        toast("AI draft ready — review and edit before sending");
+      }
+    } catch (e) { toast("AI: " + (e.message || "request failed")); }
+    finally { btn.disabled = false; btn.textContent = orig; }
+  }
+
   /* ---------- Glossary (staff-only reference) ---------- */
   let glossaryData = [];
   async function loadGlossary() {
@@ -1682,6 +1699,21 @@ const Staff = (() => {
     $("reply-files").onchange = () => {
       const n = $("reply-files").files.length;
       $("reply-files-label").textContent = n ? `${n} file${n > 1 ? "s" : ""}` : "Attach";
+    };
+    // AI assist buttons (staff console only)
+    $("ai-rewrite").onclick = () => {
+      const txt = $("reply-body").value.trim();
+      if (!txt) { toast("Type a draft first, then Rewrite."); return; }
+      aiAssist($("ai-rewrite"), "rewrite", { text: txt }, $("reply-body"));
+    };
+    $("ai-suggest").onclick = () => {
+      if (!current || !current.id) { toast("Open a ticket first."); return; }
+      aiAssist($("ai-suggest"), "suggest", { ticket_id: current.id }, $("reply-body"));
+    };
+    $("ai-rewrite-desc").onclick = () => {
+      const txt = $("nt-desc").value.trim();
+      if (!txt) { toast("Type a description first, then Rewrite."); return; }
+      aiAssist($("ai-rewrite-desc"), "rewrite", { text: txt }, $("nt-desc"));
     };
     $("canned-select").onchange = () => {
       const v = $("canned-select").value; $("canned-select").value = "";

@@ -200,6 +200,8 @@ services:
       GRAPH_CLIENT_SECRET: ${GRAPH_CLIENT_SECRET:-}
       SUPPORT_MAILBOX: ${SUPPORT_MAILBOX:-}
       AUTOREPLY_ENABLED: ${AUTOREPLY_ENABLED:-0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
     volumes:
       # Ticket attachments must survive image rebuilds (`up -d --build`); without
       # this named volume every routine update wipes them. Migrate the legacy

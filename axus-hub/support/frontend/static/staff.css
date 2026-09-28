@@ -458,3 +458,10 @@ html[data-theme="dark"] .login-logo { filter: none; }
 .props-wide { grid-template-columns: max-content minmax(160px,1fr) max-content minmax(160px,1fr); gap: 10px 20px; }
 .props-wide dd { text-align: left; word-break: break-word; }
 @media (max-width: 760px) { .props-wide { grid-template-columns: max-content 1fr; } }
+
+/* AI assist buttons (staff console) */
+.reply-canned-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn-ai { font-size: 12.5px; padding: 5px 11px; }
+.btn-ai:hover:not(:disabled) { color: var(--orange); border-color: var(--orange); }
+.btn-ai:disabled { opacity: .6; cursor: default; }
+#ai-rewrite-desc { margin-top: 6px; }

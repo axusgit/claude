@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=66" />
-  <link rel="stylesheet" href="/static/staff.css?v=82" />
+  <link rel="stylesheet" href="/static/staff.css?v=83" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -253,6 +253,8 @@
                 <form id="reply-form" class="reply-form">
                   <div class="reply-canned-row">
                     <select id="canned-select" class="canned-select" title="Insert a canned response"><option value="">💬 Canned…</option></select>
+                    <button type="button" class="btn btn-ghost btn-ai" id="ai-rewrite" title="Rewrite your draft with AI (you review before sending)">✨ Rewrite</button>
+                    <button type="button" class="btn btn-ghost btn-ai" id="ai-suggest" title="Draft a reply from the whole ticket with AI">🧠 Suggest reply</button>
                   </div>
                   <textarea id="reply-body" rows="3" placeholder="Write a reply…"></textarea>
                   <div class="reply-actions">
@@ -482,7 +484,10 @@
         <label>User<select id="nt-contact"><option value="">— None —</option></select></label>
         <label>Board<select id="nt-board"><option value="">— None —</option></select></label>
         <label id="nt-project-wrap">Project <span class="muted">(optional)</span><select id="nt-project"><option value="">— None —</option></select></label>
-        <label>Description<textarea id="nt-desc" rows="3" placeholder="Details…"></textarea></label>
+        <label>Description
+          <textarea id="nt-desc" rows="3" placeholder="Details…"></textarea>
+          <button type="button" class="btn btn-ghost btn-ai" id="ai-rewrite-desc" title="Rewrite the description with AI">✨ Rewrite</button>
+        </label>
         <div class="form-row">
           <label>Category<select id="nt-category"><option value="">— Select —</option><option>ATA</option><option>Cabling</option><option>Call manager</option><option>Cellular Gateway</option><option>Circuit</option><option>Firewall</option><option>ISP</option><option>Laptop</option><option>Mobile</option><option>PBX</option><option>Phone</option><option>Printer</option><option>Router</option><option>SD-WAN</option><option>Server</option><option>Software</option><option>Switch</option><option>UPS</option><option>Voice/video gateway</option><option>Wireless access point</option><option>Wireless controller</option><option>Workstation</option><option>Other</option></select></label>
           <label>Priority<select id="nt-priority"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Normal</option><option value="low">Low</option></select></label>
@@ -545,6 +550,6 @@
 
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="/static/staff.js?v=96"></script>
+  <script src="/static/staff.js?v=97"></script>
 </body>
 </html>
