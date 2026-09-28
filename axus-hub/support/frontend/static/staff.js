@@ -122,7 +122,7 @@ const Staff = (() => {
     $("login-sso").classList.toggle("hidden", local);
   };
   const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); requestAnimationFrame(setTopH); };
-  const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view", "glossary-view"];
+  const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view", "glossary-view", "reports-view"];
   const hideViews = () => VIEWS.forEach(id => $(id).classList.add("hidden"));
   const showDashboard = () => { hideViews(); $("dashboard-view").classList.remove("hidden"); renderDashboard(); };
   const showQueue = () => { hideViews(); $("queue-view").classList.remove("hidden"); };
@@ -152,6 +152,43 @@ const Staff = (() => {
   window.addEventListener("resize", syncChrome);
   window.addEventListener("load", syncChrome);
   const showGlossary = () => { hideViews(); $("glossary-view").classList.remove("hidden"); loadGlossary(); };
+  const showReports = () => { hideViews(); $("reports-view").classList.remove("hidden"); loadTrends(repPeriod); };
+
+  /* ---------- Reports (ticket trends) ---------- */
+  let repPeriod = "month", repChart = null;
+  async function loadTrends(period) {
+    repPeriod = period;
+    document.querySelectorAll("#rep-period button").forEach(b => b.classList.toggle("active", b.dataset.p === period));
+    let data;
+    try { data = await api("/api/reports/ticket-trends?period=" + period); }
+    catch (e) { toast("Couldn't load report: " + e.message); return; }
+    const labels = data.buckets.map(b => b.label);
+    const opened = data.buckets.map(b => b.opened);
+    const closed = data.buckets.map(b => b.closed);
+    const totO = opened.reduce((a, b) => a + b, 0), totC = closed.reduce((a, b) => a + b, 0);
+    const per = period === "week" ? "12 weeks" : period === "month" ? "12 months" : "all years";
+    $("rep-summary").textContent = `${totO} opened · ${totC} closed (${per})`;
+    const css = getComputedStyle(document.documentElement);
+    const textCol = css.getPropertyValue("--text").trim() || "#e9f0fb";
+    const gridCol = (css.getPropertyValue("--border").trim() || "rgba(255,255,255,.1)");
+    const cfg = {
+      type: "bar",
+      data: { labels, datasets: [
+        { label: "Opened", data: opened, backgroundColor: "#f26722", borderRadius: 4 },
+        { label: "Closed", data: closed, backgroundColor: "#3a9d5d", borderRadius: 4 },
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textCol } }, tooltip: { mode: "index", intersect: false } },
+        scales: {
+          x: { ticks: { color: textCol }, grid: { color: gridCol } },
+          y: { beginAtZero: true, ticks: { color: textCol, precision: 0 }, grid: { color: gridCol } },
+        },
+      },
+    };
+    if (repChart) { repChart.data = cfg.data; repChart.options = cfg.options; repChart.update(); }
+    else if (window.Chart) { repChart = new Chart($("rep-chart"), cfg); }
+  }
 
   /* ---------- Auth ---------- */
   async function login(email, password) {
@@ -1560,6 +1597,12 @@ const Staff = (() => {
       $("nav-glossary").classList.add("active");
       showGlossary();
     };
+    $("nav-reports").onclick = () => {
+      document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+      $("nav-reports").classList.add("active");
+      showReports();
+    };
+    document.querySelectorAll("#rep-period button").forEach(b => b.onclick = () => loadTrends(b.dataset.p));
     $("nav-canned").onclick = () => openCannedModal();   // review/edit outside a ticket
     $("gl-new-btn").onclick = () => openGlossaryModal(null);
     $("gl-close").onclick = closeGlossaryModal;
