@@ -16,7 +16,7 @@ import re
 import time
 import threading
 
-from app import graph
+from app import graph, mailer
 
 SEEN_FILE = os.getenv("AUTOREPLY_SEEN_FILE", "/data/uploads/autoreply_seen.txt")
 PORTAL = os.getenv("PORTAL_URL", "https://service.axustechnologies.com").rstrip("/")
@@ -78,7 +78,9 @@ def process_once() -> dict:
                 skipped += 1
                 continue
             if addr not in seen:
-                graph.send_mail(addr, REPLY_SUBJECT, REPLY_BODY)
+                # Send via our existing SMTP relay (service@), NOT Graph — so the
+                # Graph app never needs the Mail.Send permission (smaller blast radius).
+                mailer.send_email([addr], REPLY_SUBJECT, REPLY_BODY)
                 _mark_seen(addr)
                 seen.add(addr)
                 replied += 1
