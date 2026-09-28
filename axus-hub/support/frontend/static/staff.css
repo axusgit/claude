@@ -450,3 +450,6 @@ html[data-theme="dark"] .login-logo { filter: none; }
 
 /* My open tickets spans the full dashboard width (Unassigned panel removed) */
 .dash-full { grid-column: 1 / -1; }
+
+/* Wider Canned Responses modal (more room for the list + long reply bodies) */
+#canned-modal .modal { width: 960px; max-width: 94vw; }
