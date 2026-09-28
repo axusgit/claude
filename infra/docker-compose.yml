@@ -195,6 +195,11 @@ services:
       # point at (the no-SSO /portal route below). Customers authenticate by JWT,
       # never through the staff Authentik SSO.
       PORTAL_URL: ${PORTAL_URL:-https://support.${PLATFORM_DOMAIN}/portal}
+      GRAPH_TENANT_ID: ${GRAPH_TENANT_ID:-}
+      GRAPH_CLIENT_ID: ${GRAPH_CLIENT_ID:-}
+      GRAPH_CLIENT_SECRET: ${GRAPH_CLIENT_SECRET:-}
+      SUPPORT_MAILBOX: ${SUPPORT_MAILBOX:-}
+      AUTOREPLY_ENABLED: ${AUTOREPLY_ENABLED:-0}
     volumes:
       # Ticket attachments must survive image rebuilds (`up -d --build`); without
       # this named volume every routine update wipes them. Migrate the legacy

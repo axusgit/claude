@@ -65,6 +65,21 @@ def start_email_poller():
 
 
 @app.on_event("startup")
+def start_auto_reply():
+    """Auto-reply to anyone who emails service@ (portal-only, no email-to-ticket).
+    Off by default; set AUTOREPLY_ENABLED=1 with the GRAPH_* + SUPPORT_MAILBOX env."""
+    import os
+    from app import graph, auto_reply
+    if os.getenv("AUTOREPLY_ENABLED", "0") != "1":
+        print("[auto-reply] disabled; set AUTOREPLY_ENABLED=1 to enable", flush=True)
+        return
+    if not graph.is_configured():
+        print("[auto-reply] GRAPH_* / SUPPORT_MAILBOX not configured; skipping", flush=True)
+        return
+    auto_reply.start_scheduler_thread()
+
+
+@app.on_event("startup")
 def start_xcitium_sync():
     """Mirror the legacy Xcitium Service Desk into read-only xcitium_* tables.
 
