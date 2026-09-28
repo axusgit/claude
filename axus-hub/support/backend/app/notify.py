@@ -207,7 +207,10 @@ def _participant_html(recipient_name, lead, block, t, link, note=None, signoff=N
     {signoff_html}
     {note_html}
   </td></tr>
-  <tr><td style="padding:24px 32px 28px;"><p style="margin:20px 0 0;padding-top:16px;border-top:1px solid #eef0f3;font-size:12px;color:#9aa1ac;">Axus Technologies &middot; Simplifying IT</p></td></tr>
+  <tr><td style="padding:24px 32px 28px;">
+    <p style="margin:20px 0 0;padding-top:16px;border-top:1px solid #eef0f3;font-size:12px;line-height:1.5;color:#9aa1ac;">&#128233; This mailbox isn&rsquo;t monitored &mdash; please don&rsquo;t reply here. To reach us, sign in at <a href="{link}" style="color:#f26722;">service.axustechnologies.com</a> or click <strong>Service Login</strong> on <a href="https://axustechnologies.com" style="color:#f26722;">axustechnologies.com</a>.</p>
+    <p style="margin:12px 0 0;font-size:12px;color:#9aa1ac;">Axus Technologies &middot; Simplifying IT</p>
+  </td></tr>
 </table>
 </body></html>"""
 
