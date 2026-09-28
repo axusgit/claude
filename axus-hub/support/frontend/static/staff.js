@@ -334,6 +334,21 @@ const Staff = (() => {
   }
   const statCard = (n, label, cls) => `<div class="stat-card ${cls}"><div class="stat-num">${n}</div><div class="stat-label">${label}</div></div>`;
 
+  const _PRIO_RANK = { urgent: 4, high: 3, normal: 2, low: 1 };
+  const _STATUS_RANK = { open: 1, in_progress: 2, waiting: 3, resolved: 4, closed: 5 };
+  function queueVal(t, key) {
+    switch (key) {
+      case "ref": return t.reference || "";
+      case "subject": return t.title || "";
+      case "company": return t.client_name || clientMap[t.client_id] || "";
+      case "board": return boardMap[t.board_id] || "";
+      case "priority": return _PRIO_RANK[t.priority] || 0;
+      case "status": return _STATUS_RANK[t.status] || 0;
+      case "assignee": return t.assigned_to_id ? (userMap[t.assigned_to_id] || "") : "";
+      case "updated": return new Date(t.updated_at || t.created_at).getTime();
+      default: return "";
+    }
+  }
   function renderQueue() {
     const q = ($("search").value || "").toLowerCase();
     const fp = $("f-priority").value, fc = $("f-client").value, fs = $("f-status").value;
@@ -354,7 +369,7 @@ const Staff = (() => {
         if (!hay.includes(q)) return false;
       }
       return true;
-    }).sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+    }).sort((a, b) => queueSort.dir * cmpVals(queueVal(a, queueSort.key), queueVal(b, queueSort.key)));
 
     $("queue-title").textContent = `${rows.length} ticket${rows.length === 1 ? "" : "s"}`;
     const tbody = $("ticket-rows"); tbody.innerHTML = "";
@@ -1068,6 +1083,7 @@ const Staff = (() => {
   // ---- Column sorting (Business + Users tables) ----
   let custSort = { key: "name", dir: 1 };
   let userSort = { key: "name", dir: 1 };
+  let queueSort = { key: "updated", dir: -1 };   // default: newest updated first
   function cmpVals(a, b) {
     if (typeof a === "number" && typeof b === "number") return a - b;
     return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
@@ -1562,6 +1578,7 @@ const Staff = (() => {
     });
     // toolbar
     $("search").oninput = renderQueue;
+    bindSort("ticket-table", queueSort, renderQueue);
     $("f-status").onchange = renderQueue;
     $("f-priority").onchange = renderQueue;
     $("f-client").onchange = renderQueue;
