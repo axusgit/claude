@@ -13,12 +13,21 @@ Gated by AUTOREPLY_ENABLED=1; needs the same GRAPH_* + SUPPORT_MAILBOX env as in
 """
 import os
 import re
+import json
 import time
 import threading
 
 from app import graph, mailer
 
 PORTAL = os.getenv("PORTAL_URL", "https://service.axustechnologies.com").rstrip("/")
+
+# Abuse / loop throttle: > RATE_LIMIT replies from one address within RATE_WINDOW
+# seconds locks that address (no replies, mail still marked read) for LOCK_SECONDS.
+RATE_FILE = os.getenv("AUTOREPLY_RATE_FILE", "/data/uploads/autoreply_rate.json")
+RATE_LIMIT = int(os.getenv("AUTOREPLY_RATE_LIMIT", "5"))          # replies allowed per window
+RATE_WINDOW = int(os.getenv("AUTOREPLY_RATE_WINDOW_SEC", "600"))  # 10 minutes
+LOCK_SECONDS = int(os.getenv("AUTOREPLY_LOCK_SEC", "3600"))       # 60 minutes
+ALERT_TO = os.getenv("XCITIUM_ALERT_EMAIL", "acarr@axustechnologies.com")
 
 REPLY_SUBJECT = "Axus Service Desk — please use our portal"
 REPLY_BODY = (
@@ -44,13 +53,51 @@ _SKIP_SUBJECT = re.compile(
 _OUR_SUBJECT_SIG = "please use our portal"   # our own reply subject — never reply to a reply of it
 
 
+def _load_rate():
+    try:
+        with open(RATE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_rate(state):
+    try:
+        os.makedirs(os.path.dirname(RATE_FILE), exist_ok=True)
+        tmp = RATE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(state, f)
+        os.replace(tmp, RATE_FILE)
+    except Exception:
+        pass
+
+
+def _throttle_check(state, addr, now):
+    """Return (allowed, newly_locked). Prunes old hits; locks a sender that exceeds the
+    rate. A locked sender stays locked (no reply) until LOCK_SECONDS passes."""
+    rec = state.get(addr) or {"hits": [], "locked_until": 0}
+    if rec.get("locked_until", 0) > now:
+        return False, False                      # still in a lock window
+    rec["hits"] = [t for t in rec.get("hits", []) if now - t < RATE_WINDOW]
+    if len(rec["hits"]) >= RATE_LIMIT:           # already at the limit within the window
+        rec["locked_until"] = now + LOCK_SECONDS
+        rec["hits"] = []
+        state[addr] = rec
+        return False, True                       # just tripped the lock
+    rec["hits"].append(now)
+    state[addr] = rec
+    return True, False
+
+
 def process_once() -> dict:
     """One pass over the unread inbox. Replies to EVERY genuine inbound message (so a
-    client who emails again always gets the reminder), skipping only auto-generated
-    mail / our own domain / replies to our own auto-reply. Returns a small summary."""
+    client who emails again always gets the reminder), skipping auto-generated mail /
+    our own domain / replies to our own auto-reply, and throttling abusive senders."""
     if not graph.is_configured():
         return {"configured": False}
-    replied = skipped = 0
+    state = _load_rate()
+    now = time.time()
+    replied = skipped = locked = 0
     for m in graph.fetch_unread():
         try:
             addr = (((m.get("from") or {}).get("emailAddress") or {}).get("address") or "").strip().lower()
@@ -63,15 +110,36 @@ def process_once() -> dict:
                 graph.mark_read(mid)
                 skipped += 1
                 continue
-            # Reply EVERY time — sent via our existing SMTP relay (service@), not Graph,
-            # so the Graph app never needs Mail.Send.
+            allowed, newly_locked = _throttle_check(state, addr, now)
+            if not allowed:
+                graph.mark_read(mid)
+                skipped += 1
+                if newly_locked:
+                    locked += 1
+                    print(f"[auto-reply] LOCKED {addr} for {LOCK_SECONDS//60} min "
+                          f"(> {RATE_LIMIT} in {RATE_WINDOW//60} min)", flush=True)
+                    try:
+                        mailer.send_email([ALERT_TO],
+                            f"[Axus Service Desk] auto-reply throttle tripped: {addr}",
+                            f"{addr} emailed service@ more than {RATE_LIMIT} times in "
+                            f"{RATE_WINDOW//60} minutes and is now locked (no auto-replies) "
+                            f"for {LOCK_SECONDS//60} minutes. Their mail still arrives in "
+                            f"service@ — this only pauses the auto-reply. -- auto-reply throttle")
+                    except Exception:
+                        pass
+                continue
+            # Reply EVERY time — sent via our existing SMTP relay (service@), not Graph.
             mailer.send_email([addr], REPLY_SUBJECT, REPLY_BODY)
             replied += 1
             print(f"[auto-reply] replied -> {addr}", flush=True)
             graph.mark_read(mid)
         except Exception as e:
             print("[auto-reply] error on a message:", e, flush=True)
-    return {"configured": True, "replied": replied, "skipped": skipped}
+    # drop senders with no recent activity and no active lock, then persist
+    state = {a: r for a, r in state.items()
+             if r.get("locked_until", 0) > now or r.get("hits")}
+    _save_rate(state)
+    return {"configured": True, "replied": replied, "skipped": skipped, "locked": locked}
 
 
 def start_scheduler_thread():
