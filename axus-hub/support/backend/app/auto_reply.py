@@ -18,7 +18,6 @@ import threading
 
 from app import graph, mailer
 
-SEEN_FILE = os.getenv("AUTOREPLY_SEEN_FILE", "/data/uploads/autoreply_seen.txt")
 PORTAL = os.getenv("PORTAL_URL", "https://service.axustechnologies.com").rstrip("/")
 
 REPLY_SUBJECT = "Axus Service Desk — please use our portal"
@@ -38,33 +37,19 @@ REPLY_BODY = (
 # Senders we must NEVER auto-reply to (loop / noise protection).
 _SKIP_SENDER = re.compile(
     r"(mailer-daemon|postmaster|no-?reply|do-?not-?reply|donotreply|microsoftexchange|abuse@)", re.I)
-# Subjects that indicate auto-generated mail (bounces, other OOF, etc.).
+# Subjects that indicate auto-generated mail (bounces, other OOF) OR a reply to our
+# own auto-reply — skipping the latter stops two auto-responders volleying forever.
 _SKIP_SUBJECT = re.compile(
     r"^\s*(re:\s*)?(automatic reply|undeliverable|auto:|out of office|delivery (status|has failed)|mail delivery)", re.I)
-
-
-def _load_seen():
-    try:
-        with open(SEEN_FILE) as f:
-            return {ln.strip().lower() for ln in f if ln.strip()}
-    except FileNotFoundError:
-        return set()
-
-
-def _mark_seen(email):
-    try:
-        os.makedirs(os.path.dirname(SEEN_FILE), exist_ok=True)
-        with open(SEEN_FILE, "a") as f:
-            f.write(email.lower() + "\n")
-    except Exception:
-        pass
+_OUR_SUBJECT_SIG = "please use our portal"   # our own reply subject — never reply to a reply of it
 
 
 def process_once() -> dict:
-    """One pass over the unread inbox. Returns a small summary."""
+    """One pass over the unread inbox. Replies to EVERY genuine inbound message (so a
+    client who emails again always gets the reminder), skipping only auto-generated
+    mail / our own domain / replies to our own auto-reply. Returns a small summary."""
     if not graph.is_configured():
         return {"configured": False}
-    seen = _load_seen()
     replied = skipped = 0
     for m in graph.fetch_unread():
         try:
@@ -73,18 +58,16 @@ def process_once() -> dict:
             mid = m.get("id")
             own_domain = "@" + (graph.MAILBOX or "").split("@")[-1].lower()
             if (not addr or _SKIP_SENDER.search(addr) or _SKIP_SUBJECT.search(subj)
-                    or addr.endswith(own_domain)):   # skip our own staff/system senders
+                    or _OUR_SUBJECT_SIG in subj.lower()      # a reply to our own auto-reply
+                    or addr.endswith(own_domain)):           # our own staff/system senders
                 graph.mark_read(mid)
                 skipped += 1
                 continue
-            if addr not in seen:
-                # Send via our existing SMTP relay (service@), NOT Graph — so the
-                # Graph app never needs the Mail.Send permission (smaller blast radius).
-                mailer.send_email([addr], REPLY_SUBJECT, REPLY_BODY)
-                _mark_seen(addr)
-                seen.add(addr)
-                replied += 1
-                print(f"[auto-reply] replied -> {addr}", flush=True)
+            # Reply EVERY time — sent via our existing SMTP relay (service@), not Graph,
+            # so the Graph app never needs Mail.Send.
+            mailer.send_email([addr], REPLY_SUBJECT, REPLY_BODY)
+            replied += 1
+            print(f"[auto-reply] replied -> {addr}", flush=True)
             graph.mark_read(mid)
         except Exception as e:
             print("[auto-reply] error on a message:", e, flush=True)
