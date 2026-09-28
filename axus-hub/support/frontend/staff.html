@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=64" />
-  <link rel="stylesheet" href="/static/staff.css?v=77" />
+  <link rel="stylesheet" href="/static/staff.css?v=78" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -117,13 +117,9 @@
           <div class="page-head"><div><h2>Dashboard</h2><p class="muted" id="dash-sub"></p></div></div>
           <div class="dash-tiles" id="dash-tiles"></div>
           <div class="dash-grid">
-            <div class="card">
+            <div class="card dash-full">
               <h3 class="card-title">My open tickets <span class="muted" id="dash-mine-count"></span></h3>
               <div id="dash-mine" class="dash-list"></div>
-            </div>
-            <div class="card">
-              <h3 class="card-title">Unassigned <span class="muted" id="dash-unassigned-count"></span></h3>
-              <div id="dash-unassigned" class="dash-list"></div>
             </div>
             <div class="card dash-team-card">
               <h3 class="card-title">Team workload</h3>
@@ -547,6 +543,6 @@
 
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="/static/staff.js?v=91"></script>
+  <script src="/static/staff.js?v=92"></script>
 </body>
 </html>

@@ -442,3 +442,6 @@ html[data-theme="dark"] .login-logo { filter: none; }
 .seg button { background: transparent; color: var(--text); border: none; padding: 7px 15px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--border); }
 .seg button.active { background: var(--orange); color: #fff; }
+
+/* My open tickets spans the full dashboard width (Unassigned panel removed) */
+.dash-full { grid-column: 1 / -1; }

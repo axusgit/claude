@@ -300,9 +300,7 @@ const Staff = (() => {
       el.querySelectorAll(".dash-row").forEach(r => r.onclick = () => openTicket(parseInt(r.dataset.id)));
     };
     fill("dash-mine", mine, "Nothing assigned to you.");
-    fill("dash-unassigned", unassigned, "No unassigned tickets.");
     $("dash-mine-count").textContent = `(${mine.length})`;
-    $("dash-unassigned-count").textContent = `(${unassigned.length})`;
 
     const load = {};
     staffUsers.forEach(u => load[u.id] = 0);
