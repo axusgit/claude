@@ -34,6 +34,7 @@ APP_CATALOG = [
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
     {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
     {"key": "esign", "name": "eSign", "desc": "E-signatures, agreements & quotes", "group": "app-aesign", "icon": "✍️", "internal": False, "url": "https://aesign.axustechnologies.com"},
+    {"key": "subcontractors", "name": "Subcontractors", "desc": "Vendor onboarding & compliance", "group": "app-subcontractors", "icon": "🤝", "internal": False, "host": "subcontractors.hub.axustechnologies.com", "staff_path": "/staff"},
     {"key": "order", "name": "Readiness Order", "desc": "HCN IT hardware ordering & budgetary quotes", "group": "app-order", "icon": "🛒", "internal": False, "url": "https://rorder.axustechnologies.com/admin", "health": "https://rorder.axustechnologies.com/api/health"},
     # On-Call: launcher tile + live health only. It keeps its OWN login/auth —
     # NOT gated by Authentik forward-auth (app-oncall just controls tile visibility).
@@ -55,6 +56,7 @@ INTERNAL_URLS = {
     "support": os.getenv("SUPPORT_INTERNAL_URL", "http://support:8000"),
     "accounting": os.getenv("ACCOUNTING_INTERNAL_URL", "http://accounting:8000"),
     "esign": os.getenv("ESIGN_INTERNAL_URL", "http://aesign:8000"),
+    "subcontractors": os.getenv("SUBCONTRACTORS_INTERNAL_URL", "http://subcontractors:8000"),
     # "rmm": os.getenv("RMM_INTERNAL_URL", "http://rmm:8000"),
     # "engineering": os.getenv("ENGINEERING_INTERNAL_URL", "http://engineering:8000"),
 }

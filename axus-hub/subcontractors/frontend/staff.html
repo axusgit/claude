@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subcontractors — Axus</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/staff.css?v=1">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="dot"></span> Subcontractors</div>
+      <div class="nav-item" data-view="dashboard">📊 Dashboard</div>
+      <div class="nav-item" data-view="directory">📇 Directory</div>
+    </aside>
+    <div class="main">
+      <div class="topbar">
+        <h1 id="page-title">Dashboard</h1>
+        <div class="who"><span id="who-name"></span> · <span id="who-role" class="muted"></span></div>
+      </div>
+      <div class="content">
+        <!-- Dashboard -->
+        <section id="view-dashboard">
+          <div class="stats-row" id="stats"></div>
+        </section>
+
+        <!-- Directory -->
+        <section id="view-directory" class="hidden">
+          <div class="toolbar">
+            <input class="search" id="q" placeholder="Search company, contact, email, phone, city…">
+            <select id="status-filter">
+              <option value="">All statuses</option>
+            </select>
+            <button class="btn primary" id="add-btn">+ Add Subcontractor</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Company</th><th>Contact</th><th>Email</th><th>City/State</th>
+                <th>W-9</th><th>COI</th><th>Agreement</th><th>Compliance</th><th>Status</th>
+              </tr></thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Detail -->
+        <section id="view-detail" class="hidden"></section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add modal -->
+  <div class="modal-bg" id="add-modal">
+    <div class="modal">
+      <h2>Add Subcontractor</h2>
+      <div class="form-grid">
+        <label class="full">Company (legal name)<input id="f-legal_name"></label>
+        <label>DBA<input id="f-dba"></label>
+        <label>Primary contact<input id="f-primary_contact_name"></label>
+        <label>Email<input id="f-email" type="email"></label>
+        <label>Phone<input id="f-phone"></label>
+        <label class="full">Address<input id="f-address"></label>
+        <label>City<input id="f-city"></label>
+        <label>State<input id="f-state"></label>
+        <label>ZIP<input id="f-zip"></label>
+        <label>Website<input id="f-website"></label>
+        <label class="full">Services provided<input id="f-services_provided"></label>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="add-cancel">Cancel</button>
+        <button class="btn primary" id="add-save">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/staff.js?v=1"></script>
+</body>
+</html>

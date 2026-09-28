@@ -29,6 +29,9 @@ entries:
   - model: authentik_core.group
     identifiers: {name: app-aesign}
     attrs: {name: app-aesign}
+  - model: authentik_core.group
+    identifiers: {name: app-subcontractors}
+    attrs: {name: app-subcontractors}
   # Controls On-Call TILE visibility in the Hub only. On-Call keeps its own
   # login — this group does NOT gate access inside the app (no forward-auth).
   - model: authentik_core.group

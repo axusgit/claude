@@ -71,6 +71,18 @@ entries:
       invalidation_flow:
         !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
 
+  - id: provider-subcontractors
+    model: authentik_providers_proxy.proxyprovider
+    identifiers: {name: axus-subcontractors}
+    attrs:
+      name: axus-subcontractors
+      mode: forward_single
+      external_host: !Format ["https://subcontractors.%s", !Context domain]
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+
   # Axus Tools live on axus-server01 (own apex subdomains, own nginx) — a
   # different box from the Hub's Traefik, so forward-auth can't reach them. Instead
   # each app is an OpenID Connect (OAuth2) client of Authentik (the same cross-box
@@ -173,6 +185,18 @@ entries:
       meta_publisher: Axus Technologies
       policy_engine_mode: any
 
+  - id: app-subcontractors-application
+    model: authentik_core.application
+    identifiers: {slug: axus-subcontractors}
+    attrs:
+      name: Axus Subcontractors
+      slug: axus-subcontractors
+      provider: !KeyOf provider-subcontractors
+      meta_launch_url: !Format ["https://subcontractors.%s/staff", !Context domain]
+      meta_description: Subcontractor onboarding and compliance.
+      meta_publisher: Axus Technologies
+      policy_engine_mode: any
+
   # --- "Axus Tools" apps (OpenID Connect clients) ----------------------------
   # Syslog and File Share sign in via OIDC against Authentik (providers above).
   # Single sign-on: authenticate once at Authentik and go straight in — no separate
@@ -213,6 +237,7 @@ entries:
         - !KeyOf provider-support
         - !KeyOf provider-accounting
         - !KeyOf provider-legal
+        - !KeyOf provider-subcontractors
 
   # ---------------------------------------------------------------------------
   # Access gates. Binding a group directly to an application means only members
@@ -240,6 +265,14 @@ entries:
     identifiers:
       target: !KeyOf app-legal-application
       group: !Find [authentik_core.group, [name, app-aesign]]
+      order: 0
+    attrs:
+      enabled: true
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf app-subcontractors-application
+      group: !Find [authentik_core.group, [name, app-subcontractors]]
       order: 0
     attrs:
       enabled: true

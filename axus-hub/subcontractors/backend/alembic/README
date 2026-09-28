@@ -1,0 +1,2 @@
+Generic single-database configuration for Alembic (see ../alembic.ini).
+Schema is applied with `alembic upgrade head`; never create_all.

@@ -312,6 +312,65 @@ services:
       traefik.http.routers.aesign-public.service: aesign
     networks: [axus]
 
+  subcontractors:
+    build:
+      context: ..
+      dockerfile: axus-hub/subcontractors/Dockerfile
+    restart: unless-stopped
+    environment:
+      AUTH_MODE: central
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/subcontractor
+      UPLOAD_DIR: /data/subcontractor
+      # ALL uploaded documents (W-9 + COI) are encrypted at rest with this key.
+      # Generate once: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      DOC_ENCRYPTION_KEY: ${SUBCONTRACTORS_DOC_ENCRYPTION_KEY}
+      # Public onboarding portal base URL (the geogate-only, no-SSO paths below).
+      PORTAL_URL: ${SUBCONTRACTORS_PORTAL_URL:-https://subcontractors.${PLATFORM_DOMAIN}/onboarding}
+      ONBOARDING_TOKEN_TTL_DAYS: ${ONBOARDING_TOKEN_TTL_DAYS:-30}
+      # Outbound email via the shared O365 relay (support@ auth; From no-reply@ via
+      # M365 Send-As, same as aesign). Compliance/vendor emails.
+      SMTP_HOST: ${AUTHENTIK_EMAIL__HOST:-}
+      SMTP_PORT: ${AUTHENTIK_EMAIL__PORT:-587}
+      SMTP_USER: ${AUTHENTIK_EMAIL__USERNAME:-}
+      SMTP_PASSWORD: ${AUTHENTIK_EMAIL__PASSWORD:-}
+      SMTP_FROM: ${SUBCONTRACTORS_SMTP_FROM:-Axus Technologies <no-reply@axustechnologies.com>}
+      SMTP_USE_TLS: ${AUTHENTIK_EMAIL__USE_TLS:-true}
+      SMTP_USE_SSL: ${AUTHENTIK_EMAIL__USE_SSL:-false}
+      # Soft-launch guard: vendor-facing email is OFF until go-live. When enabling,
+      # set NOTIFY_ALLOW to a test address first, verify, then clear it.
+      NOTIFY_ENABLED: ${SUBCONTRACTORS_NOTIFY_ENABLED:-0}
+      NOTIFY_ALLOW: ${SUBCONTRACTORS_NOTIFY_ALLOW:-}
+      # aesign integration for the Subcontractor Agreement (shares aesign's bearer).
+      AESIGN_INTERNAL_URL: http://aesign:8000
+      AESIGN_EXTERNAL_API_TOKEN: ${AESIGN_EXTERNAL_API_TOKEN:-}
+      SUBCONTRACTORS_CALLBACK_URL: http://subcontractors:8000/api/aesign/webhook
+      AGREEMENT_VERSION: ${AGREEMENT_VERSION:-v1.0}
+    volumes:
+      # Encrypted W-9/COI documents must survive image rebuilds.
+      - subcontractor_data:/data/subcontractor
+    depends_on:
+      postgres: {condition: service_healthy}
+    labels:
+      traefik.enable: "true"
+      # Staff console — Authentik-gated (staff use /staff). Same host serves the
+      # public onboarding portal, which bypasses SSO on the portal paths below.
+      traefik.http.routers.subcontractors.rule: Host(`subcontractors.${PLATFORM_DOMAIN}`)
+      traefik.http.routers.subcontractors.entrypoints: websecure
+      traefik.http.routers.subcontractors.tls.certresolver: letsencrypt
+      traefik.http.routers.subcontractors.middlewares: geogate@file,authentik@file
+      traefik.http.services.subcontractors.loadbalancer.server.port: "8000"
+      # Public onboarding portal: token-gated in-app, geo-gate only (no staff SSO).
+      # ONLY the portal paths are exposed here; staff APIs (/api/subcontractors, …)
+      # are not matched on this router, so they stay behind Authentik above.
+      traefik.http.routers.subcontractors-portal.rule: Host(`subcontractors.${PLATFORM_DOMAIN}`) && (PathPrefix(`/onboarding`) || PathPrefix(`/api/onboarding`) || PathPrefix(`/static`) || Path(`/`))
+      traefik.http.routers.subcontractors-portal.entrypoints: websecure
+      traefik.http.routers.subcontractors-portal.tls.certresolver: letsencrypt
+      traefik.http.routers.subcontractors-portal.middlewares: geogate@file
+      traefik.http.routers.subcontractors-portal.service: subcontractors
+      traefik.http.routers.subcontractors-portal.priority: "100"
+    networks: [axus]
+
   # Headless LibreOffice for Word->PDF conversion (internal only).
   gotenberg:
     image: gotenberg/gotenberg:8
@@ -358,4 +417,5 @@ volumes:
   hub_data:
   support_uploads:
   aesign_data:
+  subcontractor_data:
   ntfy_data:

@@ -1,0 +1,72 @@
+/* Axus Subcontractor onboarding portal — public, branded (glass/aurora, matches
+   the Support customer portal design). */
+:root {
+  --orange: #f26522; --orange-2: #f7941d;
+  --grad: linear-gradient(135deg, #f26522, #f7941d);
+  --text: #17202e; --muted: #5b6472;
+  --glass: rgba(255,255,255,.72); --border: rgba(255,255,255,.6);
+  --card-shadow: 0 10px 40px rgba(20,30,60,.12);
+  --r: 16px;
+  --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  font-family: Inter, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--text);
+  background: #eef1f6; position: relative; overflow-x: hidden;
+}
+/* aurora backdrop */
+body::before, body::after {
+  content: ""; position: fixed; width: 60vw; height: 60vw; border-radius: 50%;
+  filter: blur(90px); opacity: .35; z-index: -1;
+}
+body::before { background: #f7941d; top: -20vw; right: -10vw; }
+body::after { background: #f26522; bottom: -25vw; left: -15vw; opacity: .28; }
+
+.wrap { max-width: 720px; margin: 0 auto; padding: 34px 18px 60px; }
+.brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.brand img { height: 34px; }
+.brand .tag { color: var(--muted); font-size: 13px; }
+
+.glass {
+  background: var(--glass); border: 1px solid var(--border); border-radius: var(--r);
+  box-shadow: var(--card-shadow); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  padding: 22px; margin-bottom: 18px;
+}
+h1 { font-family: Poppins, Inter, sans-serif; font-size: 22px; margin: 0 0 4px; }
+h2 { font-family: Poppins, Inter, sans-serif; font-size: 16px; margin: 0 0 12px; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+
+/* progress */
+.steps { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 6px; }
+.step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
+  background: rgba(255,255,255,.5); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; }
+.step .dot { width: 18px; height: 18px; border-radius: 50%; background: #cfd6e0; color: #fff;
+  display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.step.done { color: var(--ok); } .step.done .dot { background: var(--ok); }
+.step.todo .dot { background: var(--warn); }
+
+label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+input, textarea { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid rgba(20,30,60,.15);
+  border-radius: 10px; background: rgba(255,255,255,.9); }
+input:focus, textarea:focus { outline: 2px solid rgba(242,101,34,.25); border-color: var(--orange); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+.form-grid .full { grid-column: 1 / -1; }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 10px;
+  border: none; background: var(--grad); color: #fff; font-weight: 600; cursor: pointer; font-size: 14px; }
+.btn.ghost { background: rgba(255,255,255,.7); color: var(--text); border: 1px solid var(--border); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.b-ok { background: #dcfce7; color: #166534; } .b-warn { background: #fef3c7; color: #92400e; }
+.b-bad { background: #fee2e2; color: #991b1b; } .b-muted { background: #eef1f6; color: #495057; }
+
+.doc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 0; border-bottom: 1px dashed rgba(20,30,60,.12); }
+.doc-row:last-child { border-bottom: none; }
+.notice { background: rgba(242,101,34,.08); border: 1px solid rgba(242,101,34,.25); border-radius: 10px;
+  padding: 12px; font-size: 13px; margin: 8px 0; }
+.center { text-align: center; padding: 40px 20px; }
+.muted { color: var(--muted); } .hidden { display: none !important; }
+@media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } }
