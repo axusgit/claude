@@ -239,9 +239,11 @@ html[data-theme="dark"] .prio-badge.low      { background: rgba(34,197,94,.18); 
 .empty p { margin-bottom: 18px; }
 
 /* ---------- Detail ---------- */
-.back-link { background: none; border: none; color: var(--text-soft); font: inherit; font-weight: 600;
-  cursor: pointer; margin-bottom: 16px; padding: 4px 0; }
-.back-link:hover { color: var(--orange); }
+.back-link { display: inline-flex; align-items: center; gap: 6px; background: var(--surface);
+  border: 1px solid var(--border); color: var(--text-soft); font: inherit; font-weight: 600; font-size: 13.5px;
+  cursor: pointer; margin-bottom: 16px; padding: 8px 14px; border-radius: 9px; box-shadow: var(--shadow);
+  transition: background .15s, color .15s, border-color .15s; }
+.back-link:hover { color: var(--orange); border-color: var(--orange); background: var(--surface-2); }
 .detail-grid { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
 .detail-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 /* Small caption before a status/priority badge so its meaning is explicit. */
