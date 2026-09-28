@@ -242,9 +242,8 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not t:
             return
-        # Skip imported Xcitium history (references starting with "X").
-        if (t.reference or "").strip().upper().startswith("X"):
-            return
+        # (Go-live 2026-09-27: X- tickets are now promoted native tickets and DO
+        # notify their participants; the old imported-history skip was removed.)
         lead = f"{_author_display(db, author_id, author_name)} {verb}"
         staff_url, portal_url = _ticket_url(), _portal_url()
         from app.models.client import Client
@@ -341,7 +340,7 @@ def notify_ticket_received(ticket_id: int):
     db = SessionLocal()
     try:
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-        if not t or (t.reference or "").strip().upper().startswith("X"):
+        if not t:
             return
         u = db.query(User).filter(User.id == t.reporter_user_id).first() if t.reporter_user_id else None
         if not u or not u.email or _v(u.role) in ("admin", "technician"):
