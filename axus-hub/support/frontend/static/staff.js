@@ -943,7 +943,11 @@ const Staff = (() => {
       try { await api(`/api/tickets/${current.id}/attachments`, { method: "POST", form: fd }); }
       catch (e) { toast(`Couldn't attach ${f.name}: ${e.message}`); }
     }
-    await Promise.all([loadThread(current.id), loadActivity(current.id), loadAttachments(current.id)]);
+    // Refresh the conversation FIRST and on its own — a failure loading activity or
+    // attachments must never stop the new reply from appearing.
+    await loadThread(current.id);
+    loadActivity(current.id).catch(() => {});
+    loadAttachments(current.id).catch(() => {});
     if (close) await openTicket(current.id);   // refresh status/priority badges after closing
     toast(close ? "Case closed" : (internal ? "Internal note added" : "Reply posted"));
   }
@@ -1700,13 +1704,14 @@ const Staff = (() => {
       const internal = $("reply-internal").checked;
       const withSig = $("reply-signature").checked;
       const files = Array.from($("reply-files").files || []);
-      $("reply-body").value = ""; $("reply-internal").checked = false; $("reply-close").checked = false;
-      $("reply-signature").checked = false;   // default: sign as "Axus Service Team"
-      $("reply-form").classList.remove("internal-mode");
-      $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
       try {
         await postReply(b, internal, files, close, withSig);
-      } catch (err) { toast(err.message); }
+        // Clear the form only AFTER a successful post, so nothing is lost on error.
+        $("reply-body").value = ""; $("reply-internal").checked = false; $("reply-close").checked = false;
+        $("reply-signature").checked = false;   // default: sign as "Axus Service Team"
+        $("reply-form").classList.remove("internal-mode");
+        $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
+      } catch (err) { toast("Couldn't post: " + err.message); }
     };
     $("time-form").onsubmit = async e => {
       e.preventDefault(); const h = parseFloat($("time-hours").value); if (!h) return;
