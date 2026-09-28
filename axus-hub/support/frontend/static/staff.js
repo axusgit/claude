@@ -243,7 +243,10 @@ const Staff = (() => {
   // selection. Called at startup AND whenever a business is added/edited, so a new
   // business shows up immediately without a page reload.
   function fillClientSelects() {
-    const pairs = clientsData.map(c => [c.id, c.company_name]);
+    // Alphabetical so a newly-added business slots into the right place (not the bottom).
+    const pairs = clientsData.slice()
+      .sort((a, b) => (a.company_name || "").localeCompare(b.company_name || "", undefined, { numeric: true, sensitivity: "base" }))
+      .map(c => [c.id, c.company_name]);
     [["f-client", "All companies"], ["nt-client", null], ["uf-client", "— None —"]].forEach(([id, ph]) => {
       const el = $(id); if (!el) return;
       const prev = el.value;
