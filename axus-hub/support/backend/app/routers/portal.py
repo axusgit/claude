@@ -3,7 +3,7 @@
 Every endpoint is scoped to the logged-in client user's own company (client_id)
 and only ever exposes public conversation (internal staff notes are never returned).
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -67,6 +67,101 @@ class MagicVerifyIn(BaseModel):
 
 def _hash_token(raw: str) -> str:
     return hashlib.sha256((raw or "").encode("utf-8")).hexdigest()
+
+
+# ---------- password sign-in (optional, alongside the magic link) ----------
+from app import password_policy as pwpolicy  # noqa: E402
+
+_NOT_ENABLED_MSG = ("Password login must be enabled by Axus staff. Please use the "
+                    "email sign-in link, or contact us to enable it.")
+
+
+def password_login_active(db: Session, user: User) -> bool:
+    """Effective capability = business toggle OR per-user toggle (inheritance)."""
+    if getattr(user, "password_login_enabled", False):
+        return True
+    from app.models.client import Client
+    if user.client_id:
+        c = db.query(Client).filter(Client.id == user.client_id).first()
+        if c and getattr(c, "password_login_enabled", False):
+            return True
+    return False
+
+
+class PasswordLoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class SetPasswordIn(BaseModel):
+    new_password: str
+    current_password: Optional[str] = None
+
+
+@router.post("/auth/password-login")
+def password_login(data: PasswordLoginIn, db: Session = Depends(get_db)):
+    """Sign in with email + password (an alternative to the magic link). Only
+    works for client users the staff have enabled for password login."""
+    email = (data.email or "").strip().lower()
+    rem = pwpolicy.lockout_remaining(email)
+    if rem > 0:
+        mins = max(1, rem // 60)
+        raise HTTPException(status_code=429,
+                            detail=f"Too many attempts. Try again in {mins} minute{'s' if mins != 1 else ''}, "
+                                   f"or use the email sign-in link.")
+    user = (db.query(User)
+            .filter(func.lower(User.email) == email, User.is_active == True).first())  # noqa: E712
+    generic = "Incorrect email or password."
+    if not user or user.role != UserRole.client or user.client_id is None:
+        # Count the miss to slow enumeration, then answer generically.
+        pwpolicy.register_failure(email)
+        raise HTTPException(status_code=401, detail=generic)
+    if not password_login_active(db, user):
+        raise HTTPException(status_code=403, detail=_NOT_ENABLED_MSG)
+    if not user.hashed_password:
+        raise HTTPException(status_code=403,
+                            detail="No password is set for this account yet. Please use the email "
+                                   "sign-in link, or contact Axus staff to set one.")
+    if not pwpolicy.verify_password(data.password, user.hashed_password):
+        locked = pwpolicy.register_failure(email)
+        if locked > 0:
+            raise HTTPException(status_code=429,
+                                detail=f"Too many attempts. This account is locked for "
+                                       f"{pwpolicy.LOCKOUT_MIN} minutes. Use the email sign-in link instead.")
+        raise HTTPException(status_code=401, detail=generic)
+    pwpolicy.clear_failures(email)
+    must_change = bool(user.must_change_password) or pwpolicy.is_expired(user)
+    token = create_access_token({"sub": user.id}, expires_minutes=PORTAL_SESSION_MIN)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "must_change_password": must_change,
+        "expiry_warning": None if must_change else pwpolicy.expiry_warning(user),
+    }
+
+
+@router.post("/auth/set-password")
+def set_password(data: SetPasswordIn, db: Session = Depends(get_db),
+                 user: User = Depends(require_client_user)):
+    """Create or change the caller's own password. Required current password for a
+    voluntary change; skipped when a change is forced (first login / expired)."""
+    forced = bool(user.must_change_password) or pwpolicy.is_expired(user)
+    new_pw = data.new_password or ""
+    if not forced:
+        if not user.hashed_password:
+            raise HTTPException(status_code=400,
+                                detail="No password is set. Ask Axus staff to set one for you first.")
+        if not data.current_password or not pwpolicy.verify_password(data.current_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="Your current password is incorrect.")
+    err = pwpolicy.validate_complexity(new_pw)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    if pwpolicy.reused_recently(db, user.id, new_pw, user.hashed_password):
+        raise HTTPException(status_code=400,
+                            detail=f"You can't reuse one of your last {pwpolicy.HISTORY_DEPTH} passwords.")
+    pwpolicy.record_password(db, user, new_pw)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/auth/request")
@@ -207,6 +302,10 @@ def whoami(user: User = Depends(require_client_user), db: Session = Depends(get_
         "email": user.email,
         "phone": user.phone or None,
         "company": client.company_name if client else None,
+        "password_login_active": password_login_active(db, user),
+        "has_password": bool(user.hashed_password),
+        "must_change_password": bool(user.must_change_password) or pwpolicy.is_expired(user),
+        "password_expiry_warning": pwpolicy.expiry_warning(user),
     }
 
 
@@ -319,7 +418,7 @@ def reply(ticket_id: int, data: PortalReplyIn, background: BackgroundTasks,
     elif comment:
         background.add_task(notify.notify_customer_reply, ticket_id)  # staff broadcast (held by NOTIFY_ENABLED)
         background.add_task(notify.notify_participants_reply, ticket_id, body, user.id, user.full_name)
-    return {"ok": True, "closed": closed}
+    return {"ok": True, "closed": closed, "comment_id": (comment.id if comment else None)}
 
 
 @router.patch("/tickets/{ticket_id}/priority")
@@ -454,12 +553,22 @@ def list_attachments(ticket_id: int, db: Session = Depends(get_db), user: User =
 def upload_attachment(
     ticket_id: int,
     file: UploadFile = File(...),
+    comment_id: Optional[int] = Form(None),   # tie the file to the reply it was posted with
     db: Session = Depends(get_db),
     user: User = Depends(require_client_user),
 ):
     t = _owned_ticket(db, ticket_id, user)
     if t.status == TicketStatus.closed:
         raise HTTPException(status_code=409, detail="This case is closed.")
+    # Only allow linking to a public comment that belongs to this same ticket.
+    link_comment_id = None
+    if comment_id:
+        c = (db.query(TicketComment)
+             .filter(TicketComment.id == comment_id,
+                     TicketComment.ticket_id == ticket_id,
+                     TicketComment.is_internal == False).first())  # noqa: E712
+        if c:
+            link_comment_id = c.id
     original = os.path.basename(file.filename or "file")
     ext = os.path.splitext(original)[1].lower()
     if ext not in ALLOWED_ATTACHMENT_EXTS:
@@ -476,6 +585,7 @@ def upload_attachment(
 
     attachment = Attachment(
         ticket_id=ticket_id,
+        comment_id=link_comment_id,
         uploaded_by_id=user.id,
         filename=original,
         content_type=file.content_type,

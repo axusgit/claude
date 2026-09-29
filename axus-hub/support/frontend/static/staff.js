@@ -109,6 +109,47 @@ const Staff = (() => {
   }
   function fileSize(b) { if (b < 1024) return b + " B"; if (b < 1048576) return (b / 1024).toFixed(0) + " KB"; return (b / 1048576).toFixed(1) + " MB"; }
   function toast(m) { const t = $("toast"); t.textContent = m; t.classList.remove("hidden"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.add("hidden"), 2400); }
+
+  // ----- reply attachments: same dashed drop-box UX as the client portal -----
+  function addFilesToInput(input, fileList) {
+    const dt = new DataTransfer();
+    for (const f of Array.from(input.files || [])) dt.items.add(f);
+    for (const f of Array.from(fileList || [])) dt.items.add(f);
+    input.files = dt.files;
+  }
+  function wireDropzone(el, onFiles) {
+    if (!el) return;
+    ["dragenter", "dragover"].forEach(ev => el.addEventListener(ev, e => {
+      e.preventDefault(); e.stopPropagation(); el.classList.add("dragging");
+    }));
+    ["dragleave", "dragend"].forEach(ev => el.addEventListener(ev, e => {
+      e.preventDefault(); e.stopPropagation(); el.classList.remove("dragging");
+    }));
+    el.addEventListener("drop", e => {
+      e.preventDefault(); e.stopPropagation(); el.classList.remove("dragging");
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) onFiles(files);
+    });
+  }
+  // Render staged files (chips + remove ✕) for a file input into a list box.
+  function renderStagedFiles(inputId, boxId, rerender) {
+    const input = $(inputId), box = $(boxId);
+    if (!input || !box) return;
+    const files = Array.from(input.files || []);
+    if (!files.length) { box.innerHTML = ""; return; }
+    box.innerHTML = files.map((f, i) =>
+      `<div class="nt-file">📎 ${esc(f.name)} <span class="attach-size">${fileSize(f.size)}</span> <a href="#" class="reply-file-x" data-i="${i}" title="Remove">✕</a></div>`
+    ).join("");
+    box.querySelectorAll(".reply-file-x").forEach(a => a.onclick = ev => {
+      ev.preventDefault();
+      const idx = parseInt(a.dataset.i, 10);
+      const dt = new DataTransfer();
+      files.forEach((f, j) => { if (j !== idx) dt.items.add(f); });
+      input.files = dt.files; rerender();
+    });
+  }
+  function renderReplyFiles() { renderStagedFiles("reply-files", "reply-file-list", renderReplyFiles); }
+  function renderNtFiles() { renderStagedFiles("nt-files", "nt-file-list", renderNtFiles); }
   const ACTIVE = ["open", "in_progress", "waiting"];
 
   /* ---------- Views ---------- */
@@ -247,7 +288,7 @@ const Staff = (() => {
     const pairs = clientsData.slice()
       .sort((a, b) => (a.company_name || "").localeCompare(b.company_name || "", undefined, { numeric: true, sensitivity: "base" }))
       .map(c => [c.id, c.company_name]);
-    [["f-client", "All companies"], ["nt-client", null], ["uf-client", "— None —"]].forEach(([id, ph]) => {
+    [["f-client", "All companies"], ["nt-client", null], ["uf-client", "— None —"], ["d-business", null]].forEach(([id, ph]) => {
       const el = $(id); if (!el) return;
       const prev = el.value;
       fillSelect(el, pairs, ph);
@@ -383,6 +424,7 @@ const Staff = (() => {
       case "priority": return _PRIO_RANK[t.priority] || 0;
       case "status": return _STATUS_RANK[t.status] || 0;
       case "assignee": return t.assigned_to_id ? (userMap[t.assigned_to_id] || "") : "";
+      case "created": return new Date(t.created_at).getTime();
       case "updated": return new Date(t.updated_at || t.created_at).getTime();
       default: return "";
     }
@@ -426,6 +468,7 @@ const Staff = (() => {
         <td class="col-assignee">${aName
           ? `<span class="assignee-pill"><span class="mini-avatar" style="${avatarStyle(avatarColor(aName))}">${initials(aName)}</span>${esc(aName)}</span>`
           : `<span class="assignee-pill"><span class="mini-avatar none">?</span><span class="cell-muted">Unassigned</span></span>`}</td>
+        <td class="cell-muted col-created">${fmtDate(t.created_at)}</td>
         <td class="cell-muted col-updated">${fmtDate(t.updated_at || t.created_at)}</td>`;
       tbody.appendChild(tr);
     }
@@ -437,7 +480,8 @@ const Staff = (() => {
     { key: "ref", label: "Ref" }, { key: "subject", label: "Subject" },
     { key: "company", label: "Business" }, { key: "board", label: "Board" },
     { key: "priority", label: "Priority" }, { key: "status", label: "Status" },
-    { key: "assignee", label: "Assignee" }, { key: "updated", label: "Updated" },
+    { key: "assignee", label: "Assignee" }, { key: "created", label: "Created" },
+    { key: "updated", label: "Updated" },
   ];
   const COLS_KEY = "axus-staff-hidden-cols";
   let hiddenCols = new Set(JSON.parse(localStorage.getItem(COLS_KEY) || "[]"));
@@ -606,6 +650,7 @@ const Staff = (() => {
     $("d-assignee").value = current.assigned_to_id || "";
     $("d-board").value = current.board_id || "";
     $("d-origin").value = current.origin || "";
+    $("d-business").value = current.client_id ? String(current.client_id) : "";
     $("p-company").textContent = clientMap[current.client_id] || "—";
     $("p-category").textContent = current.category || "Uncategorized";
     const isProject = current.ticket_type === "sow";
@@ -623,6 +668,8 @@ const Staff = (() => {
       catch (e) { $("p-contact").textContent = "—"; }
     } else { $("p-contact").textContent = "—"; }
     $("reply-internal").checked = false; $("reply-form").classList.remove("internal-mode");
+    $("reply-files").value = ""; renderReplyFiles();   // clear files staged on the previous ticket
+    $("reply-body").style.height = "";   // back to the default height on every ticket open (undo any drag-resize)
     showDetail();
     await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id), loadWatchers(id), loadProjectLinks(current)]);
   }
@@ -1127,8 +1174,13 @@ const Staff = (() => {
       showQueue(); await loadTickets();
     } catch (err) { toast(err.message); }
   }
-  async function createTicket(payload) {
+  async function createTicket(payload, files) {
     const t = await api("/api/tickets/", { method: "POST", body: payload });
+    for (const f of (files || [])) {
+      const fd = new FormData(); fd.append("file", f);
+      try { await api(`/api/tickets/${t.id}/attachments`, { method: "POST", form: fd }); }
+      catch (e) { toast(`Couldn't attach ${f.name}: ${e.message}`); }
+    }
     closeNew(); await loadTickets(); openTicket(t.id);
     toast((t.reference || "Ticket") + " created");
   }
@@ -1237,11 +1289,76 @@ const Staff = (() => {
       row.onclick = () => openTicket(t.id);
       box.appendChild(row);
     });
+    // Business-level password-login toggle (all-or-nothing).
+    $("cd-biz-pw").checked = !!c.password_login_enabled;
     showCustomerDetail();
     const users = await api(`/api/clients/${id}/portal-users`);
-    $("cd-users").innerHTML = users.length
-      ? users.map(u => `<div class="time-item"><span>${esc(u.full_name)}<br><span class="cell-muted">${esc(u.email)}</span></span></div>`).join("")
-      : `<div class="muted">No users yet.</div>`;
+    renderCustomerUsers(users, !!c.password_login_enabled);
+  }
+
+  // Render the business's users with per-user password-login controls.
+  function renderCustomerUsers(users, bizOn) {
+    const box = $("cd-users");
+    if (!users.length) { box.innerHTML = `<div class="muted">No users yet.</div>`; return; }
+    box.innerHTML = users.map(u => {
+      const active = bizOn || u.password_login_enabled;
+      const state = bizOn
+        ? `<span class="badge open" title="Enabled for the whole business" style="white-space:nowrap">Via business</span>`
+        : (u.password_login_enabled
+            ? `<span class="badge resolved">On</span>`
+            : `<span class="badge closed">Off</span>`);
+      const setLbl = u.has_password ? "Reset password" : "Set password";
+      const pending = u.must_change_password ? ` <span class="cell-muted" title="Must change at next sign-in">(temp — must change)</span>` : "";
+      // Per-user toggle is only editable when the business toggle is OFF.
+      const perUser = bizOn
+        ? `<label class="cell-muted" style="font-size:12px;display:inline-flex;gap:5px;align-items:center"><input type="checkbox" checked disabled> Enabled via business</label>`
+        : `<label style="font-size:12px;display:inline-flex;gap:5px;align-items:center"><input type="checkbox" data-user-pw="${u.id}" ${u.password_login_enabled ? "checked" : ""}> Password login</label>`;
+      return `<div class="time-item" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+          <span style="min-width:0;flex:1">${esc(u.full_name)}<br><span class="cell-muted">${esc(u.email)}</span>${pending}</span>
+          <span class="cell-muted" style="font-size:11px;display:inline-flex;align-items:center;gap:4px;flex-shrink:0">Password ${state}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
+          ${perUser}
+          <button class="btn btn-ghost btn-xs" data-set-pw="${u.id}" data-set-name="${esc(u.full_name)}" ${active ? "" : "disabled title='Enable password login first'"}>${setLbl}</button>
+        </div>
+      </div>`;
+    }).join("");
+    // wire per-user enable toggles
+    box.querySelectorAll("[data-user-pw]").forEach(cb => {
+      cb.onchange = async () => {
+        const uid = cb.getAttribute("data-user-pw");
+        try {
+          await api(`/api/clients/${currentCustomer.id}/portal-users/${uid}/password-login`,
+                    { method: "PUT", body: { enabled: cb.checked } });
+          await openCustomer(currentCustomer.id);
+          toast(cb.checked ? "Password login enabled" : "Password login disabled");
+        } catch (err) { toast(err.message); cb.checked = !cb.checked; }
+      };
+    });
+    // wire set/reset password buttons
+    box.querySelectorAll("[data-set-pw]").forEach(btn => {
+      btn.onclick = () => openSetPwModal(btn.getAttribute("data-set-pw"), btn.getAttribute("data-set-name"));
+    });
+  }
+
+  /* ---------- Set / reset a portal user's password ---------- */
+  let setPwUserId = null;
+  function genTempPassword() {
+    const U = "ABCDEFGHJKLMNPQRSTUVWXYZ", L = "abcdefghijkmnpqrstuvwxyz",
+          N = "23456789", S = "!@#$%^&*?";
+    const all = U + L + N + S, pick = s => s[Math.floor(Math.random() * s.length)];
+    let out = [pick(U), pick(L), pick(N), pick(S)];
+    for (let i = 0; i < 8; i++) out.push(pick(all));
+    return out.sort(() => Math.random() - 0.5).join("");
+  }
+  function openSetPwModal(userId, name) {
+    setPwUserId = userId;
+    $("setpw-modal-title").textContent = "Set / reset password";
+    $("setpw-modal-sub").textContent = `Temporary password for ${name}. They'll be forced to choose a new one at their next sign-in.`;
+    $("spw-value").value = ""; $("spw-error").textContent = "";
+    $("setpw-modal").classList.remove("hidden");
+    $("spw-value").focus();
   }
 
   function showCustModal(c) {
@@ -1436,6 +1553,7 @@ const Staff = (() => {
     ticketEditId = null;
     $("nt-submit").textContent = "Create ticket";
     $("new-form").reset();
+    $("nt-file-list").innerHTML = ""; $("nt-desc").style.height = "";   // clear staged files + reset description height
     $("nt-error").textContent = "";
     loadProjectsInto($("nt-project"), null);
     // A project can't be chosen when creating a normal ticket — child (C-) tickets are
@@ -1488,7 +1606,7 @@ const Staff = (() => {
     await loadUsersInto($("nt-contact"), String(t.client_id));
     $("nt-contact").value = t.reporter_user_id ? String(t.reporter_user_id) : "";
   }
-  const closeNew = () => { $("new-modal").classList.add("hidden"); $("new-form").reset(); $("nt-error").textContent = ""; ticketEditId = null; };
+  const closeNew = () => { $("new-modal").classList.add("hidden"); $("new-form").reset(); $("nt-file-list").innerHTML = ""; $("nt-error").textContent = ""; ticketEditId = null; };
 
   async function loadUsersInto(selectEl, clientId) {
     selectEl.innerHTML = `<option value="">— None —</option>`;
@@ -1584,10 +1702,42 @@ const Staff = (() => {
     $("pu-close").onclick = () => $("puser-modal").classList.add("hidden");
     $("pu-cancel").onclick = () => $("puser-modal").classList.add("hidden");
     $("pu-form").onsubmit = async e => { e.preventDefault(); $("pu-error").textContent = ""; try { await addPortalUser(); } catch (err) { $("pu-error").textContent = err.message; } };
-    // reset portal password
+
+    // Business-level password-login toggle (all-or-nothing).
+    $("cd-biz-pw").onchange = async () => {
+      const on = $("cd-biz-pw").checked;
+      try {
+        await api(`/api/clients/${currentCustomer.id}/password-login`,
+                  { method: "PUT", body: { enabled: on } });
+        await openCustomer(currentCustomer.id);
+        toast(on ? "Password login enabled for all users" : "Business password login disabled");
+      } catch (err) { toast(err.message); $("cd-biz-pw").checked = !on; }
+    };
+
+    // Set / reset a portal user's temporary password.
+    $("setpw-modal-close").onclick = () => $("setpw-modal").classList.add("hidden");
+    $("spw-cancel").onclick = () => $("setpw-modal").classList.add("hidden");
+    $("spw-gen").onclick = () => { $("spw-value").value = genTempPassword(); $("spw-value").focus(); };
+    $("setpw-modal-form").onsubmit = async e => {
+      e.preventDefault(); $("spw-error").textContent = "";
+      const pw = $("spw-value").value.trim();
+      if (pw.length < 8) { $("spw-error").textContent = "Password must be at least 8 characters."; return; }
+      $("spw-save").disabled = true;
+      try {
+        await api(`/api/clients/${currentCustomer.id}/portal-users/${setPwUserId}/password`,
+                  { method: "PUT", body: { password: pw } });
+        $("setpw-modal").classList.add("hidden");
+        await openCustomer(currentCustomer.id);
+        toast("Password set — user must change it at next sign-in");
+      } catch (err) { $("spw-error").textContent = err.message; }
+      finally { $("spw-save").disabled = false; }
+    };
 
     // ticket form: load users when business changes
     $("nt-client").onchange = () => loadUsersInto($("nt-contact"), $("nt-client").value);
+    // New Ticket attachments: same dashed drop-box + staged chips as the reply/portal.
+    $("nt-files").onchange = renderNtFiles;
+    wireDropzone($("nt-upload-box"), files => { addFilesToInput($("nt-files"), files); renderNtFiles(); });
 
     // transfer-and-delete modal
     $("xfer-close").onclick = () => $("xfer-modal").classList.add("hidden");
@@ -1694,12 +1844,27 @@ const Staff = (() => {
     $("d-assignee").onchange = e => { if (e.target.value) patch("assigned_to_id", parseInt(e.target.value)); };
     $("d-board").onchange = e => patch("board_id", e.target.value ? parseInt(e.target.value) : null);
     $("d-origin").onchange = e => { if (e.target.value) patch("origin", e.target.value); };
+    // Change the ticket's Business after creation. The reporter/contact belongs to the
+    // OLD business, so clear it — staff can pick a new contact via Edit ticket.
+    $("d-business").onchange = async e => {
+      const cid = parseInt(e.target.value);
+      if (!cid || cid === current.client_id) return;
+      const name = clientMap[cid] || "the selected business";
+      if (!confirm(`Move this ticket to ${name}? The current contact (from the previous business) will be cleared.`)) {
+        e.target.value = String(current.client_id); return;
+      }
+      try {
+        await api(`/api/tickets/${current.id}`, { method: "PUT", body: { client_id: cid, reporter_user_id: 0 } });
+        await loadTickets();
+        await openTicket(current.id);   // refresh Business, contact, and the business's user list
+        toast("Business updated");
+      } catch (err) { toast(err.message); e.target.value = String(current.client_id); }
+    };
 
     $("reply-internal").onchange = e => $("reply-form").classList.toggle("internal-mode", e.target.checked);
-    $("reply-files").onchange = () => {
-      const n = $("reply-files").files.length;
-      $("reply-files-label").textContent = n ? `${n} file${n > 1 ? "s" : ""}` : "Attach";
-    };
+    // Attach files to the reply (click the box or drag & drop onto it) — same as the client portal.
+    $("reply-files").onchange = renderReplyFiles;
+    wireDropzone($("reply-upload-box"), files => { addFilesToInput($("reply-files"), files); renderReplyFiles(); });
     // AI assist buttons (staff console only)
     $("ai-rewrite").onclick = () => {
       const txt = $("reply-body").value.trim();
@@ -1710,10 +1875,20 @@ const Staff = (() => {
       if (!current || !current.id) { toast("Open a ticket first."); return; }
       aiAssist($("ai-suggest"), "suggest", { ticket_id: current.id }, $("reply-body"));
     };
-    $("ai-rewrite-desc").onclick = () => {
+    $("ai-rewrite-desc").onclick = async () => {
       const txt = $("nt-desc").value.trim();
       if (!txt) { toast("Type a description first, then Rewrite."); return; }
-      aiAssist($("ai-rewrite-desc"), "rewrite", { text: txt }, $("nt-desc"));
+      const btn = $("ai-rewrite-desc");
+      if (btn.disabled) return;
+      const orig = btn.textContent; btn.disabled = true; btn.textContent = "✨ Thinking…";
+      try {
+        // Rewrite the description AND generate a Subject; fill the Subject only if it's blank.
+        const r = await api("/api/ai/rewrite", { method: "POST", body: { text: txt, want_subject: true } });
+        if (r && r.result) { $("nt-desc").value = r.result; $("nt-desc").style.height = ""; }
+        if (r && r.subject && !$("nt-title").value.trim()) $("nt-title").value = r.subject;
+        toast("AI draft ready — review before saving");
+      } catch (e) { toast("AI: " + (e.message || "request failed")); }
+      finally { btn.disabled = false; btn.textContent = orig; }
     };
     $("canned-select").onchange = () => {
       const v = $("canned-select").value; $("canned-select").value = "";
@@ -1750,7 +1925,7 @@ const Staff = (() => {
         $("reply-internal").checked = false; $("reply-close").checked = false;
         $("reply-signature").checked = false;   // default: sign as "Axus Service Team"
         $("reply-form").classList.remove("internal-mode");
-        $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
+        $("reply-files").value = ""; renderReplyFiles();
       } catch (err) { toast("Couldn't post: " + err.message); }
     };
     $("time-form").onsubmit = async e => {
@@ -1786,7 +1961,7 @@ const Staff = (() => {
           closeNew(); await loadTickets(); await openTicket(ticketEditId);
           toast("Ticket updated");
         } else {
-          await createTicket(payload);
+          await createTicket(payload, Array.from($("nt-files").files || []));
         }
       } catch (err) { $("nt-error").textContent = err.message; }
     };

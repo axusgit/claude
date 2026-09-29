@@ -9,7 +9,10 @@ and edit — nothing is ever sent to a customer automatically:
 Disabled gracefully (503) when OPENAI_API_KEY is absent. Length-capped + timed out.
 """
 import os
+import re
+import json
 import httpx
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -35,9 +38,13 @@ _NO_FLUFF = (
 )
 _REWRITE_SYSTEM = (
     "You are an IT support specialist at Axus Technologies writing to a customer. "
-    "Rewrite the message below to be clear, professional, and concise. Preserve every "
-    "technical fact, number, name, and instruction exactly — never invent or change details. "
-    "Fix grammar and tone. " + _NO_FLUFF + " Return ONLY the rewritten message, nothing else."
+    "Rewrite the message below into clear, polished, professional customer-facing prose. "
+    "Actively improve it: tighten wordy or awkward phrasing, improve flow and structure, "
+    "fix grammar and punctuation, and make the tone warm but professional — do this even when "
+    "the original is already grammatically correct (always produce a genuinely improved version, "
+    "never echo the input unchanged). Preserve every technical fact, number, name, date, and "
+    "instruction exactly — never invent, add, or change details. "
+    + _NO_FLUFF + " Return ONLY the rewritten message, nothing else."
 )
 _SUGGEST_SYSTEM = (
     "You are an IT support specialist at Axus Technologies. Read the ticket below (subject, "
@@ -48,7 +55,7 @@ _SUGGEST_SYSTEM = (
 )
 
 
-def _chat(system: str, user: str, max_tokens: int = 700) -> str:
+def _chat(system: str, user: str, max_tokens: int = 700, temperature: float = 0.4) -> str:
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=503, detail="AI is not configured yet.")
     try:
@@ -57,7 +64,7 @@ def _chat(system: str, user: str, max_tokens: int = 700) -> str:
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
             json={
                 "model": AI_MODEL,
-                "temperature": 0.4,
+                "temperature": temperature,
                 "max_tokens": max_tokens,
                 "messages": [
                     {"role": "system", "content": system},
@@ -81,8 +88,34 @@ def _chat(system: str, user: str, max_tokens: int = 700) -> str:
         raise HTTPException(status_code=502, detail=f"AI request failed: {e}")
 
 
+_TICKET_SYSTEM = (
+    "You are an IT support specialist at Axus Technologies documenting a support ticket. "
+    "From the description below, produce BOTH: (1) a concise Subject line — at most ~9 words, no "
+    "trailing period, specific (name the key device, service, or error when present); and (2) a clear, "
+    "professional, concise rewrite of the description. Preserve every technical fact, number, name, date, "
+    "and instruction exactly — never invent details. " + _NO_FLUFF + " "
+    'Return ONLY a JSON object of the form {"subject": "...", "description": "..."} with no other text.'
+)
+
+
+def _parse_ticket_json(raw: str, fallback_desc: str):
+    """Pull {subject, description} out of the model's reply; fall back gracefully."""
+    m = re.search(r"\{.*\}", raw or "", re.DOTALL)
+    if m:
+        try:
+            obj = json.loads(m.group(0))
+            subject = str(obj.get("subject") or "").strip()
+            desc = str(obj.get("description") or "").strip() or fallback_desc
+            return subject, desc
+        except Exception:
+            pass
+    return "", (raw or "").strip() or fallback_desc
+
+
 class RewriteIn(BaseModel):
     text: str
+    context: Optional[str] = None   # e.g. the ticket subject — reference only, never rewritten/echoed
+    want_subject: bool = False      # also generate a Subject line (New Ticket description rewrite)
 
 
 @router.post("/rewrite")
@@ -90,7 +123,17 @@ def rewrite(data: RewriteIn, _: User = Depends(require_staff)):
     text = (data.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Nothing to rewrite — type a draft first.")
-    return {"result": _chat(_REWRITE_SYSTEM, text[:6000])}
+    if data.want_subject:
+        raw = _chat(_TICKET_SYSTEM, text[:6000], temperature=0.5)
+        subject, desc = _parse_ticket_json(raw, fallback_desc=text)
+        return {"result": desc, "subject": subject}
+    ctx = (data.context or "").strip()
+    user_msg = text[:6000]
+    if ctx:
+        user_msg = (f"For reference only — the ticket subject is: {ctx[:300]}\n"
+                    f"(Do NOT include the subject in your output; rewrite only the message below.)\n\n"
+                    f"Message to rewrite:\n{text[:6000]}")
+    return {"result": _chat(_REWRITE_SYSTEM, user_msg, temperature=0.6)}
 
 
 class SuggestIn(BaseModel):

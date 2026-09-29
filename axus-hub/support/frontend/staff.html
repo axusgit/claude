@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=66" />
-  <link rel="stylesheet" href="/static/staff.css?v=83" />
+  <link rel="stylesheet" href="/static/styles.css?v=68" />
+  <link rel="stylesheet" href="/static/staff.css?v=86" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -159,7 +159,7 @@
           <div class="table-wrap">
             <table class="ticket-table" id="ticket-table">
               <thead><tr>
-                <th class="col-ref sortable" data-sort="ref">Ref</th><th class="col-subject sortable" data-sort="subject">Subject</th><th class="col-company sortable" data-sort="company">Business</th><th class="col-board sortable" data-sort="board">Board</th><th class="col-priority sortable" data-sort="priority">Priority</th><th class="col-status sortable" data-sort="status">Status</th><th class="col-assignee sortable" data-sort="assignee">Assignee</th><th class="col-updated sortable" data-sort="updated">Updated</th>
+                <th class="col-ref sortable" data-sort="ref">Ref</th><th class="col-subject sortable" data-sort="subject">Subject</th><th class="col-company sortable" data-sort="company">Business</th><th class="col-board sortable" data-sort="board">Board</th><th class="col-priority sortable" data-sort="priority">Priority</th><th class="col-status sortable" data-sort="status">Status</th><th class="col-assignee sortable" data-sort="assignee">Assignee</th><th class="col-created sortable" data-sort="created">Created</th><th class="col-updated sortable" data-sort="updated">Updated</th>
               </tr></thead>
               <tbody id="ticket-rows"></tbody>
             </table>
@@ -169,10 +169,10 @@
 
         <!-- DETAIL -->
         <section id="detail-view" class="hidden">
-          <button class="back-link" id="back-btn">← Back to queue</button>
           <div class="detail-top card">
             <div class="detail-top-head">
               <div class="dt-meta">
+                <button class="btn btn-ghost btn-xs detail-back" id="back-btn">← Back to queue</button>
                 <span id="d-ref" class="ref-pill"></span>
                 <span class="meta-lbl">Status</span><span id="d-status-badge" class="badge"></span>
                 <span class="meta-lbl">Priority</span><span id="d-prio-badge" class="prio-badge"></span>
@@ -187,6 +187,9 @@
             </div>
             <h2 id="d-title" class="dt-title"></h2>
             <div class="control-row">
+              <label class="ctl">Business
+                <select id="d-business"></select>
+              </label>
               <label class="ctl">Status
                 <select id="d-status">
                   <option value="open">Open</option>
@@ -256,12 +259,17 @@
                     <button type="button" class="btn btn-ghost btn-ai" id="ai-rewrite" title="Rewrite your draft with AI (you review before sending)">✨ Rewrite</button>
                     <button type="button" class="btn btn-ghost btn-ai" id="ai-suggest" title="Draft a reply from the whole ticket with AI">🧠 Suggest reply</button>
                   </div>
-                  <textarea id="reply-body" rows="3" placeholder="Write a reply…"></textarea>
+                  <textarea id="reply-body" rows="12" placeholder="Write a reply…"></textarea>
+                  <label class="upload-box" id="reply-upload-box" style="margin-top:10px">
+                    <input type="file" id="reply-files" multiple hidden
+                      accept=".doc,.pdf,.jpg,.jpeg,.gif,.png,.xls,.docx,.xlsx,.txt,.pcapng,.eml,.pcap,.wav,.csv,.mp4,.mp3,.heic" />
+                    <span>📎 Add a file <span class="upload-hint-inline">or drag &amp; drop</span></span>
+                  </label>
+                  <div id="reply-file-list" class="nt-file-list"></div>
                   <div class="reply-actions">
                     <label class="internal-toggle" title="On: sign with your personal signature. Off: sign as 'Axus Service Team'."><input type="checkbox" id="reply-signature" /> Include my signature</label>
                     <label class="internal-toggle"><input type="checkbox" id="reply-internal" /> Internal note (staff only)</label>
                     <label class="internal-toggle"><input type="checkbox" id="reply-close" /> Close the case</label>
-                    <label class="reply-attach" title="Attach files"><input type="file" id="reply-files" multiple hidden />📎 <span id="reply-files-label">Attach</span></label>
                     <button type="submit" class="btn btn-primary" id="reply-btn">Post</button>
                   </div>
                 </form>
@@ -352,6 +360,20 @@
                 <div id="cd-users" class="time-list"></div>
                 <button class="btn btn-ghost btn-block" id="cd-adduser-btn" style="margin-top:12px">+ Add user</button>
               </div>
+              <div class="card">
+                <h3 class="card-title">Password sign-in</h3>
+                <p class="muted" style="margin:-4px 0 10px;font-size:13px">
+                  Let this business's users sign in with a password (in addition to the email link).
+                </p>
+                <label class="show-hidden-toggle" style="gap:8px">
+                  <input type="checkbox" id="cd-biz-pw" />
+                  Enable for <strong>all users</strong> of this business
+                </label>
+                <p class="muted" id="cd-biz-pw-note" style="margin:8px 0 0;font-size:12px">
+                  All-or-nothing at the business level. When on, every user inherits it.
+                  Set each person's password from their row above.
+                </p>
+              </div>
             </aside>
           </div>
         </section>
@@ -440,7 +462,29 @@
     </div>
   </div>
 
-  <!-- RESET PORTAL PASSWORD MODAL -->
+  <!-- SET / RESET PORTAL PASSWORD MODAL -->
+  <div id="setpw-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2 id="setpw-modal-title">Set password</h2><button class="modal-x" id="setpw-modal-close">×</button></div>
+      <p class="muted" id="setpw-modal-sub" style="margin:-6px 0 14px"></p>
+      <form id="setpw-modal-form">
+        <label>Temporary password
+          <input type="text" id="spw-value" autocomplete="off" placeholder="At least 8 characters" />
+        </label>
+        <p class="muted" style="font-size:12px;margin:6px 0 0">
+          The user must change it to a policy-compliant password at their next sign-in
+          (8+ chars, upper &amp; lower, number, special; no reuse of the last 5).
+        </p>
+        <div style="margin-top:8px"><button type="button" class="btn btn-ghost btn-xs" id="spw-gen">Generate a strong one</button></div>
+        <div id="spw-error" class="form-error"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="spw-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="spw-save">Save password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 
   <!-- TRANSFER-AND-DELETE MODAL -->
   <div id="xfer-modal" class="modal-overlay hidden">
@@ -485,9 +529,16 @@
         <label>Board<select id="nt-board"><option value="">— None —</option></select></label>
         <label id="nt-project-wrap">Project <span class="muted">(optional)</span><select id="nt-project"><option value="">— None —</option></select></label>
         <label>Description
-          <textarea id="nt-desc" rows="3" placeholder="Details…"></textarea>
+          <textarea id="nt-desc" rows="12" placeholder="Details…"></textarea>
           <button type="button" class="btn btn-ghost btn-ai" id="ai-rewrite-desc" title="Rewrite the description with AI">✨ Rewrite</button>
         </label>
+        <div class="nt-attach-label">Attachments <span class="muted">(optional)</span></div>
+        <label class="upload-box" id="nt-upload-box">
+          <input type="file" id="nt-files" multiple hidden
+            accept=".doc,.pdf,.jpg,.jpeg,.gif,.png,.xls,.docx,.xlsx,.txt,.pcapng,.eml,.pcap,.wav,.csv,.mp4,.mp3,.heic" />
+          <span>📎 Add a file <span class="upload-hint-inline">or drag &amp; drop</span></span>
+        </label>
+        <div id="nt-file-list" class="nt-file-list"></div>
         <div class="form-row">
           <label>Category<select id="nt-category"><option value="">— Select —</option><option>ATA</option><option>Cabling</option><option>Call manager</option><option>Cellular Gateway</option><option>Circuit</option><option>Firewall</option><option>ISP</option><option>Laptop</option><option>Mobile</option><option>PBX</option><option>Phone</option><option>Printer</option><option>Router</option><option>SD-WAN</option><option>Server</option><option>Software</option><option>Switch</option><option>UPS</option><option>Voice/video gateway</option><option>Wireless access point</option><option>Wireless controller</option><option>Workstation</option><option>Other</option></select></label>
           <label>Priority<select id="nt-priority"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Normal</option><option value="low">Low</option></select></label>
@@ -550,6 +601,6 @@
 
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="/static/staff.js?v=97"></script>
+  <script src="/static/staff.js?v=106"></script>
 </body>
 </html>

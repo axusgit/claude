@@ -120,15 +120,65 @@ const App = (() => {
     token = data.access_token;                    // 30-day portal session
     localStorage.setItem(TOKEN_KEY, token);
   }
+  async function passwordLogin(email, password) {
+    const res = await fetch("/api/portal/auth/password-login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Sign-in failed. Please try again.");
+    token = data.access_token;                    // 30-day portal session
+    localStorage.setItem(TOKEN_KEY, token);
+    return data;   // { must_change_password, expiry_warning }
+  }
+  async function setPassword(newPassword, currentPassword) {
+    const res = await fetch("/api/portal/auth/set-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ new_password: newPassword, current_password: currentPassword || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Couldn't save your password.");
+    return data;
+  }
+  // Show one of the login card's panels: "link" | "pw" | "setpw" | "sent".
+  function loginPanel(which) {
+    ["login-form", "login-pw-form", "login-setpw-form", "login-sent"].forEach(id => {
+      $(id).classList.toggle("hidden", id !== ({
+        link: "login-form", pw: "login-pw-form", setpw: "login-setpw-form", sent: "login-sent",
+      })[which]);
+    });
+  }
+  // Present the forced create/change-password screen. `forced` hides the current-password field.
+  function showSetPassword({ forced, title, sub }) {
+    showLogin();
+    loginPanel("setpw");
+    $("setpw-title").textContent = title || (forced ? "Create your password" : "Change your password");
+    $("setpw-sub").textContent = sub || (forced
+      ? "Choose a password to finish signing in." : "Enter your current password and a new one.");
+    $("setpw-cur-label").classList.toggle("hidden", !!forced);
+    $("setpw-cur").value = ""; $("setpw-new").value = ""; $("setpw-confirm").value = "";
+    $("setpw-error").textContent = "";
+    $("login-setpw-form").dataset.forced = forced ? "1" : "";
+  }
   function logout() {
     token = null; me = null;
     localStorage.removeItem(TOKEN_KEY);
+    loginPanel("link");
     showLogin();
   }
 
   async function loadIdentity() {
     const portal = await api("/api/portal/me");     // id, role, full_name, company (JWT-only)
-    me = { id: portal.id, full_name: portal.full_name, role: portal.role };
+    me = { id: portal.id, full_name: portal.full_name, role: portal.role,
+           must_change_password: portal.must_change_password,
+           password_expiry_warning: portal.password_expiry_warning,
+           has_password: portal.has_password,
+           password_login_active: portal.password_login_active };
+    // "Change password" is only meaningful once the user has a password they can
+    // sign in with (staff must enable password login + set an initial one first).
+    const chBtn = $("change-pw-btn");
+    if (chBtn) chBtn.hidden = !(portal.password_login_active && portal.has_password);
     $("who-name").textContent = portal.full_name || portal.email;
     $("who-company").textContent = portal.company || "";
     const phoneEl = $("who-phone");
@@ -221,13 +271,14 @@ const App = (() => {
     const closed = t.status === "closed";
     currentClosed = closed;
     $("reply-close").checked = false;
+    $("reply-body").style.height = "";   // back to the default height on every ticket open (undo any drag-resize)
+    $("reply-files").value = ""; renderReplyFiles();   // clear any files staged on the previous ticket
     $("reply-form").classList.toggle("hidden", closed);
     $("reply-closed-note").classList.toggle("hidden", !closed);
-    $("attach-upload-box").classList.toggle("hidden", closed);
     $("participant-email-row").classList.toggle("hidden", closed);
     $("participant-hint").classList.toggle("hidden", closed);
     showDetail();
-    await Promise.all([loadThread(id), loadAttachments(id), loadParticipants(id)]);
+    await Promise.all([loadThread(id), loadParticipants(id)]);
   }
 
   async function loadParticipants(id) {
@@ -285,34 +336,59 @@ const App = (() => {
     } catch (err) { toast(err.message); }
   }
 
+  // One file's download link + size (used inside a reply bubble or on its own).
+  function attachLine(f) {
+    const safeName = esc(f.filename).replace(/'/g, "");
+    return `<div class="msg-attach">
+      <a href="#" onclick="App.download(${f.id}, '${safeName}');return false;">📄 ${esc(f.filename)}</a>
+      <span class="attach-size">${fileSize(f.size)}</span>
+    </div>`;
+  }
+
   async function loadThread(id) {
-    const comments = await api(`/api/portal/tickets/${id}/comments`);
+    const [comments, files] = await Promise.all([
+      api(`/api/portal/tickets/${id}/comments`),
+      api(`/api/portal/tickets/${id}/attachments`),
+    ]);
     const thread = $("thread");
-    if (!comments.length) { thread.innerHTML = `<div class="thread-empty">No replies yet — our team will respond here.</div>`; return; }
-    // newest reply first, right under the ticket description
-    thread.innerHTML = comments.slice().reverse().map(c => {
-      const mine = me && c.author_id === me.id;
+    // Files posted with a reply hang off that reply; files from the initial
+    // submission (no comment) show as their own timestamped entry.
+    const byComment = {}, orphans = [];
+    for (const f of files) {
+      if (f.comment_id) (byComment[f.comment_id] = byComment[f.comment_id] || []).push(f);
+      else orphans.push(f);
+    }
+    const items = [];
+    for (const c of comments) items.push({ t: c.created_at, kind: "note", data: c });
+    for (const f of orphans) items.push({ t: f.created_at, kind: "file", data: f });
+    if (!items.length) { thread.innerHTML = `<div class="thread-empty">No replies yet — our team will respond here.</div>`; return; }
+    items.sort((a, b) => new Date(b.t) - new Date(a.t));   // newest first
+    thread.innerHTML = items.map(it => {
+      if (it.kind === "note") {
+        const c = it.data;
+        const mine = me && c.author_id === me.id;
+        const who = mine ? "You" : "Axus Support";
+        const atts = (byComment[c.id] || []).map(attachLine).join("");
+        return `<div class="msg ${mine ? "me" : "them"}">
+          <div class="msg-avatar">${mine ? initials(me.full_name) : "AX"}</div>
+          <div class="msg-bubble">
+            <div class="msg-meta">${who} · ${fmtDate(c.created_at)}</div>
+            <div class="msg-body">${esc(c.body)}</div>
+            ${atts}
+          </div>
+        </div>`;
+      }
+      const f = it.data;
+      const mine = me && f.uploaded_by_id === me.id;
       const who = mine ? "You" : "Axus Support";
-      return `<div class="msg ${mine ? "me" : "them"}">
-        <div class="msg-avatar">${mine ? initials(me.full_name) : "AX"}</div>
+      return `<div class="msg ${mine ? "me" : "them"} msg-file">
+        <div class="msg-avatar">📎</div>
         <div class="msg-bubble">
-          <div class="msg-meta">${who} · ${fmtDate(c.created_at)}</div>
-          <div class="msg-body">${esc(c.body)}</div>
+          <div class="msg-meta">${who} attached a file · ${fmtDate(f.created_at)}</div>
+          ${attachLine(f)}
         </div>
       </div>`;
     }).join("");
-  }
-
-  async function loadAttachments(id) {
-    const files = await api(`/api/portal/tickets/${id}/attachments`);
-    const box = $("attach-list");
-    if (!files.length) { box.innerHTML = `<div class="muted">No files attached.</div>`; return; }
-    box.innerHTML = files.map(f => `
-      <div class="attach-item">
-        <span>📄</span>
-        <a href="#" onclick="App.download(${f.id}, '${esc(f.filename).replace(/'/g, "")}');return false;">${esc(f.filename)}</a>
-        <span class="attach-size">${fileSize(f.size)}</span>
-      </div>`).join("");
   }
 
   async function download(attId, filename) {
@@ -341,19 +417,21 @@ const App = (() => {
     });
   }
   async function reply(bodyText, files, close) {
-    await api(`/api/portal/tickets/${currentTicket}/comments`, { method: "POST", body: { body: bodyText || null, close: !!close } });
+    const res = await api(`/api/portal/tickets/${currentTicket}/comments`, { method: "POST", body: { body: bodyText || null, close: !!close } });
+    const commentId = res && res.comment_id;   // tie the files to this reply
     for (const f of (files || [])) {
       const fd = new FormData(); fd.append("file", f);
+      if (commentId) fd.append("comment_id", commentId);
       try { await api(`/api/portal/tickets/${currentTicket}/attachments`, { method: "POST", form: fd }); }
       catch (e) { toast(`Couldn't attach ${f.name}: ${e.message}`); }
     }
     if (close) { await openTicket(currentTicket); toast("Case closed"); }
-    else { await Promise.all([loadThread(currentTicket), loadAttachments(currentTicket)]); toast("Posted"); }
+    else { await loadThread(currentTicket); toast("Posted"); }
   }
   async function uploadFile(file) {
     const fd = new FormData(); fd.append("file", file);
     await api(`/api/portal/tickets/${currentTicket}/attachments`, { method: "POST", form: fd });
-    await loadAttachments(currentTicket);
+    await loadThread(currentTicket);
     toast("File uploaded");
   }
   async function createTicket(payload, files) {
@@ -373,18 +451,59 @@ const App = (() => {
       : "Ticket " + (t.reference || "") + " submitted");
   }
 
+  // Append dropped/selected files onto an <input type=file> (preserving existing ones).
+  function addFilesToInput(input, fileList) {
+    const dt = new DataTransfer();
+    for (const f of Array.from(input.files || [])) dt.items.add(f);
+    for (const f of Array.from(fileList || [])) dt.items.add(f);
+    input.files = dt.files;
+  }
+  // Turn any element into a drag-and-drop file target with visual feedback.
+  function wireDropzone(el, onFiles) {
+    if (!el) return;
+    ["dragenter", "dragover"].forEach(ev => el.addEventListener(ev, e => {
+      e.preventDefault(); e.stopPropagation(); el.classList.add("dragging");
+    }));
+    ["dragleave", "dragend"].forEach(ev => el.addEventListener(ev, e => {
+      e.preventDefault(); e.stopPropagation(); el.classList.remove("dragging");
+    }));
+    el.addEventListener("drop", e => {
+      e.preventDefault(); e.stopPropagation(); el.classList.remove("dragging");
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) onFiles(files);
+    });
+  }
+
   function renderSelectedFiles() {
     const box = $("nt-file-list");
     const files = Array.from($("nt-files").files || []);
     if (!files.length) { box.innerHTML = ""; return; }
     box.innerHTML = files.map(f => {
       const ok = ALLOWED_EXTS.has(extOf(f.name));
-      return `<div class="nt-file${ok ? "" : " nt-file-bad"}">${ok ? "📎" : "⛔"} ${f.name} <span class="attach-size">${fileSize(f.size)}</span>${ok ? "" : " — not an accepted format"}</div>`;
+      return `<div class="nt-file${ok ? "" : " nt-file-bad"}">${ok ? "📎" : "⛔"} ${esc(f.name)} <span class="attach-size">${fileSize(f.size)}</span>${ok ? "" : " — not an accepted format"}</div>`;
     }).join("");
   }
 
+  // Staged files for the reply being written (with a remove ✕ on each).
+  function renderReplyFiles() {
+    const input = $("reply-files"), box = $("reply-file-list");
+    const files = Array.from(input.files || []);
+    if (!files.length) { box.innerHTML = ""; return; }
+    box.innerHTML = files.map((f, i) => {
+      const ok = ALLOWED_EXTS.has(extOf(f.name));
+      return `<div class="nt-file${ok ? "" : " nt-file-bad"}">${ok ? "📎" : "⛔"} ${esc(f.name)} <span class="attach-size">${fileSize(f.size)}</span>${ok ? "" : " — not an accepted format"} <a href="#" class="reply-file-x" data-i="${i}" title="Remove">✕</a></div>`;
+    }).join("");
+    box.querySelectorAll(".reply-file-x").forEach(a => a.onclick = ev => {
+      ev.preventDefault();
+      const idx = parseInt(a.dataset.i, 10);
+      const dt = new DataTransfer();
+      files.forEach((f, j) => { if (j !== idx) dt.items.add(f); });
+      input.files = dt.files; renderReplyFiles();
+    });
+  }
+
   /* ---------- Modal ---------- */
-  function showNew() { $("new-modal").classList.remove("hidden"); $("nt-title").focus(); }
+  function showNew() { $("new-modal").classList.remove("hidden"); $("nt-desc").style.height = ""; $("nt-title").focus(); }
   function closeNew() { $("new-modal").classList.add("hidden"); $("new-form").reset(); $("nt-file-list").innerHTML = ""; $("nt-error").textContent = ""; }
 
   /* ---------- Init / wiring ---------- */
@@ -411,11 +530,97 @@ const App = (() => {
       }
     };
     $("login-again").onclick = () => {
-      $("login-sent").classList.add("hidden");
-      $("login-form").classList.remove("hidden");
+      loginPanel("link");
       $("login-email").value = ""; $("login-email").focus();
     };
+
+    // Toggle between magic-link and password sign-in.
+    $("show-pw-login").onclick = e => {
+      e.preventDefault();
+      $("login-pw-email").value = $("login-email").value.trim();
+      $("login-pw-error").textContent = "";
+      loginPanel("pw");
+      ($("login-pw-email").value ? $("login-pw-pass") : $("login-pw-email")).focus();
+    };
+    $("show-link-login").onclick = e => {
+      e.preventDefault();
+      $("login-email").value = $("login-pw-email").value.trim();
+      $("login-error").textContent = "";
+      loginPanel("link"); $("login-email").focus();
+    };
+
+    $("login-pw-form").onsubmit = async e => {
+      e.preventDefault();
+      $("login-pw-error").textContent = "";
+      const email = $("login-pw-email").value.trim();
+      const pass = $("login-pw-pass").value;
+      if (!email || !pass) { $("login-pw-error").textContent = "Enter your email and password."; return; }
+      $("login-pw-btn").disabled = true; $("login-pw-btn").textContent = "Signing in…";
+      try {
+        const r = await passwordLogin(email, pass);
+        $("login-pw-pass").value = "";
+        if (r.must_change_password) {
+          showSetPassword({ forced: true });
+        } else {
+          await enterApp();
+        }
+      } catch (err) {
+        $("login-pw-error").textContent = err.message;
+      } finally {
+        $("login-pw-btn").disabled = false; $("login-pw-btn").textContent = "Sign in";
+      }
+    };
+
+    $("login-setpw-form").onsubmit = async e => {
+      e.preventDefault();
+      $("setpw-error").textContent = "";
+      const forced = $("login-setpw-form").dataset.forced === "1";
+      const cur = $("setpw-cur").value;
+      const np = $("setpw-new").value;
+      const cf = $("setpw-confirm").value;
+      if (!forced && !cur) { $("setpw-error").textContent = "Enter your current password."; return; }
+      if (np !== cf) { $("setpw-error").textContent = "The new passwords don't match."; return; }
+      $("setpw-btn").disabled = true; $("setpw-btn").textContent = "Saving…";
+      try {
+        await setPassword(np, forced ? null : cur);
+        toast("Password saved.");
+        await enterApp();
+      } catch (err) {
+        $("setpw-error").textContent = err.message;
+      } finally {
+        $("setpw-btn").disabled = false; $("setpw-btn").textContent = "Save password & continue";
+      }
+    };
     $("logout-btn").onclick = logout;
+
+    // Change password (voluntary, from inside the portal).
+    const chpwClose = () => $("chpw-modal").classList.add("hidden");
+    $("change-pw-btn").onclick = () => {
+      $("chpw-cur").value = ""; $("chpw-new").value = ""; $("chpw-confirm").value = "";
+      $("chpw-error").textContent = "";
+      $("chpw-modal").classList.remove("hidden");
+      $("chpw-cur").focus();
+    };
+    $("chpw-x").onclick = chpwClose;
+    $("chpw-cancel").onclick = chpwClose;
+    $("chpw-form").onsubmit = async e => {
+      e.preventDefault();
+      $("chpw-error").textContent = "";
+      const cur = $("chpw-cur").value, np = $("chpw-new").value, cf = $("chpw-confirm").value;
+      if (!cur) { $("chpw-error").textContent = "Enter your current password."; return; }
+      if (np !== cf) { $("chpw-error").textContent = "The new passwords don't match."; return; }
+      $("chpw-save").disabled = true; $("chpw-save").textContent = "Saving…";
+      try {
+        await setPassword(np, cur);
+        chpwClose();
+        toast("Password updated.");
+      } catch (err) {
+        $("chpw-error").textContent = err.message;
+      } finally {
+        $("chpw-save").disabled = false; $("chpw-save").textContent = "Update password";
+      }
+    };
+
     $("new-ticket-btn").onclick = showNew;
     $("pf-search").oninput = renderTickets;
     $("pf-status").onchange = renderTickets;
@@ -443,28 +648,27 @@ const App = (() => {
     $("participant-email-btn").onclick = addParticipantEmail;
     $("participant-email").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addParticipantEmail(); } };
 
-    $("reply-files").onchange = () => {
-      const n = $("reply-files").files.length;
-      $("reply-files-label").textContent = n ? `${n} file${n > 1 ? "s" : ""}` : "Attach";
-    };
     $("reply-form").onsubmit = async e => {
       e.preventDefault();
       const body = $("reply-body").value.trim();
       const close = $("reply-close").checked;
       if (!body) { toast(close ? "Please add a note in the Conversation field before closing the case." : "Please enter your message before posting."); return; }
-      if (close && !(await confirmClose())) return;   // require attestation to close
       const files = Array.from($("reply-files").files || []);
+      const bad = files.filter(f => !ALLOWED_EXTS.has(extOf(f.name)));
+      if (bad.length) { toast("These files aren't an accepted format: " + bad.map(f => f.name).join(", ")); return; }
+      if (close && !(await confirmClose())) return;   // require attestation to close
       $("reply-body").value = ""; $("reply-body").style.height = "";   // reset if it was dragged larger
       $("reply-close").checked = false;
-      $("reply-files").value = ""; $("reply-files-label").textContent = "Attach";
+      $("reply-files").value = ""; renderReplyFiles();
       try { await reply(body, files, close); } catch (err) { toast(err.message); }
     };
-    $("attach-input").onchange = async e => {
-      const f = e.target.files[0]; if (!f) return;
-      try { await uploadFile(f); } catch (err) { toast(err.message); }
-      e.target.value = "";
-    };
+    // Attach files to the reply being written (click the box or drag & drop onto it).
+    $("reply-files").onchange = renderReplyFiles;
+    wireDropzone($("reply-upload-box"), files => { addFilesToInput($("reply-files"), files); renderReplyFiles(); });
+
     $("nt-files").onchange = renderSelectedFiles;
+    // Drag & drop: New Ticket collects files into the picker before submit.
+    wireDropzone($("nt-upload-box"), files => { addFilesToInput($("nt-files"), files); renderSelectedFiles(); });
     $("new-form").onsubmit = async e => {
       e.preventDefault(); $("nt-error").textContent = "";
       const files = Array.from($("nt-files").files || []);
@@ -505,8 +709,16 @@ const App = (() => {
 
   async function enterApp() {
     await loadIdentity();
+    // A forced password change (first login after a staff set/reset, or expiry)
+    // must be completed before the portal is usable.
+    if (me && me.must_change_password) {
+      showSetPassword({ forced: true, title: "Set a new password",
+        sub: "For your security, please choose a new password before continuing." });
+      return;
+    }
     showApp(); showList();
     await loadTickets();
+    if (me && me.password_expiry_warning) toast(me.password_expiry_warning);
   }
 
   return { start, showNew, download };

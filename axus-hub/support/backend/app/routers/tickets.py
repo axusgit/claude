@@ -388,6 +388,10 @@ def update_ticket(ticket_id: int, data: TicketUpdate, background: BackgroundTask
     _validate_origin(data.origin)
 
     changes = data.model_dump(exclude_none=True)
+    # A reporter_user_id of 0 is the explicit "clear the contact" signal (e.g. when a
+    # ticket is moved to a different business), since exclude_none drops a real null.
+    if changes.get("reporter_user_id") == 0:
+        changes["reporter_user_id"] = None
     # Snapshot audited fields before applying, so we can log what actually changed.
     old = {field: getattr(ticket, field) for field in AUDITED_FIELDS if field in changes}
 

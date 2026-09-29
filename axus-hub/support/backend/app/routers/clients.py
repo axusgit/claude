@@ -31,6 +31,7 @@ class ClientOut(BaseModel):
     website: Optional[str]
     notes: Optional[str]
     is_active: bool
+    password_login_enabled: bool = False
     created_at: Optional[datetime]
 
     class Config:
@@ -93,9 +94,23 @@ class PortalUserOut(BaseModel):
     full_name: str
     role: str
     client_id: Optional[int]
+    password_login_enabled: bool = False
+    has_password: bool = False
+    must_change_password: bool = False
 
     class Config:
         from_attributes = True
+
+    @classmethod
+    def from_user(cls, u: User):
+        return cls(
+            id=u.id, email=u.email, full_name=u.full_name,
+            role=u.role.value if hasattr(u.role, "value") else u.role,
+            client_id=u.client_id,
+            password_login_enabled=bool(getattr(u, "password_login_enabled", False)),
+            has_password=bool(u.hashed_password),
+            must_change_password=bool(getattr(u, "must_change_password", False)),
+        )
 
 
 @router.post("/{client_id}/portal-users", response_model=PortalUserOut)
@@ -122,22 +137,32 @@ def create_portal_user(
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return PortalUserOut.from_user(user)
 
 
 @router.get("/{client_id}/portal-users", response_model=List[PortalUserOut])
 def list_portal_users(client_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     """List the portal logins associated with a customer."""
-    return (
+    rows = (
         db.query(User)
         .filter(User.client_id == client_id, User.role == UserRole.client)
         .order_by(User.full_name)
         .all()
     )
+    return [PortalUserOut.from_user(u) for u in rows]
 
 
 class PasswordResetIn(BaseModel):
     password: str
+
+
+def _get_portal_user(client_id: int, user_id: int, db: Session) -> User:
+    user = (db.query(User)
+            .filter(User.id == user_id, User.client_id == client_id, User.role == UserRole.client)
+            .first())
+    if not user:
+        raise HTTPException(status_code=404, detail="Portal user not found")
+    return user
 
 
 @router.put("/{client_id}/portal-users/{user_id}/password", response_model=PortalUserOut)
@@ -148,21 +173,48 @@ def reset_portal_password(
     db: Session = Depends(get_db),
     _=Depends(require_staff),
 ):
-    """Admin or technician resets a client-portal user's password."""
+    """Staff set an INITIAL or RESET temp password for a client user. The user is
+    forced to choose a new policy-compliant password at their next login."""
+    from app import password_policy as pwpolicy
     new_pw = (data.password or "").strip()
     if len(new_pw) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
-    user = (
-        db.query(User)
-        .filter(User.id == user_id, User.client_id == client_id, User.role == UserRole.client)
-        .first()
-    )
-    if not user:
-        raise HTTPException(status_code=404, detail="Portal user not found")
-    user.hashed_password = hash_password(new_pw)
+    user = _get_portal_user(client_id, user_id, db)
+    pwpolicy.record_password(db, user, new_pw)   # sets hash + history + password_set_at
+    user.must_change_password = True             # force change on next login
     db.commit()
     db.refresh(user)
-    return user
+    return PortalUserOut.from_user(user)
+
+
+class ToggleIn(BaseModel):
+    enabled: bool
+
+
+@router.put("/{client_id}/password-login", response_model=ClientOut)
+def set_business_password_login(client_id: int, data: ToggleIn,
+                                db: Session = Depends(get_db), _=Depends(require_staff)):
+    """All-or-nothing business-level password-login capability. When ON, every
+    user under the business inherits it (their per-user box shows checked +
+    read-only in the UI); the effective check ORs business + per-user."""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    client.password_login_enabled = bool(data.enabled)
+    db.commit()
+    db.refresh(client)
+    return client
+
+
+@router.put("/{client_id}/portal-users/{user_id}/password-login", response_model=PortalUserOut)
+def set_user_password_login(client_id: int, user_id: int, data: ToggleIn,
+                            db: Session = Depends(get_db), _=Depends(require_staff)):
+    """Per-user password-login capability (used when the business toggle is OFF)."""
+    user = _get_portal_user(client_id, user_id, db)
+    user.password_login_enabled = bool(data.enabled)
+    db.commit()
+    db.refresh(user)
+    return PortalUserOut.from_user(user)
 
 
 # ----- Contacts (people who belong to a customer) -----

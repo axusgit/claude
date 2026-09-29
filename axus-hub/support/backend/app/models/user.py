@@ -29,3 +29,7 @@ class User(Base):
     source = Column(String, server_default="native", nullable=False)
     xcitium_user_id = Column(String, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Client password login (optional; alongside magic link). See password_policy.py.
+    password_set_at = Column(DateTime(timezone=True), nullable=True)          # for 90-day expiry
+    must_change_password = Column(Boolean, server_default="false", nullable=False, default=False)
+    password_login_enabled = Column(Boolean, server_default="false", nullable=False, default=False)

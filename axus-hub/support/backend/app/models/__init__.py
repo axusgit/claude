@@ -14,3 +14,4 @@ from app.models.xcitium import (
 )
 from app.models.magic_token import PortalMagicToken
 from app.models.canned import CannedResponse
+from app.models.client_password import ClientPasswordHistory

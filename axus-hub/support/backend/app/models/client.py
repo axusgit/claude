@@ -20,6 +20,9 @@ class Client(Base):
     # Provenance: "native" (created in Axus) or "xcitium" (imported from the
     # legacy Service Desk). Lets imported records be identified and reverted.
     source = Column(String, server_default="native", nullable=False)
+    # All-or-nothing password-login capability for the whole business: when ON,
+    # every user under it inherits the capability (see password_policy / portal).
+    password_login_enabled = Column(Boolean, server_default="false", nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     @property
