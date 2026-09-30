@@ -10,14 +10,14 @@ import { sealPdf, type SealField, type SealRecipient } from "../seal.js";
 import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail.js";
 import { envelopeDocName } from "../docname.js";
 import { logActivity } from "./activity.js";
-import { isOnCallQuote, notifyOnCallQuoteCompleted } from "../oncall.js";
+import { isOnCallQuote, notifyOnCallQuoteCompleted, notifyEnvelopeCallback } from "../oncall.js";
 
 // Seal the CURRENT state and email every participant a copy. On the last
 // signature it adds the certificate page, marks the envelope completed, and
 // stores the sealed file. Returns whether it's now fully complete.
 async function sealAndNotify(envId: string, signerName: string): Promise<boolean> {
   const env = await pool.query(
-    `select id, title, pdf_file, sequential, created_by, doc_type, company, quote_data from envelope where id = $1`,
+    `select id, title, pdf_file, sequential, created_by, doc_type, company, quote_data, callback_url from envelope where id = $1`,
     [envId],
   );
   const e = env.rows[0];
@@ -79,6 +79,11 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     // Fire-and-forget (the helper never throws) so completion stays snappy.
     if (isOnCallQuote(e)) {
       void notifyOnCallQuoteCompleted(e, bytes, sha256, recs.rows as { name: string; email: string; signed_at?: string | null }[]);
+    }
+    // Any envelope carrying a callback_url (e.g. a Subcontractor Agreement) gets a
+    // completion POST to that URL. Fire-and-forget; the helper never throws.
+    if (e.callback_url) {
+      void notifyEnvelopeCallback(e, sha256, signers as { name: string; email: string; signed_at?: string | null }[]);
     }
   } else {
     await pool.query(

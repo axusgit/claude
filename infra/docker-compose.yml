@@ -328,13 +328,14 @@ services:
       # Public onboarding portal base URL (the geogate-only, no-SSO paths below).
       PORTAL_URL: ${SUBCONTRACTORS_PORTAL_URL:-https://subcontractors.${PLATFORM_DOMAIN}/onboarding}
       ONBOARDING_TOKEN_TTL_DAYS: ${ONBOARDING_TOKEN_TTL_DAYS:-30}
-      # Outbound email via the shared O365 relay (support@ auth; From no-reply@ via
-      # M365 Send-As, same as aesign). Compliance/vendor emails.
+      # Outbound email as service@ (own SMTP AUTH — reuses the Support app's
+      # SUPPORT_SMTP_* service@ creds, so the service@ password rotation updates
+      # ONE var for both apps). service@ has warmed deliverability.
       SMTP_HOST: ${AUTHENTIK_EMAIL__HOST:-}
       SMTP_PORT: ${AUTHENTIK_EMAIL__PORT:-587}
-      SMTP_USER: ${AUTHENTIK_EMAIL__USERNAME:-}
-      SMTP_PASSWORD: ${AUTHENTIK_EMAIL__PASSWORD:-}
-      SMTP_FROM: ${SUBCONTRACTORS_SMTP_FROM:-Axus Technologies <no-reply@axustechnologies.com>}
+      SMTP_USER: ${SUPPORT_SMTP_USER:-}
+      SMTP_PASSWORD: ${SUPPORT_SMTP_PASSWORD:-}
+      SMTP_FROM: ${SUBCONTRACTORS_SMTP_FROM:-Axus Service <service@axustechnologies.com>}
       SMTP_USE_TLS: ${AUTHENTIK_EMAIL__USE_TLS:-true}
       SMTP_USE_SSL: ${AUTHENTIK_EMAIL__USE_SSL:-false}
       # Soft-launch guard: vendor-facing email is OFF until go-live. When enabling,

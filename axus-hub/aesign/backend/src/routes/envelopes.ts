@@ -13,7 +13,7 @@ import { generateBaaPdf, etTodayLong } from "../baapdf.js";
 import { generateCocPdf } from "../cocpdf.js";
 import { generateSlaPdf } from "../slapdf.js";
 import { envelopeDocName } from "../docname.js";
-import { isOnCallQuote, notifyOnCallQuoteCompleted } from "../oncall.js";
+import { isOnCallQuote, notifyOnCallQuoteCompleted, notifyEnvelopeCallback } from "../oncall.js";
 import { logActivity, renameActivity } from "./activity.js";
 
 function requireStaff(req: FastifyRequest, reply: FastifyReply): Identity | null {
@@ -328,7 +328,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
     if (!id) return;
     const envId = (req.params as { id: string }).id;
     const env = await pool.query(
-      `select id, title, status, created_by, doc_type, company, quote_data from envelope where id = $1`,
+      `select id, title, status, created_by, doc_type, company, quote_data, callback_url from envelope where id = $1`,
       [envId],
     );
     if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
@@ -512,6 +512,19 @@ export async function envelopeRoutes(app: FastifyInstance) {
       void notifyOnCallQuoteCompleted(
         e,
         attachmentBytes,
+        sha256,
+        recsQ.rows.filter((r) => r.role !== "viewer") as {
+          name: string;
+          email: string;
+          signed_at?: string | null;
+        }[],
+      );
+    }
+    // Any envelope with a callback_url (e.g. a Subcontractor Agreement) gets a
+    // completion POST to that URL. Fire-and-forget; the helper never throws.
+    if (e.callback_url) {
+      void notifyEnvelopeCallback(
+        e,
         sha256,
         recsQ.rows.filter((r) => r.role !== "viewer") as {
           name: string;

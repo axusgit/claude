@@ -23,7 +23,7 @@ from app.models.email_log import EmailLog
 NOTIFY_ENABLED = os.getenv("NOTIFY_ENABLED", "0") == "1"
 _ALLOW = {a.strip().lower() for a in os.getenv("NOTIFY_ALLOW", "").split(",") if a.strip()}
 
-LOGO = "https://axustechnologies.com/wp-content/uploads/2023/03/axus-technologies-logo.png"
+LOGO = "https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png"
 
 
 def _allowed(recipient: str) -> bool:
@@ -53,7 +53,10 @@ def _html(title: str, intro: str, lines: list[str] = None, cta_text: str = None,
         f"<h2 style='font-size:18px;margin:0 0 8px'>{title}</h2>"
         f"<p style='margin:8px 0;line-height:1.5'>{intro}</p>"
         f"{items}{button}"
-        "<p style='margin:20px 0 0;color:#666;font-size:12px'>Axus Technologies · "
+        "<p style='margin:24px 0 0;color:#888;font-size:12px;line-height:1.5'>"
+        "This mailbox is not monitored — please do not reply to this email. "
+        "If you have questions or need help, contact your Axus Technologies representative.</p>"
+        "<p style='margin:8px 0 0;color:#666;font-size:12px'>Axus Technologies · "
         "13046 Racetrack Rd., Suite 255, Tampa, FL 33626</p>"
         "</div>"
     )
@@ -94,7 +97,10 @@ def send(db, subcontractor_id, recipient, email_type, subject, title, intro,
         return False
     html = _html(title, intro, lines, cta_text, cta_url)
     text = title + "\n\n" + intro + ("\n- " + "\n- ".join(lines) if lines else "") + \
-        (f"\n\n{cta_text}: {cta_url}" if cta_url else "")
+        (f"\n\n{cta_text}: {cta_url}" if cta_url else "") + \
+        ("\n\nThis mailbox is not monitored — please do not reply to this email. "
+         "If you have questions or need help, contact your Axus Technologies representative."
+         "\n\nAxus Technologies · 13046 Racetrack Rd., Suite 255, Tampa, FL 33626")
     ok = mailer.send_email(recipient, subject, text, html=html)
     log_email(db, subcontractor_id, recipient, email_type, subject,
               "sent" if ok else "failed",

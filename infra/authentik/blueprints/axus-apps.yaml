@@ -83,6 +83,21 @@ entries:
       invalidation_flow:
         !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
 
+  # Support has a SECOND proxy provider for the client-facing service.* domain
+  # (service.axustechnologies.com), so /staff SSO works there too. Kept in the
+  # blueprint (and in the outpost list below) so a restart never drops it.
+  - id: provider-support-clean
+    model: authentik_providers_proxy.proxyprovider
+    identifiers: {name: axus-support-clean}
+    attrs:
+      name: axus-support-clean
+      mode: forward_single
+      external_host: https://service.axustechnologies.com
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+
   # Axus Tools live on axus-server01 (own apex subdomains, own nginx) — a
   # different box from the Hub's Traefik, so forward-auth can't reach them. Instead
   # each app is an OpenID Connect (OAuth2) client of Authentik (the same cross-box
@@ -197,6 +212,18 @@ entries:
       meta_publisher: Axus Technologies
       policy_engine_mode: any
 
+  - id: app-support-clean-application
+    model: authentik_core.application
+    identifiers: {slug: axus-support-clean}
+    attrs:
+      name: Axus Support (clean domain)
+      slug: axus-support-clean
+      provider: !KeyOf provider-support-clean
+      meta_launch_url: https://service.axustechnologies.com/staff
+      meta_description: Service Desk (staff console) on the client-facing service.* domain.
+      meta_publisher: Axus Technologies
+      policy_engine_mode: any
+
   # --- "Axus Tools" apps (OpenID Connect clients) ----------------------------
   # Syslog and File Share sign in via OIDC against Authentik (providers above).
   # Single sign-on: authenticate once at Authentik and go straight in — no separate
@@ -235,6 +262,7 @@ entries:
       providers:
         - !KeyOf provider-hub
         - !KeyOf provider-support
+        - !KeyOf provider-support-clean
         - !KeyOf provider-accounting
         - !KeyOf provider-legal
         - !KeyOf provider-subcontractors
@@ -273,6 +301,23 @@ entries:
     identifiers:
       target: !KeyOf app-subcontractors-application
       group: !Find [authentik_core.group, [name, app-subcontractors]]
+      order: 0
+    attrs:
+      enabled: true
+  # Platform admins always get in (policy_engine_mode "any" on the app above).
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf app-subcontractors-application
+      group: !Find [authentik_core.group, [name, "authentik Admins"]]
+      order: 1
+    attrs:
+      enabled: true
+
+  # Clean-domain Support app gated by the same app-support group as the app above.
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf app-support-clean-application
+      group: !Find [authentik_core.group, [name, app-support]]
       order: 0
     attrs:
       enabled: true

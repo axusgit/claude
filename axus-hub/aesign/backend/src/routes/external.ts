@@ -15,8 +15,19 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { generateQuotePdf, type QuoteData } from "../quotepdf.js";
+import { generateSubPdf } from "../subpdf.js";
 import { sendSigningInvite } from "../mail.js";
 import { logActivity } from "./activity.js";
+
+// Today's date in Eastern Time, long form (e.g. "September 29, 2026").
+function etDateLong(): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date());
+}
 
 // Today's date in Eastern Time as MMDDYYYY (the quote-number prefix). Mirrors quotes.ts.
 function etDatePrefix(): string {
@@ -158,6 +169,110 @@ export async function externalRoutes(app: FastifyInstance) {
     return reply.code(201).send({
       envelopeId: envId,
       quoteNumber: q.quote_number,
+      recipientId,
+      status: "draft",
+      emailSent: false,
+      signUrl: null,
+    });
+  });
+
+  // Create a Subcontractor Agreement from the Subcontractors product. Body:
+  //   { doc_type?: "SUBCONTRACTOR", recipient: { name, email }, company,
+  //     callback_url?: string, send?: boolean, senderName?, createdBy? }
+  // Renders the letterhead agreement, adds the subcontractor as the sole signer,
+  // and (when send=true) emails the signing link. On completion, eSign POSTs to
+  // the stored callback_url (see oncall.ts notifyEnvelopeCallback).
+  app.post("/agreements", async (req, reply) => {
+    if (!requireToken(req, reply)) return;
+    const body = (req.body ?? {}) as {
+      recipient?: { name?: string; email?: string };
+      company?: string;
+      callback_url?: string;
+      send?: boolean;
+      senderName?: string;
+      createdBy?: string;
+    };
+    const company = (body.company ?? "").trim();
+    if (!company) {
+      return reply.code(400).send({ error: "A subcontractor company is required." });
+    }
+    const send = body.send === true;
+    const recipEmail = (body.recipient?.email ?? "").trim().toLowerCase();
+    const recipName = (body.recipient?.name ?? "").trim() || company;
+    if (send && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(recipEmail)) {
+      return reply.code(400).send({ error: "A valid recipient email is required to send for signature." });
+    }
+    const callbackUrl = (body.callback_url ?? "").trim() || null;
+    const createdBy = (body.createdBy ?? "").trim() || "subcontractors@axustechnologies.com";
+    const senderName = (body.senderName ?? "").trim() || "Axus Technologies";
+    const title = `${company} — Subcontractor Agreement`.slice(0, 200);
+
+    // Render + persist the SUBCONTRACTOR envelope.
+    const { bytes, layout } = await generateSubPdf({ company, dateLong: etDateLong() });
+    const env = await pool.query(
+      `insert into envelope (title, created_by, doc_type, company, field_layout, callback_url)
+       values ($1, $2, 'SUBCONTRACTOR', $3, $4, $5) returning id`,
+      [title, createdBy, company, JSON.stringify(layout), callbackUrl],
+    );
+    const envId = env.rows[0].id;
+    const fname = `${envId}-agreement.pdf`;
+    await writeFile(join(config.storageDir, fname), Buffer.from(bytes));
+    await pool.query(`update envelope set source_file = $1, pdf_file = $1 where id = $2`, [fname, envId]);
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`,
+      [envId, createdBy, `${title} (via ${createdBy})`],
+    );
+    logActivity(createdBy, "Created subcontractor agreement", title, envId);
+
+    // Add the subcontractor as the sole signer; auto-place their fields.
+    const rec = await pool.query(
+      `insert into recipient (envelope_id, name, email, role, sign_order)
+       values ($1, $2, $3, 'signer', 1) returning id`,
+      [envId, recipName, recipEmail || "unknown@example.com"],
+    );
+    const recipientId = rec.rows[0].id;
+    const slot = (layout ?? []).find((s) => s.role === "Subcontractor") ?? layout?.[0];
+    let fieldCount = 0;
+    for (const f of slot?.fields ?? []) {
+      await pool.query(
+        `insert into field (envelope_id, recipient_id, type, page, x, y, w, h, required)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, true)`,
+        [envId, recipientId, f.type, f.page, f.x, f.y, f.w, f.h],
+      );
+      fieldCount++;
+    }
+
+    let signUrl: string | null = null;
+    if (send && fieldCount > 0) {
+      const token = randomBytes(24).toString("base64url");
+      await pool.query(`update recipient set sign_token = $1, status = 'sent' where id = $2`, [token, recipientId]);
+      await pool.query(`update envelope set status = 'sent', sent_at = now() where id = $1`, [envId]);
+      await pool.query(
+        `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'sent', $3)`,
+        [envId, createdBy, `Sent to ${recipEmail}`],
+      );
+      signUrl = `${config.publicBaseUrl}/sign/${token}`;
+      const res = await sendSigningInvite({
+        to: recipEmail,
+        recipientName: recipName,
+        senderName,
+        title,
+        url: signUrl,
+        envelopeId: envId,
+        recipientId,
+      });
+      logActivity(createdBy, "Sent for signature", `${title} → ${recipEmail}`, envId);
+      return reply.code(201).send({
+        envelopeId: envId,
+        recipientId,
+        status: "sent",
+        emailSent: res.success,
+        signUrl,
+      });
+    }
+
+    return reply.code(201).send({
+      envelopeId: envId,
       recipientId,
       status: "draft",
       emailSent: false,

@@ -35,7 +35,7 @@
   // ---- views ----
   function showView(name, title) {
     $$(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.view === name));
-    ["dashboard","directory","detail"].forEach(v => $("#view-"+v).classList.toggle("hidden", v !== name));
+    ["dashboard","directory","detail","manual"].forEach(v => $("#view-"+v).classList.toggle("hidden", v !== name));
     $("#page-title").textContent = title || (name[0].toUpperCase()+name.slice(1));
   }
 
@@ -149,6 +149,7 @@
     // vendor-level action buttons (permission-gated)
     const A = [];
     if (can("invite_subcontractors")) A.push(`<button class="btn" data-act="invite">✉ Send / resend invite</button>`);
+    if (can("manage_agreements")) A.push(`<button class="btn" data-act="agreement">✍ Send / resend agreement</button>`);
     if (can("approve_subcontractors")) A.push(`<button class="btn primary" data-review="approve">Approve</button>`);
     if (can("review_compliance_documents")) A.push(`<button class="btn" data-review="request_correction">Request correction</button>`);
     if (can("override_compliance_status")) A.push(`<button class="btn" data-review="hold">Hold</button>`);
@@ -158,6 +159,8 @@
     $$("#vendor-actions [data-review]").forEach(b => b.onclick = () => doReview(id, b.dataset.review));
     const inviteBtn = $("#vendor-actions [data-act=invite]");
     if (inviteBtn) inviteBtn.onclick = () => doInvite(id);
+    const agBtn = $("#vendor-actions [data-act=agreement]");
+    if (agBtn) agBtn.onclick = () => doAgreement(id);
     $("#note-add").onclick = async () => {
       const body = $("#note-body").value.trim(); if (!body) return;
       await api(`/api/subcontractors/${id}/notes`, { method:"POST", body: JSON.stringify({ body }) });
@@ -172,6 +175,16 @@
       const r = await api(`/api/subcontractors/${id}/invite`, { method:"POST" });
       alert("Invitation " + (r.emailed ? "emailed." : "created (email disabled).") +
             "\n\nOnboarding link:\n" + r.link);
+      openDetail(id);
+    } catch (e) { alert("Error: " + e.message); }
+  }
+
+  async function doAgreement(id) {
+    if (!confirm("Send the Subcontractor Agreement to this vendor for e-signature?")) return;
+    try {
+      const r = await api(`/api/subcontractors/${id}/agreement/send`, { method:"POST" });
+      alert("Subcontractor Agreement sent for signature." +
+            (r.sign_url ? "\n\nSigning link:\n" + r.sign_url : ""));
       openDetail(id);
     } catch (e) { alert("Error: " + e.message); }
   }
@@ -229,7 +242,12 @@
     $("#who-role").textContent = ME.role || "";
     $("#status-filter").insertAdjacentHTML("beforeend",
       VENDOR_STATUSES.map(s => `<option value="${s}">${s.replace(/_/g," ")}</option>`).join(""));
-    $$(".nav-item").forEach(n => n.onclick = () => n.dataset.view === "dashboard" ? loadDashboard() : loadDirectory());
+    $$(".nav-item").forEach(n => n.onclick = () => {
+      const v = n.dataset.view;
+      if (v === "dashboard") loadDashboard();
+      else if (v === "manual") showView("manual", "Manual");
+      else loadDirectory();
+    });
     $("#add-btn").onclick = openAdd;
     $("#add-cancel").onclick = closeAdd;
     $("#add-save").onclick = saveAdd;

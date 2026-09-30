@@ -23,14 +23,20 @@ body {
 }
 a { color: var(--orange); text-decoration: none; }
 
-.app { display: flex; min-height: 100vh; }
+/* Full-width brand header (matches the Service Desk console): big Axus logo +
+   product pill on a light bar, with an orange accent strip beneath. */
+.brandbar { display: flex; align-items: center; gap: 14px; background: var(--surface);
+  padding: 12px 22px; }
+.brandbar-logo { height: 88px; width: auto; display: block; }
+.brandbar-tag { font-family: Poppins, Inter, sans-serif; font-weight: 700; font-size: 13px;
+  color: #fff; background: var(--grad); padding: 4px 12px; border-radius: 8px; letter-spacing: .3px; }
+.accent-strip { height: 3px; background: var(--grad); }
+
+.app { display: flex; min-height: calc(100vh - 115px); }
 .sidebar {
-  width: 220px; background: var(--sidebar); color: #fff; padding: 18px 12px;
-  position: sticky; top: 0; height: 100vh; flex-shrink: 0;
+  width: 220px; background: var(--sidebar); color: #fff; padding: 18px 12px 24px;
+  flex-shrink: 0;
 }
-.brand { display: flex; align-items: center; gap: 9px; font-family: Poppins, Inter, sans-serif;
-  font-weight: 600; font-size: 15px; padding: 4px 8px 18px; }
-.brand .dot { width: 22px; height: 22px; border-radius: 6px; background: var(--grad); }
 .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px;
   color: var(--sidebar-muted); cursor: pointer; font-weight: 500; margin-bottom: 2px; }
 .nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }

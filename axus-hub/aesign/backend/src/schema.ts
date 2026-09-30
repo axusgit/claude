@@ -34,6 +34,7 @@ alter table envelope add column if not exists archived boolean not null default 
 alter table envelope add column if not exists archived_at timestamptz;
 alter table envelope add column if not exists deleted boolean not null default false;   -- soft-deleted → Recycle Bin (auto-flushed after 90 days)
 alter table envelope add column if not exists deleted_at timestamptz;
+alter table envelope add column if not exists callback_url text;   -- external product to POST on completion (e.g. Subcontractors)
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),

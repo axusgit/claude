@@ -6,14 +6,19 @@
   <title>Subcontractors — Axus</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/staff.css?v=1">
+  <link rel="stylesheet" href="/static/staff.css?v=5">
 </head>
 <body>
+  <header class="brandbar">
+    <img class="brandbar-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus Technologies">
+    <span class="brandbar-tag">Subcontractors</span>
+  </header>
+  <div class="accent-strip"></div>
   <div class="app">
     <aside class="sidebar">
-      <div class="brand"><span class="dot"></span> Subcontractors</div>
       <div class="nav-item" data-view="dashboard">📊 Dashboard</div>
       <div class="nav-item" data-view="directory">📇 Directory</div>
+      <div class="nav-item" data-view="manual">📖 Manual</div>
     </aside>
     <div class="main">
       <div class="topbar">
@@ -48,6 +53,64 @@
 
         <!-- Detail -->
         <section id="view-detail" class="hidden"></section>
+
+        <!-- Manual -->
+        <section id="view-manual" class="hidden">
+          <div class="manual" style="max-width:900px">
+            <div class="card">
+              <h3>Subcontractor onboarding — how it works</h3>
+              <p class="muted">Onboarding takes a subcontractor from first contact to an approved, compliant vendor. Staff drive it from this console; the subcontractor completes their part through a secure link we email them.</p>
+            </div>
+
+            <div class="card">
+              <h3>The process, step by step</h3>
+              <ol style="line-height:1.7;padding-left:20px;margin:0">
+                <li><strong>Add the subcontractor.</strong> Go to <strong>Directory → + Add Subcontractor</strong>. Company legal name and email are required; add contact, address, and services if you have them. The record starts in <span class="badge b-info">invited</span>.</li>
+                <li><strong>Send the invite.</strong> Open the subcontractor and click <strong>✉ Send / resend invite</strong>. They get a secure, single-use onboarding link by email. You can resend it anytime.</li>
+                <li><strong>Subcontractor completes onboarding.</strong> Through that link they confirm their company profile and submit the three required items:
+                  <ul style="margin:6px 0">
+                    <li><strong>W-9</strong> — tax form (uploaded)</li>
+                    <li><strong>COI</strong> — Certificate of Insurance (uploaded)</li>
+                    <li><strong>Subcontractor Agreement</strong> — signed electronically via Axus eSign</li>
+                  </ul>
+                  Status moves <span class="badge b-info">invited</span> → <span class="badge b-info">onboarding</span> → <span class="badge b-warn">pending review</span>.</li>
+                <li><strong>Review the documents.</strong> Open the subcontractor → <strong>Documents</strong>, then <strong>Approve</strong> or <strong>Reject</strong> each one.
+                  <ul style="margin:6px 0">
+                    <li>Approving a <strong>COI</strong> asks for its <strong>expiration date</strong> — that drives renewal tracking.</li>
+                    <li>The <strong>Agreement</strong> is completed in eSign; on signature it records the signed date and a <strong>24-month renewal date</strong> automatically.</li>
+                    <li>Rejecting sends it back to the subcontractor for correction (add a reason).</li>
+                  </ul>
+                </li>
+                <li><strong>Approve the vendor.</strong> When W-9, COI, and Agreement are all approved, overall <strong>Compliance</strong> becomes <span class="badge b-ok">compliant</span>. Click <strong>Approve</strong> to set the vendor <span class="badge b-ok">approved</span>. Other actions: <strong>Request correction</strong>, <strong>Hold</strong>, <strong>Mark inactive</strong>.</li>
+                <li><strong>Stay compliant (ongoing).</strong> The <strong>Dashboard</strong> surfaces what needs attention — COIs expiring in 30 days or expired, agreements due or overdue (24-month renewal), missing W-9s, and non-compliant vendors. Click any tile to jump to that filtered list.</li>
+              </ol>
+            </div>
+
+            <div class="card">
+              <h3>Status reference</h3>
+              <p style="line-height:1.9;margin:0">
+                <span class="badge b-info">invited</span> added, not yet started ·
+                <span class="badge b-info">onboarding</span> subcontractor is filling it out ·
+                <span class="badge b-warn">pending review</span> waiting on staff ·
+                <span class="badge b-ok">approved</span> compliant &amp; active ·
+                <span class="badge b-warn">missing documents</span> ·
+                <span class="badge b-warn">expiring soon</span> COI/agreement nearing renewal ·
+                <span class="badge b-bad">non compliant</span> ·
+                <span class="badge b-muted">on hold</span> / <span class="badge b-muted">inactive</span>
+              </p>
+              <p class="muted" style="margin-top:10px">Overall compliance is computed from the three items: W-9, COI (with its expiration), and the signed Agreement.</p>
+            </div>
+
+            <div class="card">
+              <h3>Good to know</h3>
+              <ul style="line-height:1.7;padding-left:20px;margin:0">
+                <li>Every change is recorded in each subcontractor's <strong>Activity</strong>; use <strong>Notes (internal)</strong> for staff-only remarks the subcontractor never sees.</li>
+                <li>Buttons you see are gated by your role (invite, approve, review documents, override compliance, deactivate) — if an action is missing, your role doesn't include it.</li>
+                <li>Nothing is emailed to the subcontractor except the invite and eSign agreement; reviews and notes stay internal.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>
@@ -76,6 +139,6 @@
     </div>
   </div>
 
-  <script src="/static/staff.js?v=1"></script>
+  <script src="/static/staff.js?v=6"></script>
 </body>
 </html>
