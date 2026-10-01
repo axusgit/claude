@@ -88,7 +88,9 @@ td .cid { color: var(--muted); font-size: 12px; }
   text-align: center; font-size: 10.5px; line-height: 1; white-space: nowrap;
 }
 
-.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+/* Extra top padding nudges the pill text down so it reads optically centered
+   (single-line labels sit high otherwise). */
+.badge { display: inline-block; padding: 4px 9px 1px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.1; }
 .b-ok { background: #dcfce7; color: #166534; }
 .b-warn { background: #fef3c7; color: #92400e; }
 .b-bad { background: #fee2e2; color: #991b1b; }
