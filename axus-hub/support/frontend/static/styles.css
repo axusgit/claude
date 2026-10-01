@@ -210,11 +210,13 @@ html[data-theme="dark"] .topbar-logo { content: url('/static/axus-logo-dark.png'
 .badge.in_progress { background: #fff3e0; color: #d9701a; }
 .badge.waiting     { background: #f3e8ff; color: #8b5cf6; }
 .badge.resolved    { background: #e7f8ef; color: #16a34a; }
+.badge.scheduled   { background: #d9f3f0; color: #0d9488; }
 .badge.closed      { background: #eef0f3; color: #6b7280; }
 html[data-theme="dark"] .badge.open        { background: rgba(37,99,235,.18); color: #7aa7ff; }
 html[data-theme="dark"] .badge.in_progress { background: rgba(217,112,26,.20); color: #f0a35a; }
 html[data-theme="dark"] .badge.waiting     { background: rgba(139,92,246,.20); color: #c4a8ff; }
 html[data-theme="dark"] .badge.resolved    { background: rgba(22,163,74,.20); color: #5fd693; }
+html[data-theme="dark"] .badge.scheduled   { background: rgba(13,148,136,.22); color: #5ecfc0; }
 html[data-theme="dark"] .badge.closed      { background: rgba(107,114,128,.22); color: #aab2bf; }
 
 .prio { font-size: 12px; font-weight: 600; text-transform: capitalize; }

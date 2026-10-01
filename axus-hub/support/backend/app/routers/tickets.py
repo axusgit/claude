@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, B
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from uuid import uuid4
 import os
 import random
@@ -91,6 +91,7 @@ class TicketIn(BaseModel):
     contact_address: Optional[str] = None   # optional customer contact info
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
+    scheduled_date: Optional[date] = None
 
 
 class TicketUpdate(BaseModel):
@@ -108,6 +109,7 @@ class TicketUpdate(BaseModel):
     contact_address: Optional[str] = None
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
+    scheduled_date: Optional[date] = None
 
 
 class TimeEntryIn(BaseModel):
@@ -222,6 +224,7 @@ class TicketOut(BaseModel):
     contact_address: Optional[str] = None
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
+    scheduled_date: Optional[date] = None
 
     class Config:
         from_attributes = True
@@ -415,6 +418,10 @@ def update_ticket(ticket_id: int, data: TicketUpdate, background: BackgroundTask
     # Auto-close timestamp
     if data.status == TicketStatus.closed and not ticket.closed_at:
         ticket.closed_at = datetime.utcnow()
+
+    # A scheduled date only applies while the ticket is Scheduled.
+    if str(getattr(ticket.status, "value", ticket.status)) != "scheduled":
+        ticket.scheduled_date = None
 
     for field, label in AUDITED_FIELDS.items():
         if field in changes and changes[field] != old[field]:

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Enum, ForeignKey, DateTime, Float, Boolean
+from sqlalchemy import Column, Integer, String, Text, Enum, ForeignKey, DateTime, Date, Float, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
@@ -9,6 +9,7 @@ class TicketStatus(str, enum.Enum):
     open = "open"
     in_progress = "in_progress"
     waiting = "waiting"
+    scheduled = "scheduled"
     closed = "closed"
 
 
@@ -59,6 +60,7 @@ class Ticket(Base):
     contact_address = Column(Text, nullable=True)   # customer-provided when opening via portal
     contact_phone = Column(String, nullable=True)   # customer-provided when opening via portal
     po_number = Column(String, nullable=True)        # customer PO#, optional, captured at portal open
+    scheduled_date = Column(Date, nullable=True)     # set when status == scheduled
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
     priority = Column(Enum(TicketPriority), default=TicketPriority.medium, nullable=False)
     ticket_type = Column(Enum(TicketType), default=TicketType.standard, nullable=False)

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=72" />
+  <link rel="stylesheet" href="/static/styles.css?v=73" />
   <link rel="stylesheet" href="/static/staff.css?v=91" />
 </head>
 <body>
@@ -163,7 +163,7 @@
           <div class="stats-row" id="stats-row"></div>
           <div class="toolbar">
             <input type="search" id="search" placeholder="Search ref, subject, business…" class="search-box" />
-            <select id="f-status"><option value="">All statuses</option><option value="open">Open</option><option value="in_progress">In Progress</option><option value="waiting">Waiting</option><option value="closed">Closed</option></select>
+            <select id="f-status"><option value="">All statuses</option><option value="open">Open</option><option value="in_progress">In Progress</option><option value="waiting">Waiting</option><option value="scheduled">Scheduled</option><option value="closed">Closed</option></select>
             <select id="f-priority"><option value="">All priorities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Normal</option><option value="low">Low</option></select>
             <select id="f-client"><option value="">All companies</option></select>
             <h3 class="queue-title" id="queue-title"></h3>
@@ -209,8 +209,12 @@
               <label class="ctl">Status
                 <select id="d-status">
                   <option value="open">Open</option>
+                  <option value="scheduled">Scheduled</option>
                   <option value="closed">Closed</option>
                 </select>
+              </label>
+              <label class="ctl" id="d-scheduled-wrap" hidden>Scheduled date
+                <input type="date" id="d-scheduled-date" />
               </label>
               <label class="ctl">Priority
                 <select id="d-priority">
@@ -644,6 +648,6 @@
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="/static/confirm.js?v=1"></script>
-  <script src="/static/staff.js?v=111"></script>
+  <script src="/static/staff.js?v=112"></script>
 </body>
 </html>

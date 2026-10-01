@@ -149,6 +149,20 @@ const Staff = (() => {
     low: "Low — a minor or non-urgent request scheduled after higher-priority work.",
   };
   const statusLabel = s => cap(s);
+  // Format a date-only string ("YYYY-MM-DD") without a timezone shift.
+  function schedDate(s) {
+    if (!s) return "";
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    if (!m) return s;
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  }
+  // Show/hide + populate the detail "Scheduled date" field based on status.
+  function toggleScheduled(status) {
+    const wrap = $("d-scheduled-wrap");
+    if (!wrap) return;
+    wrap.hidden = status !== "scheduled";
+  }
   function fmtDate(s) {
     if (!s) return "";
     // Always show activity times in Axus's timezone (US Eastern, EDT/EST), not the
@@ -580,7 +594,7 @@ const Staff = (() => {
         <td class="cell-muted col-company">${esc(t.client_name || clientMap[t.client_id] || "—")}</td>
         <td class="cell-muted col-board">${t.board_id ? esc(boardMap[t.board_id] || "—") : "—"}</td>
         <td class="col-priority"><span class="prio-dot prio ${t.priority}">${prioLabel(t.priority)}</span></td>
-        <td class="col-status"><span class="badge ${t.status}">${cap(t.status)}</span></td>
+        <td class="col-status"><span class="badge ${t.status}">${cap(t.status)}</span>${t.status === "scheduled" && t.scheduled_date ? `<div class="sched-date">${schedDate(t.scheduled_date)}</div>` : ""}</td>
         <td class="col-assignee">${aName
           ? `<span class="assignee-pill"><span class="mini-avatar" style="${avatarStyle(avatarColor(aName))}">${initials(aName)}</span>${esc(aName)}</span>`
           : `<span class="assignee-pill"><span class="mini-avatar none">?</span><span class="cell-muted">Unassigned</span></span>`}</td>
@@ -762,6 +776,8 @@ const Staff = (() => {
     $("d-title").textContent = current.title;
     $("d-desc").textContent = current.description || "No description provided.";
     $("d-status").value = current.status;
+    $("d-scheduled-date").value = current.scheduled_date || "";
+    toggleScheduled(current.status);
     $("d-priority").value = current.priority;
     $("d-assignee").value = current.assigned_to_id || "";
     $("d-board").value = current.board_id || "";
@@ -1033,6 +1049,8 @@ const Staff = (() => {
       $("d-status-badge").className = "badge " + current.status;
       $("d-status-badge").textContent = statusLabel(current.status);
       $("reopen-btn").hidden = current.status !== "closed";
+      $("d-scheduled-date").value = current.scheduled_date || "";
+      toggleScheduled(current.status);
     }
     if (field === "priority") {
       $("d-prio-badge").className = "prio-badge " + value;
@@ -2030,7 +2048,8 @@ const Staff = (() => {
     wireNavDD("users-dd-btn", "users-dd-menu", () => { showUsers(); renderUsers(); });
 
     // detail controls
-    $("d-status").onchange = e => patch("status", e.target.value);
+    $("d-status").onchange = e => { toggleScheduled(e.target.value); patch("status", e.target.value); };
+    $("d-scheduled-date").onchange = e => patch("scheduled_date", e.target.value || null);
     $("d-priority").onchange = e => patch("priority", e.target.value);
     $("d-assignee").onchange = e => { if (e.target.value) patch("assigned_to_id", parseInt(e.target.value)); };
     $("d-board").onchange = e => patch("board_id", e.target.value ? parseInt(e.target.value) : null);
