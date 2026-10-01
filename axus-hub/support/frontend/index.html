@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=70" />
+  <link rel="stylesheet" href="/static/styles.css?v=71" />
   <link rel="stylesheet" href="/static/portal.css?v=37" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
@@ -265,15 +265,17 @@
             </select>
           </label>
         </div>
-        <label>Service address <span class="nt-optional">(optional)</span>
-          <input type="text" id="nt-address" placeholder="Street, city, state, ZIP" autocomplete="street-address" />
-        </label>
-        <label>Phone number <span class="nt-optional">(optional)</span>
-          <input type="tel" id="nt-phone" placeholder="(xxx) xxx-xxxx" autocomplete="tel" />
-        </label>
-        <label>PO # <span class="nt-optional">(optional)</span>
-          <input type="text" id="nt-po" placeholder="Purchase order number" autocomplete="off" />
-        </label>
+        <div class="form-row form-row-3">
+          <label>Service address <span class="nt-optional">(optional)</span>
+            <input type="text" id="nt-address" placeholder="Street, city, state, ZIP" autocomplete="street-address" />
+          </label>
+          <label>Phone number <span class="nt-optional">(optional)</span>
+            <input type="tel" id="nt-phone" placeholder="(xxx) xxx-xxxx" autocomplete="tel" />
+          </label>
+          <label>PO # <span class="nt-optional">(optional)</span>
+            <input type="text" id="nt-po" placeholder="Purchase order number" autocomplete="off" />
+          </label>
+        </div>
         <div class="nt-attach-label">Attachments <span class="nt-optional">(optional)</span></div>
         <label class="upload-box" id="nt-upload-box">
           <input type="file" id="nt-files" multiple hidden

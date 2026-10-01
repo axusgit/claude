@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=70" />
+  <link rel="stylesheet" href="/static/styles.css?v=71" />
   <link rel="stylesheet" href="/static/staff.css?v=91" />
 </head>
 <body>
@@ -573,6 +573,11 @@
             <option value="monitoring">Monitoring / Alert</option>
           </select></label>
         </div>
+        <div class="form-row form-row-3">
+          <label>Service address <span class="muted">(optional)</span><input type="text" id="nt-address" placeholder="Street, city, state, ZIP" autocomplete="street-address" /></label>
+          <label>Phone number <span class="muted">(optional)</span><input type="tel" id="nt-phone" placeholder="(xxx) xxx-xxxx" autocomplete="tel" /></label>
+          <label>PO # <span class="muted">(optional)</span><input type="text" id="nt-po" placeholder="Purchase order number" autocomplete="off" /></label>
+        </div>
         <div id="nt-error" class="form-error"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="nt-cancel">Cancel</button><button type="submit" class="btn btn-primary" id="nt-submit">Create ticket</button></div>
       </form>
@@ -639,6 +644,6 @@
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="/static/confirm.js?v=1"></script>
-  <script src="/static/staff.js?v=110"></script>
+  <script src="/static/staff.js?v=111"></script>
 </body>
 </html>

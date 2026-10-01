@@ -88,6 +88,9 @@ class TicketIn(BaseModel):
     assigned_to_id: Optional[int] = None
     project_id: Optional[int] = None        # parent project (a ticket of type sow)
     origin: Optional[str] = None            # where it came from; defaults by creator role
+    contact_address: Optional[str] = None   # optional customer contact info
+    contact_phone: Optional[str] = None
+    po_number: Optional[str] = None
 
 
 class TicketUpdate(BaseModel):
@@ -102,6 +105,9 @@ class TicketUpdate(BaseModel):
     assigned_to_id: Optional[int] = None
     project_id: Optional[int] = None
     origin: Optional[str] = None
+    contact_address: Optional[str] = None
+    contact_phone: Optional[str] = None
+    po_number: Optional[str] = None
 
 
 class TimeEntryIn(BaseModel):

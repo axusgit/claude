@@ -1789,6 +1789,9 @@ const Staff = (() => {
     $("nt-priority").value = t.priority;
     $("nt-assignee").value = t.assigned_to_id ? String(t.assigned_to_id) : "";
     $("nt-origin").value = t.origin || "axus_tech";
+    $("nt-address").value = t.contact_address || "";
+    $("nt-phone").value = t.contact_phone || "";
+    $("nt-po").value = t.po_number || "";
     $("new-modal").classList.remove("hidden");
     // load the business's users, then select the current reporter
     await loadUsersInto($("nt-contact"), String(t.client_id));
@@ -2145,6 +2148,9 @@ const Staff = (() => {
       const bd = $("nt-board").value; if (bd) payload.board_id = parseInt(bd);
       const pj = $("nt-project").value; if (pj) payload.project_id = parseInt(pj);
       const og = $("nt-origin").value; if (og) payload.origin = og;
+      payload.contact_address = $("nt-address").value.trim() || null;
+      payload.contact_phone = $("nt-phone").value.trim() || null;
+      payload.po_number = $("nt-po").value.trim() || null;
       try {
         if (ticketEditId) {
           await api(`/api/tickets/${ticketEditId}`, { method: "PUT", body: payload });
