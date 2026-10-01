@@ -169,3 +169,6 @@ html[data-theme="dark"] .brandbar-logo { content: url('/static/axus-logo-dark.pn
   .detail-grid { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
 }
+
+/* Required-field marker on the Add Subcontractor form */
+.req { color: var(--orange, #f26522); font-weight: 700; }

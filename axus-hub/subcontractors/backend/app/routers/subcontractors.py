@@ -75,7 +75,23 @@ def create_subcontractor(
     db: Session = Depends(get_db),
     user: AppUser = Depends(require_permission(P_CREATE)),
 ):
-    sub = Subcontractor(vendor_status="onboarding", **payload.model_dump())
+    # Require the company details up front (so the agreement — sent first — can be
+    # generated and never blocks later). Mirrors services.REQUIRED_COMPANY_FIELDS.
+    from app import services
+    _LABELS = {
+        "legal_name": "legal name", "primary_contact_name": "primary contact",
+        "email": "email", "phone": "phone", "address": "address",
+        "city": "city", "state": "state", "zip": "ZIP",
+    }
+    data = payload.model_dump()
+    missing = [_LABELS.get(f, f) for f in services.REQUIRED_COMPANY_FIELDS
+               if not str(data.get(f) or "").strip()]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="Please add the company's details before creating the subcontractor: "
+                   + ", ".join(missing) + ".")
+    sub = Subcontractor(vendor_status="onboarding", **data)
     db.add(sub)
     db.flush()  # assign PK so we can derive the permanent public id
     sub.public_id = format_public_id(sub.id)

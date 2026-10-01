@@ -44,8 +44,15 @@ def client():
 def make_vendor(client):
     def _make(name, email=None, **extra):
         email = email or (name.lower().replace(" ", "") + "@example.com")
-        r = client.post("/api/subcontractors",
-                        json={"legal_name": name, "email": email, **extra})
+        # Create now requires the full company detail set (agreement-first flow);
+        # provide sensible defaults so fixtures stay terse, overridable via **extra.
+        base = {
+            "legal_name": name, "email": email,
+            "primary_contact_name": "Test Contact", "phone": "813-555-0100",
+            "address": "1 Test St", "city": "Tampa", "state": "FL", "zip": "33626",
+        }
+        base.update(extra)
+        r = client.post("/api/subcontractors", json=base)
         assert r.status_code == 201, r.text
         return r.json()
     return _make

@@ -109,6 +109,9 @@ def test_inactive_stops_reminders(client, make_vendor):
 def test_engine_idempotent(client, make_vendor):
     v = make_vendor("Idem Co")
     tok = _token(client.post(f"/api/subcontractors/{v['id']}/invite").json())
+    # Inverted flow: W-9/COI (the onboarding reminder's subject) are only outstanding
+    # once the agreement is signed, so sign it before exercising the reminder cadence.
+    _complete_agreement(v["id"])
     from app.database import SessionLocal
     from app import compliance
     from app.models.document_request import DocumentRequest

@@ -336,7 +336,18 @@
       "city","state","zip","website","services_provided"];
     const body = {};
     fields.forEach(f => { const val = $("#f-"+f).value.trim(); if (val) body[f] = val; });
-    if (!body.legal_name || !body.email) { await uiAlert("Company name and email are required.", "Missing information"); return; }
+    // Agreement-first flow: the full company detail set is required at creation (so the
+    // agreement can be generated and sent without blocking). Validate before the POST.
+    const REQUIRED = {
+      legal_name: "legal name", primary_contact_name: "primary contact", email: "email",
+      phone: "phone", address: "address", city: "city", state: "state", zip: "ZIP",
+    };
+    const missing = Object.keys(REQUIRED).filter(f => !body[f]).map(f => REQUIRED[f]);
+    if (missing.length) {
+      await uiAlert("Please add the company's details before creating the subcontractor: "
+        + missing.join(", ") + ".", "Missing information");
+      return;
+    }
     try {
       const v = await api("/api/subcontractors", { method:"POST", body: JSON.stringify(body) });
       closeAdd();
