@@ -61,6 +61,11 @@ def _v(x):
     return x.value if hasattr(x, "value") else x
 
 
+def _biz(t) -> str:
+    """Business name for email subjects; em-dash when unknown."""
+    return (t.client.company_name if t.client else "") or "—"
+
+
 def _staff_emails(db, exclude_id=None):
     # Accounts parked in the hidden "Dummy Business" (e.g. the Authentik default
     # admin) never receive staff notifications.
@@ -99,7 +104,7 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
             return
         # New tickets go ONLY to the intake inbox (info@); staff monitor that inbox.
         if NEW_TICKET_INBOX:
-            mailer.send_email(_to([NEW_TICKET_INBOX]), f"[New] {t.reference} · {t.title}",
+            mailer.send_email(_to([NEW_TICKET_INBOX]), f"[New] {_biz(t)} · {t.reference} · {t.title}",
                               _body(t, "A new ticket was created.", include_desc=True))
     except Exception as e:
         print(f"[notify] new_ticket failed: {e}", flush=True)
@@ -116,7 +121,7 @@ def notify_assignment(ticket_id: int, assignee_id: int, by_user_id=None):
         a = db.query(User).filter(User.id == assignee_id).first()
         # Assignment notifies ONLY the assigned staff member (not the intake inbox).
         if t and a and a.email and a.email.lower() not in SYS_EMAILS:
-            mailer.send_email(_to([a.email]), f"[Assigned] {t.reference} · {t.title}",
+            mailer.send_email(_to([a.email]), f"[Assigned] {_biz(t)} · {t.reference} · {t.title}",
                               _body(t, "You've been assigned this ticket."))
     except Exception as e:
         print(f"[notify] assignment failed: {e}", flush=True)
@@ -140,7 +145,7 @@ def notify_customer_reply(ticket_id: int):
         if not recips:  # unassigned — let the whole team know a customer is waiting
             recips = _staff_emails(db)
         if recips:
-            mailer.send_email(_to(recips), f"[Reply] {t.reference} · {t.title}",
+            mailer.send_email(_to(recips), f"[Reply] {_biz(t)} · {t.reference} · {t.title}",
                               _body(t, "A customer replied on this ticket."))
     except Exception as e:
         print(f"[notify] customer_reply failed: {e}", flush=True)
