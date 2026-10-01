@@ -60,6 +60,13 @@ a { color: var(--orange); text-decoration: none; }
 .stat-card.bad .stat-num { color: var(--bad); }
 
 .toolbar { display: flex; gap: 10px; margin: 8px 0 16px; flex-wrap: wrap; align-items: center; }
+/* Freeze the detail top bar (← Directory + actions) above the properties while
+   scrolling a subcontractor — mirrors the Support ticket header freeze. */
+#view-detail .toolbar {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--bg); padding: 10px 0; margin: 0 0 16px;
+  border-bottom: 1px solid var(--border);
+}
 input, select, textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border);
   border-radius: 8px; background: var(--surface); color: var(--text); }
 input:focus, select:focus, textarea:focus { outline: 2px solid rgba(242,101,34,.25); border-color: var(--orange); }
@@ -74,6 +81,11 @@ th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spa
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--surface-2); }
 td .cid { color: var(--muted); font-size: 12px; }
+/* Directory: the subcontractor ID reads like the Support ticket reference —
+   ~40% larger, bold, accent-colored. */
+#view-directory table td:first-child .cid {
+  font-size: 16.8px; font-weight: 700; color: var(--orange);
+}
 /* Directory: center the status/badge columns (W-9, COI, Agreement, Compliance, Status)
    and vertically center every row, so all badges sit on one line (the Status line). */
 #view-directory table th, #view-directory table td { vertical-align: middle; }
