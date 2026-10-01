@@ -1082,11 +1082,14 @@ const Staff = (() => {
     };
     $("ai-ask-accept").onclick = () => {
       if (!askLastDraft) return;
-      $("nt-desc").value = askLastDraft;
-      $("nt-desc").style.height = "";
-      closeAskAssistant();
-      $("nt-desc").focus();
-      toast("Description added — review before saving");
+      const box = $("nt-desc");
+      const existing = box.value.trim();
+      // Append — never replace what's already in the Description box.
+      box.value = existing ? existing + "\n\n" + askLastDraft : askLastDraft;
+      box.style.height = "";
+      askLastDraft = "";                       // consumed — don't add the same draft twice
+      $("ai-ask-accept").disabled = true;      // re-enabled when the next AI reply arrives
+      toast("Added to description — keep asking or close when done");
     };
   }
 

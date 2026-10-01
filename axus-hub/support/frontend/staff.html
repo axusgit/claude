@@ -566,7 +566,7 @@
   <div id="ai-ask-modal" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-head"><h2>🤖 AI Assistant</h2><button class="modal-x" id="ai-ask-close">×</button></div>
-      <p class="ai-ask-hint">Ask for help writing the ticket description — how to phrase it, what to include, or ask it to draft one for you. When you're happy with a draft, click <strong>Use this description</strong> and it drops into the Description box.</p>
+      <p class="ai-ask-hint">Ask for help writing the ticket description — how to phrase it, what to include, or ask it to draft one for you. When you're happy with a draft, click <strong>Add to description</strong> and it's appended to the Description box (it never replaces what's already there). Keep asking to add more.</p>
       <div id="ai-ask-log" class="ai-ask-log"></div>
       <form id="ai-ask-form" class="ai-ask-input">
         <textarea id="ai-ask-text" rows="2" placeholder="e.g. Help me write this up: the user's laptop won't connect to Wi-Fi after the latest Windows update"></textarea>
@@ -574,7 +574,7 @@
       </form>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="ai-ask-cancel">Cancel</button>
-        <button type="button" class="btn btn-primary" id="ai-ask-accept" disabled>Use this description</button>
+        <button type="button" class="btn btn-primary" id="ai-ask-accept" disabled>Add to description</button>
       </div>
     </div>
   </div>
