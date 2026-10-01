@@ -1,7 +1,7 @@
 """Staff actions: send / resend / cancel an onboarding invitation."""
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,6 +17,11 @@ router = APIRouter(prefix="/api/subcontractors", tags=["invite"])
 
 
 def _do_invite(db: Session, sub, actor: str, resend: bool) -> dict:
+    # An approved company has finished onboarding — don't (re)send an onboarding invite.
+    if sub.vendor_status == "approved":
+        raise HTTPException(
+            status_code=409,
+            detail="This company is already approved — there's no onboarding to invite them to.")
     raw = issue_token(db, sub.id)
     link = services.portal_link(raw)
     req = services.get_or_create_onboarding_request(db, sub)

@@ -252,6 +252,12 @@
 
   async function doInvite(id) {
     try {
+      let v = null;
+      try { v = await api(`/api/subcontractors/${id}`); } catch (e) {}
+      if (v && v.vendor_status === "approved") {
+        await uiAlert("This company is already approved — there's no onboarding to invite them to.", "Already approved");
+        return;
+      }
       const r = await api(`/api/subcontractors/${id}/invite`, { method:"POST" });
       await uiAlert("Invitation " + (r.emailed ? "emailed." : "created (email disabled)."), "Invitation");
       openDetail(id);
