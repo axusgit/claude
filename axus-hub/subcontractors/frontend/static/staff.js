@@ -253,8 +253,7 @@
   async function doInvite(id) {
     try {
       const r = await api(`/api/subcontractors/${id}/invite`, { method:"POST" });
-      await uiAlert("Invitation " + (r.emailed ? "emailed." : "created (email disabled).") +
-            "\n\nOnboarding link:\n" + r.link, "Invitation");
+      await uiAlert("Invitation " + (r.emailed ? "emailed." : "created (email disabled)."), "Invitation");
       openDetail(id);
     } catch (e) { await uiAlert("Error: " + e.message, "Error"); }
   }
