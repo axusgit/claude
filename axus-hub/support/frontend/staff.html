@@ -530,7 +530,10 @@
         <label id="nt-project-wrap">Project <span class="muted">(optional)</span><select id="nt-project"><option value="">— None —</option></select></label>
         <label>Description
           <textarea id="nt-desc" rows="12" placeholder="Details…"></textarea>
-          <button type="button" class="btn btn-ghost btn-ai" id="ai-rewrite-desc" title="Rewrite the description with AI">✨ Rewrite</button>
+          <div class="nt-desc-ai">
+            <button type="button" class="btn btn-ghost btn-ai" id="ai-ask-desc" title="Ask an AI assistant to help you write the description">🤖 Ask AI Assistant</button>
+            <button type="button" class="btn btn-ghost btn-ai" id="ai-rewrite-desc" title="Rewrite the description with AI">✨ Rewrite</button>
+          </div>
         </label>
         <div class="nt-attach-label">Attachments <span class="muted">(optional)</span></div>
         <label class="upload-box" id="nt-upload-box">
@@ -556,6 +559,23 @@
         <div id="nt-error" class="form-error"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="nt-cancel">Cancel</button><button type="submit" class="btn btn-primary" id="nt-submit">Create ticket</button></div>
       </form>
+    </div>
+  </div>
+
+  <!-- AI ASSISTANT MODAL (helps write the New Ticket description) -->
+  <div id="ai-ask-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><h2>🤖 AI Assistant</h2><button class="modal-x" id="ai-ask-close">×</button></div>
+      <p class="ai-ask-hint">Ask for help writing the ticket description — how to phrase it, what to include, or ask it to draft one for you. When you're happy with a draft, click <strong>Use this description</strong> and it drops into the Description box.</p>
+      <div id="ai-ask-log" class="ai-ask-log"></div>
+      <form id="ai-ask-form" class="ai-ask-input">
+        <textarea id="ai-ask-text" rows="2" placeholder="e.g. Help me write this up: the user's laptop won't connect to Wi-Fi after the latest Windows update"></textarea>
+        <button type="submit" class="btn btn-primary" id="ai-ask-send">Send</button>
+      </form>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="ai-ask-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="ai-ask-accept" disabled>Use this description</button>
+      </div>
     </div>
   </div>
 

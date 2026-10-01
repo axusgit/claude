@@ -1022,6 +1022,74 @@ const Staff = (() => {
     finally { btn.disabled = false; btn.textContent = orig; }
   }
 
+  /* ---------- Ask AI Assistant: chat helper for the New Ticket description ---------- */
+  let askMessages = [];          // {role:'user'|'assistant', content}
+  let askLastDraft = "";         // most recent AI reply — what "Use this description" inserts
+  function renderAskLog() {
+    const box = $("ai-ask-log");
+    if (!askMessages.length) {
+      box.innerHTML = '<div class="ai-ask-msg note">Ask a question to get started — e.g. “draft a description for this issue”.</div>';
+      return;
+    }
+    box.innerHTML = askMessages.map(m =>
+      `<div class="ai-ask-msg ${m.role === "assistant" ? "ai" : "user"}">${esc(m.content)}</div>`).join("");
+    box.scrollTop = box.scrollHeight;
+  }
+  function openAskAssistant() {
+    askMessages = []; askLastDraft = "";
+    $("ai-ask-accept").disabled = true;
+    $("ai-ask-text").value = "";
+    renderAskLog();
+    $("ai-ask-modal").classList.remove("hidden");
+    $("ai-ask-text").focus();
+  }
+  function closeAskAssistant() { $("ai-ask-modal").classList.add("hidden"); }
+  async function sendAskMessage() {
+    const inp = $("ai-ask-text");
+    const text = inp.value.trim();
+    if (!text) return;
+    const sendBtn = $("ai-ask-send");
+    if (sendBtn.disabled) return;
+    askMessages.push({ role: "user", content: text });
+    inp.value = ""; renderAskLog();
+    const orig = sendBtn.textContent;
+    sendBtn.disabled = true; sendBtn.textContent = "Thinking…";
+    try {
+      const r = await api("/api/ai/ask", {
+        method: "POST",
+        body: { messages: askMessages, description: $("nt-desc").value.trim() || null },
+      });
+      if (r && r.result) {
+        askMessages.push({ role: "assistant", content: r.result });
+        askLastDraft = r.result;
+        $("ai-ask-accept").disabled = false;
+        renderAskLog();
+      }
+    } catch (e) {
+      askMessages.pop();   // drop the unanswered question so the log stays consistent
+      renderAskLog();
+      toast("AI: " + (e.message || "request failed"));
+    } finally { sendBtn.disabled = false; sendBtn.textContent = orig; }
+  }
+  function wireAskAssistant() {
+    $("ai-ask-desc").onclick = openAskAssistant;
+    $("ai-ask-close").onclick = closeAskAssistant;
+    $("ai-ask-cancel").onclick = closeAskAssistant;
+    $("ai-ask-form").onsubmit = e => { e.preventDefault(); sendAskMessage(); };
+    // Enter sends, Shift+Enter makes a newline.
+    $("ai-ask-text").onkeydown = e => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAskMessage(); }
+    };
+    $("ai-ask-accept").onclick = () => {
+      if (!askLastDraft) return;
+      $("nt-desc").value = askLastDraft;
+      $("nt-desc").style.height = "";
+      closeAskAssistant();
+      $("nt-desc").focus();
+      toast("Description added — review before saving");
+    };
+  }
+
   /* ---------- Glossary (staff-only reference) ---------- */
   let glossaryData = [];
   async function loadGlossary() {
@@ -1890,6 +1958,8 @@ const Staff = (() => {
       } catch (e) { toast("AI: " + (e.message || "request failed")); }
       finally { btn.disabled = false; btn.textContent = orig; }
     };
+    // --- Ask AI Assistant (conversational description helper) ---
+    wireAskAssistant();
     $("canned-select").onchange = () => {
       const v = $("canned-select").value; $("canned-select").value = "";
       if (v === "__manage__") return openCannedModal();

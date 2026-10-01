@@ -12,7 +12,7 @@ import os
 import re
 import json
 import httpx
-from typing import Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -55,7 +55,8 @@ _SUGGEST_SYSTEM = (
 )
 
 
-def _chat(system: str, user: str, max_tokens: int = 700, temperature: float = 0.4) -> str:
+def _chat_raw(messages: list, max_tokens: int = 700, temperature: float = 0.4) -> str:
+    """Call the chat API with a prepared messages list (incl. the system message)."""
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=503, detail="AI is not configured yet.")
     try:
@@ -66,10 +67,7 @@ def _chat(system: str, user: str, max_tokens: int = 700, temperature: float = 0.
                 "model": AI_MODEL,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+                "messages": messages,
             },
             timeout=45,
         )
@@ -86,6 +84,13 @@ def _chat(system: str, user: str, max_tokens: int = 700, temperature: float = 0.
         raise HTTPException(status_code=502, detail=f"AI error: {detail}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI request failed: {e}")
+
+
+def _chat(system: str, user: str, max_tokens: int = 700, temperature: float = 0.4) -> str:
+    return _chat_raw(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        max_tokens=max_tokens, temperature=temperature,
+    )
 
 
 _TICKET_SYSTEM = (
@@ -161,3 +166,47 @@ def suggest(data: SuggestIn, db: Session = Depends(get_db), _: User = Depends(re
                f"Description:\n{(t.description or '(none)').strip()}\n\n"
                f"Conversation so far:\n{convo}")
     return {"result": _chat(_SUGGEST_SYSTEM, context[:12000])}
+
+
+# --- Conversational "Ask AI Assistant" for the New Ticket description ------------
+# A back-and-forth chat that helps a staff member write a clear ticket description:
+# they can ask how to phrase it, what to include, or have it draft one. The staff
+# member accepts the result, which drops into the description box. Staff-gated.
+_ASK_SYSTEM = (
+    "You are an AI writing assistant helping an Axus Technologies IT support technician write a "
+    "clear, professional support-ticket DESCRIPTION. Answer their questions about how to phrase, "
+    "structure, or improve the write-up, and when they ask, produce a clean, ready-to-paste "
+    "description. A good description is factual and concise and covers: what the issue is, the "
+    "affected device/service/user, when it started, any error messages, and steps already tried. "
+    "Only use information the technician gives you — never invent specifics; if something important "
+    "is missing, point out what to add. When you hand over a description they can use, return just "
+    "the description text itself with no preamble like 'Here is' and no quotation marks. " + _NO_FLUFF
+)
+
+
+class AskMsg(BaseModel):
+    role: str          # "user" (the staff member) or "assistant" (the AI)
+    content: str
+
+
+class AskIn(BaseModel):
+    messages: List[AskMsg]
+    description: Optional[str] = None   # the current draft in the box, for context
+
+
+@router.post("/ask")
+def ask(data: AskIn, _: User = Depends(require_staff)):
+    msgs = [{"role": "system", "content": _ASK_SYSTEM}]
+    draft = (data.description or "").strip()
+    if draft:
+        msgs.append({"role": "system",
+                     "content": "The technician's current draft description is:\n" + draft[:4000]})
+    for m in (data.messages or [])[-12:]:
+        content = (m.content or "").strip()
+        if not content:
+            continue
+        role = "assistant" if m.role == "assistant" else "user"
+        msgs.append({"role": role, "content": content[:4000]})
+    if not any(m["role"] == "user" for m in msgs):
+        raise HTTPException(status_code=400, detail="Ask a question first.")
+    return {"result": _chat_raw(msgs, max_tokens=800, temperature=0.5)}

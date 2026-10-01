@@ -75,15 +75,17 @@ def _staff_emails(db, exclude_id=None):
     return sorted(out)
 
 
-def _body(t, lead: str) -> str:
+def _body(t, lead: str, include_desc: bool = False) -> str:
     client = t.client.company_name if t.client else "—"
     url = _ticket_url()
+    desc = (t.description or "").strip()
     return (f"{lead}\n\n"
             f"Ref:      {t.reference}\n"
             f"Subject:  {t.title}\n"
             f"Business: {client}\n"
             f"Priority: {_v(t.priority)}\n"
             f"Status:   {_v(t.status)}\n"
+            + (f"\nDescription:\n{desc}\n" if include_desc and desc else "")
             + (f"\nOpen it: {url}\n" if url else ""))
 
 
@@ -98,7 +100,7 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
         # New tickets go ONLY to the intake inbox (info@); staff monitor that inbox.
         if NEW_TICKET_INBOX:
             mailer.send_email(_to([NEW_TICKET_INBOX]), f"[New] {t.reference} · {t.title}",
-                              _body(t, "A new ticket was created."))
+                              _body(t, "A new ticket was created.", include_desc=True))
     except Exception as e:
         print(f"[notify] new_ticket failed: {e}", flush=True)
     finally:
