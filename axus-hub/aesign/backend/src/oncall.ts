@@ -72,6 +72,37 @@ export async function notifyEnvelopeCallback(
   }
 }
 
+// Per-signer progress callback (e.g. the Subcontractors product wants to act the
+// moment the SUBCONTRACTOR signs — before the Axus counter-signature). Fired with a
+// custom `status` (e.g. "subcontractor_signed"); the receiver keys off that.
+export async function notifyEnvelopePartialCallback(
+  e: { id: string; callback_url?: string | null },
+  status: string,
+  signer: Signer | null,
+): Promise<void> {
+  const url = (e.callback_url ?? "").trim();
+  if (!url || !config.externalToken) return;
+  try {
+    const payload = {
+      envelopeId: e.id,
+      status,
+      signedAt: signer?.signed_at ?? null,
+      signer: signer ? { name: signer.name, email: signer.email } : null,
+    };
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${config.externalToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) console.error(`[callback] envelope ${e.id} (${status}) → ${url} failed: HTTP ${res.status}`);
+  } catch (err) {
+    console.error(`[callback] envelope ${e.id} (${status}) error: ${(err as Error).message}`);
+  }
+}
+
 export async function notifyOnCallQuoteCompleted(
   e: CompletedEnvelope,
   sealedBytes: Uint8Array,

@@ -10,12 +10,12 @@ import { sealPdf, type SealField, type SealRecipient } from "../seal.js";
 import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail.js";
 import { envelopeDocName } from "../docname.js";
 import { logActivity } from "./activity.js";
-import { isOnCallQuote, notifyOnCallQuoteCompleted, notifyEnvelopeCallback } from "../oncall.js";
+import { isOnCallQuote, notifyOnCallQuoteCompleted, notifyEnvelopeCallback, notifyEnvelopePartialCallback } from "../oncall.js";
 
 // Seal the CURRENT state and email every participant a copy. On the last
 // signature it adds the certificate page, marks the envelope completed, and
 // stores the sealed file. Returns whether it's now fully complete.
-async function sealAndNotify(envId: string, signerName: string): Promise<boolean> {
+async function sealAndNotify(envId: string, signerName: string, signerSignOrder?: number): Promise<boolean> {
   const env = await pool.query(
     `select id, title, pdf_file, sequential, created_by, doc_type, company, quote_data, callback_url from envelope where id = $1`,
     [envId],
@@ -27,7 +27,7 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     [envId],
   );
   const recs = await pool.query(
-    `select id, name, email, role, sign_token, ip, status, consent_at,
+    `select id, name, email, role, sign_token, ip, status, consent_at, sign_order,
             to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
      from recipient where envelope_id = $1 order by sign_order`,
     [envId],
@@ -37,6 +37,19 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
   const signers = recs.rows.filter((r) => r.role !== "viewer");
   const allSigned = signers.every((r) => r.status === "signed");
   logActivity(signerName, "Signed document", e.title, e.id);
+
+  // Inverted Subcontractor flow: notify the originating product the moment the
+  // SUBCONTRACTOR (sign_order 1) signs — before the Axus counter-signature — so it
+  // can request the W-9/COI. Independent of the final completion callback below, and
+  // it never sends the signed PDF to the subcontractor.
+  if (e.doc_type === "SUBCONTRACTOR" && e.callback_url && Number(signerSignOrder) === 1) {
+    const subRec = recs.rows.find((r) => Number(r.sign_order) === 1) ?? null;
+    void notifyEnvelopePartialCallback(
+      { id: e.id, callback_url: e.callback_url },
+      "subcontractor_signed",
+      subRec ? { name: subRec.name, email: subRec.email, signed_at: subRec.signed_at } : null,
+    );
+  }
 
   // A signer who is 'signed' but never consented electronically signed OFFLINE
   // (a paper copy uploaded by staff) — mark them so on the certificate.
@@ -67,6 +80,10 @@ async function sealAndNotify(envId: string, signerName: string): Promise<boolean
     );
     logActivity("system", "Completed document", e.title, e.id);
     for (const r of recs.rows) {
+      // Subcontractor Agreement: the subcontractor (sign_order 1) gets only the copy
+      // of their OWN signature (sent when they signed); the final both-signature copy
+      // is NOT sent to them — it goes to Axus + the notify inbox only.
+      if (e.doc_type === "SUBCONTRACTOR" && Number(r.sign_order) === 1) continue;
       await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment, envelopeId: envId, recipientId: r.id });
     }
     // Also notify the Axus team inbox (info@) with the final signed copy — always,
@@ -235,7 +252,7 @@ export async function signRoutes(app: FastifyInstance) {
     client.release();
 
     // Seal + email the current copy to everyone (final copy when all signed).
-    const completed = await sealAndNotify(envId, r.name);
+    const completed = await sealAndNotify(envId, r.name, r.sign_order);
     return { ok: true, completed };
   });
 
