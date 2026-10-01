@@ -108,7 +108,7 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .ticket-table tbody tr { cursor: pointer; transition: background .12s; }
 .ticket-table tbody tr:hover { background: var(--surface-2); }
 .ticket-table tbody tr:last-child td { border-bottom: none; }
-.cell-ref { font-weight: 700; color: var(--orange); white-space: nowrap; }
+.cell-ref { font-weight: 700; color: var(--orange); white-space: nowrap; font-size: 18.9px; }
 .cell-subject { font-weight: 600; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell-muted { color: var(--muted); white-space: nowrap; }
 .prio-dot { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; text-transform: capitalize; }
