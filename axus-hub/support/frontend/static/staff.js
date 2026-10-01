@@ -30,7 +30,17 @@ const Staff = (() => {
     let payload;
     if (form) payload = form;
     else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
-    const res = await fetch(path, { method, headers, body: payload });
+    let res;
+    try {
+      res = await fetch(path, { method, headers, body: payload });
+    } catch (e) {
+      // A thrown fetch is usually the Authentik forward-auth bouncing us cross-origin to
+      // the IdP (CORS-blocked). Confirm the SSO session and auto-reload if it's gone.
+      checkSso();
+      throw e;
+    }
+    // fetch followed a redirect to the login/IdP page instead of hitting our API.
+    if (res.redirected) { checkSso(); throw new Error("Session expired"); }
     if (res.status === 401) { logout(); throw new Error("Session expired"); }
     if (!res.ok) {
       let d = res.statusText;
@@ -39,6 +49,48 @@ const Staff = (() => {
     }
     const ct = res.headers.get("content-type") || "";
     return ct.includes("application/json") ? res.json() : res;
+  }
+
+  /* ---------- SSO session watchdog (auto-recover from an expired gateway session) ----------
+     Authentik forward-auth gates this whole domain. When its session lapses, same-origin
+     requests get bounced to the identity provider and the app silently hangs until a manual
+     hard refresh (Ctrl+Shift+R). We poll a tiny endpoint with redirect:"manual" — an
+     opaqueredirect means the gateway is sending us to login, i.e. the session is gone — and
+     reload the page, which re-runs the SSO flow and restores everything automatically. */
+  const AUTH_PING_MS = 3 * 60 * 1000;     // proactive check every 3 minutes
+  let _authReloading = false;
+  function _hasUnsavedWork() {
+    // Never yank the page out from under someone mid-typing.
+    const reply = document.getElementById("reply-body");
+    if (reply && (reply.value || "").trim()) return true;
+    const modal = document.querySelector(".modal-overlay:not(.hidden)");
+    if (modal && [...modal.querySelectorAll("textarea, input[type=text], input:not([type])")]
+        .some(el => (el.value || "").trim())) return true;
+    return false;
+  }
+  function reloadForAuth() {
+    if (_authReloading) return;
+    const now = Date.now();
+    const last = +(sessionStorage.getItem("axus-auth-reload") || 0);
+    if (now - last < 20000) return;       // guard against reload loops
+    if (_hasUnsavedWork()) return;        // defer — try again on the next tick
+    sessionStorage.setItem("axus-auth-reload", String(now));
+    _authReloading = true;
+    console.warn("[sso] gateway session expired — reloading to re-authenticate");
+    location.reload();
+  }
+  async function ssoAlive() {
+    try {
+      const res = await fetch("/api/health?_=" + Date.now(),
+        { method: "GET", redirect: "manual", cache: "no-store" });
+      return !(res.type === "opaqueredirect" || res.status === 0);
+    } catch (e) { return false; }
+  }
+  async function checkSso() { if (!(await ssoAlive())) reloadForAuth(); }
+  function startSsoWatch() {
+    setInterval(checkSso, AUTH_PING_MS);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) checkSso(); });
+    window.addEventListener("online", checkSso);
   }
 
   /* ---------- Helpers ---------- */
@@ -2042,6 +2094,7 @@ const Staff = (() => {
     // Try an existing session (stored JWT locally, or gateway identity in
     // central mode); fall back to the login screen.
     try { await enter(); } catch (e) { showLogin(); }
+    startSsoWatch();   // auto-recover if the SSO gateway session later expires
   }
   async function enter() { await loadAll(); showApp(); showDashboard(); }
 
