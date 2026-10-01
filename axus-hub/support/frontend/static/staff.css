@@ -72,7 +72,7 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .dash-list { display: flex; flex-direction: column; }
 /* Fixed columns so ref / title / status / business line up perfectly in vertical
    columns and pack to the left (no full-width stretch pushing them to the edge). */
-.dash-row { display: grid; grid-template-columns: 96px 560px 62px 200px; align-items: center; gap: 12px;
+.dash-row { display: grid; grid-template-columns: 96px 560px 104px 260px; align-items: center; gap: 12px;
   padding: 9px 6px; border-top: 1px solid var(--border); cursor: pointer; }
 .dash-row .badge { justify-self: start; }
 .dash-co { max-width: 200px; }
@@ -80,7 +80,7 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .dash-row:hover { background: var(--surface-2); }
 .dash-ref { font-weight: 700; font-size: 12px; color: var(--muted); font-family: "Space Grotesk", sans-serif; }
 .dash-title { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dash-co { font-size: 12px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-co { font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-empty { padding: 14px 6px; }
 .dash-team { display: flex; flex-direction: column; gap: 4px; }
 .dash-team-row { display: grid; grid-template-columns: 26px 160px 1fr 28px; align-items: center; gap: 10px; padding: 5px 0; }
@@ -109,6 +109,8 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .ticket-table tbody tr:hover { background: var(--surface-2); }
 .ticket-table tbody tr:last-child td { border-bottom: none; }
 .cell-ref { font-weight: 700; color: var(--orange); white-space: nowrap; font-size: 18.9px; }
+/* Scheduled date shown under the status badge on the ticket board. */
+.sched-date { font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
 .cell-subject { font-weight: 600; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell-muted { color: var(--muted); white-space: nowrap; }
 .prio-dot { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; text-transform: capitalize; }
