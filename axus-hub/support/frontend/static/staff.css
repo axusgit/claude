@@ -124,6 +124,17 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .dt-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dt-meta .detail-back { margin: 0; white-space: nowrap; }
 .dt-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Ticket-detail header bar ~40% larger (back button, ref, status/priority,
+   action buttons) for readability. Scoped here so the queue-table badges and
+   buttons stay compact. */
+.detail-top-head { gap: 14px; }
+.dt-meta { gap: 11px; }
+.detail-top-head .btn-xs { font-size: 17px; padding: 6px 14px; }
+.detail-top-head .ref-pill { font-size: 17.5px; }
+.detail-top-head .meta-lbl { font-size: 15px; }
+.detail-top-head .badge,
+.detail-top-head .prio-badge { font-size: 17px; padding: 6px 15px; }
 .dt-title { font-size: 22px; font-weight: 700; line-height: 1.25; margin: 12px 0 0; letter-spacing: -.2px; }
 .control-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
 .ctl { display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; font-weight: 700;
