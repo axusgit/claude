@@ -136,7 +136,8 @@ input:focus, textarea:focus, select:focus {
 }
 textarea { resize: vertical; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.form-row-3 { grid-template-columns: 1fr 1fr 1fr; }
+/* Service address wider (+30%), Phone and PO# narrower (-30%). */
+.form-row-3 { grid-template-columns: 1.3fr 0.7fr 0.7fr; }
 .form-error { color: #e5484d; font-size: 13px; min-height: 18px; margin-bottom: 6px; }
 /* Required authorization consent checkbox (client ticket submission) */
 .consent-check {
