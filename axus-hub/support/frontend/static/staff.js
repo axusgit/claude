@@ -216,7 +216,7 @@ const Staff = (() => {
   }
   function renderReplyFiles() { renderStagedFiles("reply-files", "reply-file-list", renderReplyFiles); }
   function renderNtFiles() { renderStagedFiles("nt-files", "nt-file-list", renderNtFiles); }
-  const ACTIVE = ["open", "in_progress", "waiting"];
+  const ACTIVE = ["open", "in_progress", "waiting", "scheduled"];
 
   /* ---------- Views ---------- */
   const showLogin = async () => {
