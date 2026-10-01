@@ -214,8 +214,11 @@ export async function externalRoutes(app: FastifyInstance) {
       phone: body.subcontractor?.phone,
     });
     const env = await pool.query(
-      `insert into envelope (title, created_by, doc_type, company, field_layout, callback_url)
-       values ($1, $2, 'SUBCONTRACTOR', $3, $4, $5) returning id`,
+      // sequential = true: the subcontractor (sign_order 1) must sign before the Axus
+      // counter-signer (order 2). This pre-checks "Recipients must sign in order" in the
+      // eSign UI and makes the subcontractor-first flow deterministic.
+      `insert into envelope (title, created_by, doc_type, company, field_layout, callback_url, sequential)
+       values ($1, $2, 'SUBCONTRACTOR', $3, $4, $5, true) returning id`,
       [title, createdBy, company, JSON.stringify(layout), callbackUrl],
     );
     const envId = env.rows[0].id;
