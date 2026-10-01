@@ -245,10 +245,74 @@ const Staff = (() => {
   window.addEventListener("resize", syncChrome);
   window.addEventListener("load", syncChrome);
   const showGlossary = () => { hideViews(); $("glossary-view").classList.remove("hidden"); loadGlossary(); };
-  const showReports = () => { hideViews(); $("reports-view").classList.remove("hidden"); loadTrends(repPeriod); };
+  const showReports = () => { hideViews(); $("reports-view").classList.remove("hidden"); loadReports(repPeriod); };
 
-  /* ---------- Reports (ticket trends) ---------- */
-  let repPeriod = "month", repChart = null;
+  /* ---------- Reports ---------- */
+  let repPeriod = "month", repChart = null, ttaChart = null, ttcChart = null;
+
+  // Humanize a duration given in hours → "3.4 h" / "2.1 d" / "—".
+  function fmtDur(h) {
+    if (h === null || h === undefined) return "—";
+    if (h < 1) return Math.round(h * 60) + " min";
+    if (h < 48) return (Math.round(h * 10) / 10) + " h";
+    return (Math.round(h / 24 * 10) / 10) + " d";
+  }
+
+  function loadReports(period) {
+    repPeriod = period;
+    document.querySelectorAll("#rep-period button").forEach(b => b.classList.toggle("active", b.dataset.p === period));
+    loadTrends(period);
+    loadDuration("time-to-assign", "tta", "Time to assign");
+    loadDuration("time-to-close", "ttc", "Time to resolution");
+  }
+
+  // Shared renderer for the two duration reports (median bars, avg in tooltip).
+  async function loadDuration(endpoint, key, title) {
+    let data;
+    try { data = await api("/api/reports/" + endpoint + "?period=" + repPeriod); }
+    catch (e) { toast("Couldn't load " + title + ": " + e.message); return; }
+    const labels = data.buckets.map(b => b.label);
+    // Chart median in days when any value is large, else hours — keep one unit per view.
+    const vals = data.buckets.map(b => b.median_hours).filter(v => v != null);
+    const useDays = vals.some(v => v >= 48);
+    const toUnit = h => h == null ? null : (useDays ? h / 24 : h);
+    const med = data.buckets.map(b => toUnit(b.median_hours));
+    const s = data.summary || {};
+    const unit = useDays ? "days" : "hours";
+    let summ = s.count ? `median ${fmtDur(s.median_hours)} · avg ${fmtDur(s.avg_hours)} · ${s.count} tickets` : "no data yet";
+    if (key === "tta" && data.unassigned_open) summ += ` · ${data.unassigned_open} still unassigned`;
+    $(key + "-summary").textContent = summ;
+
+    const css = getComputedStyle(document.documentElement);
+    const textCol = css.getPropertyValue("--text").trim() || "#e9f0fb";
+    const gridCol = css.getPropertyValue("--border").trim() || "rgba(255,255,255,.1)";
+    const color = key === "tta" ? "#e0872b" : "#2f7fd6";
+    const cfg = {
+      type: "bar",
+      data: { labels, datasets: [{ label: "Median (" + unit + ")", data: med, backgroundColor: color, borderRadius: 4 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: textCol } },
+          tooltip: { callbacks: { label: (ctx) => {
+            const b = data.buckets[ctx.dataIndex];
+            return b.count ? [`Median: ${fmtDur(b.median_hours)}`, `Average: ${fmtDur(b.avg_hours)}`, `${b.count} tickets`] : "No tickets";
+          } } },
+        },
+        scales: {
+          x: { ticks: { color: textCol }, grid: { color: gridCol } },
+          y: { beginAtZero: true, ticks: { color: textCol }, grid: { color: gridCol }, title: { display: true, text: unit, color: textCol } },
+        },
+      },
+    };
+    const chart = key === "tta" ? ttaChart : ttcChart;
+    if (chart) { chart.data = cfg.data; chart.options = cfg.options; chart.update(); }
+    else if (window.Chart) {
+      const c = new Chart($(key + "-chart"), cfg);
+      if (key === "tta") ttaChart = c; else ttcChart = c;
+    }
+  }
+
   async function loadTrends(period) {
     repPeriod = period;
     document.querySelectorAll("#rep-period button").forEach(b => b.classList.toggle("active", b.dataset.p === period));
@@ -1901,7 +1965,7 @@ const Staff = (() => {
       $("nav-reports").classList.add("active");
       showReports();
     };
-    document.querySelectorAll("#rep-period button").forEach(b => b.onclick = () => loadTrends(b.dataset.p));
+    document.querySelectorAll("#rep-period button").forEach(b => b.onclick = () => loadReports(b.dataset.p));
     $("nav-canned").onclick = () => openCannedModal();   // review/edit outside a ticket
     $("gl-new-btn").onclick = () => openGlossaryModal(null);
     $("gl-close").onclick = closeGlossaryModal;

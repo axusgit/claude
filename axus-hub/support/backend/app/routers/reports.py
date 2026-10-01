@@ -7,10 +7,11 @@ proxy the mirror carries — every mirror row is already closed).
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import func as safunc
 from datetime import datetime, timezone, timedelta
 
 from app.database import get_db
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketActivity, TicketStatus
 from app.models.xcitium import XcitiumTicket
 from app.models.user import User
 from app.auth import require_staff
@@ -97,3 +98,135 @@ def ticket_trends(period: str = "month", db: Session = Depends(get_db),
                 "opened": opened.get(k, 0),
                 "closed": closed.get(k, 0)} for k in keys]
     return {"period": period, "buckets": buckets}
+
+
+# --------------------------------------------------------------------------
+# SLA duration reports: time-to-first-assignment and time-to-resolution.
+# Each bucketed weekly / monthly / yearly like ticket-trends, reporting the
+# average and (outlier-robust) median duration of events that completed in
+# that bucket, plus an overall summary.
+# --------------------------------------------------------------------------
+
+# Origins that represent a ticket a *client* raised (vs. Axus-initiated work,
+# which is usually self-assigned and would skew assignment latency to ~0).
+_CLIENT_ORIGINS = {"client_portal", "client_email", "client_phone"}
+
+
+def _hours(delta):
+    return delta.total_seconds() / 3600.0
+
+
+def _median(vals):
+    if not vals:
+        return 0.0
+    s = sorted(vals)
+    n = len(s)
+    mid = n // 2
+    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
+
+
+def _duration_report(period, now, samples):
+    """samples: list of (event_dt, hours). Bucket by the event's date and
+    return per-bucket count/avg/median plus an overall summary."""
+    by_key = {}
+    for ev, hrs in samples:
+        ev = _aware(ev)
+        if ev is None or hrs is None or hrs < 0:
+            continue
+        by_key.setdefault(_bucket_key(ev, period), []).append(hrs)
+
+    if period == "year":
+        allk = sorted(by_key)
+        keys = allk[-10:] if allk else [f"{now.year:04d}"]
+    else:
+        keys = _display_keys(period, now)
+
+    buckets = []
+    for k in keys:
+        vals = by_key.get(k, [])
+        buckets.append({
+            "label": _label(k, period),
+            "count": len(vals),
+            "avg_hours": round(sum(vals) / len(vals), 2) if vals else None,
+            "median_hours": round(_median(vals), 2) if vals else None,
+        })
+    allvals = [h for vs in by_key.values() for h in vs]
+    summary = {
+        "count": len(allvals),
+        "avg_hours": round(sum(allvals) / len(allvals), 2) if allvals else None,
+        "median_hours": round(_median(allvals), 2) if allvals else None,
+    }
+    return {"period": period, "buckets": buckets, "summary": summary}
+
+
+@router.get("/time-to-assign")
+def time_to_assign(period: str = "month", db: Session = Depends(get_db),
+                   _: User = Depends(require_staff)):
+    """How long a client-opened ticket stays open before it is first assigned
+    to an Axus user. Bucketed by the date the ticket was first assigned."""
+    if period not in ("week", "month", "year"):
+        period = "month"
+    now = datetime.now(timezone.utc)
+
+    # First time each ticket's assignee was set (the initial null -> user change
+    # logs an 'assigned_to_id_changed' activity; the earliest one is the first
+    # assignment). Tickets created already-assigned have no such activity.
+    first_assign = dict(
+        db.query(TicketActivity.ticket_id, safunc.min(TicketActivity.created_at))
+        .filter(TicketActivity.action == "assigned_to_id_changed")
+        .group_by(TicketActivity.ticket_id)
+        .all()
+    )
+
+    samples = []
+    unassigned_open = 0
+    for t in db.query(Ticket).all():
+        origin = t.origin or "client_portal"   # pre-origin rows: treat as client
+        if origin not in _CLIENT_ORIGINS:
+            continue
+        created = _aware(t.created_at)
+        if created is None:
+            continue
+        assigned_at = _aware(first_assign.get(t.id))
+        if assigned_at is None and t.assigned_to_id:
+            assigned_at = created          # assigned at creation -> ~0 latency
+        if assigned_at is not None:
+            samples.append((assigned_at, _hours(assigned_at - created)))
+        elif str(getattr(t.status, "value", t.status)) != "closed":
+            unassigned_open += 1           # still waiting for an assignee
+
+    out = _duration_report(period, now, samples)
+    out["unassigned_open"] = unassigned_open
+    return out
+
+
+@router.get("/time-to-close")
+def time_to_close(period: str = "month", db: Session = Depends(get_db),
+                  _: User = Depends(require_staff)):
+    """How long a ticket takes from opening to closing. Bucketed by close date.
+    Includes the read-only Xcitium mirror history (create_date -> update_date)."""
+    if period not in ("week", "month", "year"):
+        period = "month"
+    now = datetime.now(timezone.utc)
+
+    samples = []
+    for t in db.query(Ticket).all():
+        # Skip rows imported from Xcitium: their created_at/closed_at are import
+        # timestamps, not real open/close times. The authentic history comes from
+        # the Xcitium mirror below (real create_date/update_date).
+        if (t.origin or "") == "xcitium":
+            continue
+        if str(getattr(t.status, "value", t.status)) != "closed":
+            continue
+        created, closed = _aware(t.created_at), _aware(t.closed_at)
+        if created and closed:
+            samples.append((closed, _hours(closed - created)))
+
+    for xt in db.query(XcitiumTicket).all():
+        if (xt.status or "") != "closed":
+            continue
+        created, closed = _aware(xt.create_date), _aware(xt.update_date or xt.create_date)
+        if created and closed:
+            samples.append((closed, _hours(closed - created)))
+
+    return _duration_report(period, now, samples)

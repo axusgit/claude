@@ -442,8 +442,12 @@ html[data-theme="dark"] .login-logo { filter: none; }
 /* Match the staff topbar logo size to the client portal (88px) */
 .topbar-logo { height: 88px; }
 
-/* Reports: ticket-trends chart */
-.chart-wrap { position: relative; height: 440px; width: 100%; }
+/* Reports: charts */
+.chart-wrap { position: relative; height: 360px; width: 100%; }
+.rep-card { margin-bottom: 18px; }
+.rep-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rep-head h3 { margin: 0 0 2px; }
+.rep-note { margin: 2px 0 12px; font-size: 12.5px; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .seg button { background: transparent; color: var(--text); border: none; padding: 7px 15px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--border); }
