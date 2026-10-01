@@ -277,6 +277,12 @@
     // precondition — only the company details the agreement is generated from,
     // which the backend validates. Once the subcontractor signs, the system
     // automatically requests their W-9 and COI.
+    let v = null;
+    try { v = await api(`/api/subcontractors/${id}`); } catch (e) {}
+    if (v && v.vendor_status === "approved") {
+      await uiAlert("This company is already approved — no need to send another agreement.", "Already approved");
+      return;
+    }
     if (!await uiConfirm("Create the Subcontractor Agreement draft in eSign?\n\nThis goes out FIRST — once the subcontractor signs, the system automatically asks them for their W-9 and COI. It will NOT be emailed yet; review it in eSign, then click Send from there.", "Send agreement")) return;
     try {
       const r = await api(`/api/subcontractors/${id}/agreement/send`, { method:"POST" });

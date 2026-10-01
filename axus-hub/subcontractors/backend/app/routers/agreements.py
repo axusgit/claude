@@ -40,6 +40,10 @@ def _add_months(d: date, months: int) -> date:
 def send_agreement(sub_id: int, db: Session = Depends(get_db),
                    user: AppUser = Depends(require_permission(P_MANAGE_AGREEMENTS))):
     sub = _get_or_404(db, sub_id)
+    if sub.vendor_status == "approved":
+        raise HTTPException(
+            status_code=409,
+            detail="This company is already approved — no need to send another agreement.")
     if not aesign.is_configured():
         raise HTTPException(status_code=503, detail="aesign integration is not configured")
     # Inverted flow: the agreement is sent FIRST (before the W-9 and COI). We only
