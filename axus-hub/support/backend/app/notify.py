@@ -159,6 +159,12 @@ def notify_customer_reply(ticket_id: int):
 # with "X" (imported Xcitium history) are skipped so testing stays on new tickets.
 AXUS_LOGO_URL = "https://service.axustechnologies.com/static/axus-logo.png"
 
+# Plain-text version of the "don't reply — use the portal" notice shown to clients.
+NO_REPLY_NOTICE_TEXT = (
+    "PLEASE DO NOT REPLY TO THIS EMAIL. This mailbox (service@axustechnologies.com) is not "
+    "monitored, so replies sent here won't reach our team or be added to your ticket. To reply "
+    "to this ticket or contact us, use the Axus Service Desk portal:\n")
+
 
 def _participants_enabled() -> bool:
     return os.getenv("PARTICIPANT_NOTIFY_ENABLED", "1") == "1" and mailer.is_configured()
@@ -180,9 +186,25 @@ def _first_name(name):
     return parts[0] if parts else "there"
 
 
-def _participant_html(recipient_name, lead, block, t, link, note=None, signoff=None) -> str:
+def _participant_html(recipient_name, lead, block, t, link, note=None, signoff=None,
+                      is_staff=False) -> str:
     import html as _h
     rn = _h.escape(_first_name(recipient_name))
+    # Prominent "don't reply — use the portal" banner for CLIENT recipients. Clients keep
+    # replying to these service@ notifications, and those replies aren't seen by the team or
+    # added to the ticket — so make the redirect to the portal impossible to miss.
+    notice_html = ""
+    if not is_staff:
+        portal = _h.escape(_portal_url(), quote=True)
+        notice_html = (
+            '<tr><td style="padding:16px 32px 0;">'
+            '<div style="padding:12px 16px;background:#fff4ec;border:1px solid #f7c9a6;'
+            'border-radius:8px;font-size:13px;line-height:1.55;color:#9a4a16;">'
+            '<strong>Please don&rsquo;t reply to this email.</strong> This mailbox isn&rsquo;t '
+            'monitored, so anything you send here won&rsquo;t reach our team or be added to your '
+            f'ticket. To reply or contact us, use the <a href="{portal}" '
+            'style="color:#d9501a;font-weight:600;">Axus Service Desk portal</a>.'
+            '</div></td></tr>')
     ld = _h.escape(lead or "")
     ref = _h.escape(t.reference or "")
     title = _h.escape(t.title or "")
@@ -209,6 +231,7 @@ def _participant_html(recipient_name, lead, block, t, link, note=None, signoff=N
 <!doctype html><html><body style="margin:0;padding:0;background:#ffffff;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:#ffffff;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#1f2430;">
   <tr><td style="padding:24px 32px 8px;"><img src="{AXUS_LOGO_URL}" alt="Axus Technologies" height="32" style="height:32px;display:block;border:0;" /></td></tr>
+  {notice_html}
   <tr><td style="padding:0 32px;">
     <p style="margin:8px 0 2px;font-size:12px;color:#9aa1ac;letter-spacing:.4px;">TICKET {ref}</p>
     <h1 style="margin:2px 0 4px;font-size:20px;color:#1f2430;">{title}</h1>
@@ -305,12 +328,13 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             if not is_staff and client_blocked(email):
                 continue   # pre-production: client emails suppressed unless allow-listed
             link = ("" if not can_view else (staff_url if is_staff else portal_url))
-            text = (f"Ticket {t.reference} — {t.title}\n"
+            text = (("" if is_staff else NO_REPLY_NOTICE_TEXT + portal_url + "\n\n")
+                    + f"Ticket {t.reference} — {t.title}\n"
                     + (f"\nDescription:\n{(t.description or '').strip()}\n" if (t.description or '').strip() else "")
                     + f"\nHi {_first_name(name)},\n\n{lead}\n\n{(block or '').strip()}\n\n"
                     + (f"View it: {link}\n" if link else "")
                     + "\nYou're receiving this because you're a participant on this ticket.\n")
-            html = _participant_html(name, lead, block, t, link)
+            html = _participant_html(name, lead, block, t, link, is_staff=is_staff)
             # transactional: always to the real participant (never the soft-launch redirect)
             mailer.send_email([email], subject, text, html)
     except Exception as e:
@@ -365,7 +389,8 @@ def notify_ticket_received(ticket_id: int):
             return  # pre-production guard
         link = _portal_url()
         subject = f"[{t.reference}] Ticket received · {t.title}"
-        text = (f"Hi {u.full_name or 'there'},\n\n{TICKET_RECEIVED_MSG}\n\n"
+        text = (NO_REPLY_NOTICE_TEXT + link + "\n\n"
+                + f"Hi {u.full_name or 'there'},\n\n{TICKET_RECEIVED_MSG}\n\n"
                 f"Ticket {t.reference} — {t.title}\n"
                 + (f"\nDescription:\n{(t.description or '').strip()}\n" if (t.description or '').strip() else "")
                 + (f"\nView it: {link}\n" if link else "")
