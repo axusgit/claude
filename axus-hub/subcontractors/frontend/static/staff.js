@@ -268,17 +268,11 @@
   }
 
   async function doAgreement(id) {
-    // Precondition FIRST (before the confirm): W-9 + COI must be APPROVED.
-    let v = null;
-    try { v = await api(`/api/subcontractors/${id}`); } catch (e) {}
-    const problems = [];
-    if (!v || v.w9_status !== "approved") problems.push("W-9");
-    if (!v || !["current","expiring_soon"].includes(v.coi_status)) problems.push("COI");
-    if (problems.length) {
-      await uiAlert(`The ${problems.join(" and ")} must be approved before sending the agreement.`, "Approval required");
-      return;
-    }
-    if (!await uiConfirm("Create the Subcontractor Agreement draft in eSign?\n\nIt will NOT be emailed yet — you review it in eSign, then click Send from there.", "Send agreement")) return;
+    // Inverted flow: the agreement goes out FIRST (before W-9/COI). No document
+    // precondition — only the company details the agreement is generated from,
+    // which the backend validates. Once the subcontractor signs, the system
+    // automatically requests their W-9 and COI.
+    if (!await uiConfirm("Create the Subcontractor Agreement draft in eSign?\n\nThis goes out FIRST — once the subcontractor signs, the system automatically asks them for their W-9 and COI. It will NOT be emailed yet; review it in eSign, then click Send from there.", "Send agreement")) return;
     try {
       const r = await api(`/api/subcontractors/${id}/agreement/send`, { method:"POST" });
       if (r.review_url) {

@@ -60,23 +60,58 @@ def latest_agreement(db: Session, sub_id: int) -> AgreementLink | None:
     )
 
 
+def agreement_signed_by_sub(db: Session, sub: Subcontractor) -> bool:
+    """True once the SUBCONTRACTOR has signed the agreement (first signature) —
+    whether or not Axus has counter-signed yet. This is the gate that opens the
+    W-9/COI step in the inverted onboarding flow (agreement first, then documents)."""
+    ag = latest_agreement(db, sub.id)
+    return bool(ag and ag.status in ("partially_signed", "completed"))
+
+
 def outstanding_requirements(db: Session, sub: Subcontractor) -> list[str]:
     """What the vendor still needs to PROVIDE (for reminder emails, the portal
     progress view, and submit gating). A document counts as provided once it's
     uploaded (received/pending_review/approved/current); only missing or rejected
     items are outstanding. Approval happens in Axus review, after submission — so
-    this is deliberately provided-based, not approval-based."""
+    this is deliberately provided-based, not approval-based.
+
+    Inverted flow: the Subcontractor Agreement is sent and signed FIRST. The W-9
+    and COI are only requested AFTER the subcontractor signs, so they are not listed
+    as outstanding (and the portal won't accept them) until then."""
     items = []
     if not company_complete(sub):
         items.append("Company information")
-    if sub.w9_status in ("missing", "rejected"):
-        items.append("W-9")
-    if sub.coi_status in ("missing", "rejected", "expired"):
-        items.append("Certificate of Insurance (COI)")
-    # The Subcontractor Agreement is NOT part of the vendor's onboarding submission:
-    # Axus sends it for signature only AFTER the W-9 and COI are approved. So it is
-    # intentionally excluded from the vendor-facing outstanding list / submit gating.
+    # W-9 / COI are requested only after the agreement is signed by the subcontractor.
+    if agreement_signed_by_sub(db, sub):
+        if sub.w9_status in ("missing", "rejected"):
+            items.append("W-9")
+        if sub.coi_status in ("missing", "rejected", "expired"):
+            items.append("Certificate of Insurance (COI)")
     return items
+
+
+def request_documents(db: Session, sub: Subcontractor) -> None:
+    """Open the W-9/COI request and email the vendor their onboarding link. Called
+    once, right after the subcontractor signs the agreement. Lazy imports avoid an
+    import cycle (notify/tokens both import services-adjacent modules)."""
+    from app import notify
+    from app.tokens import issue_token
+    req = get_or_create_onboarding_request(db, sub)
+    if sub.vendor_status in ("invited",):
+        sub.vendor_status = "onboarding"
+    raw = issue_token(db, sub.id)
+    cfg = get_config(db)
+    notify.send(
+        db, sub.id, sub.email, "documents_requested",
+        subject="Next step — send your W-9 and Certificate of Insurance (Axus Technologies)",
+        title="Thank you for signing — two items left",
+        intro=("Thank you for signing your Axus Subcontractor Agreement. To finish "
+               "onboarding, please provide your IRS Form W-9 and a current Certificate "
+               "of Insurance (COI) naming Axus Technologies as an additional insured "
+               f"({cfg.additional_insured_address})."),
+        lines=["IRS Form W-9", "Certificate of Insurance (COI)"],
+        cta_text="Upload documents", cta_url=portal_link(raw), request_id=req.id,
+    )
 
 
 def get_or_create_onboarding_request(db: Session, sub: Subcontractor) -> DocumentRequest:
@@ -142,7 +177,9 @@ def recompute_compliance(db: Session, sub: Subcontractor) -> None:
             sub.agreement_status = "renewal_due"
         else:
             sub.agreement_status = "current"
-    elif ag and ag.status == "sent":
+    elif ag and ag.status in ("draft", "sent", "partially_signed"):
+        # draft = created in eSign, sent = out for signature, partially_signed =
+        # subcontractor has signed and we're awaiting the Axus counter-signature.
         sub.agreement_status = "pending_signature"
     else:
         sub.agreement_status = "missing"

@@ -44,6 +44,8 @@ def _state(db: Session, sub) -> dict:
             "w9_status": sub.w9_status,
             "coi_status": sub.coi_status,
             "agreement_status": sub.agreement_status,
+            # True once the subcontractor has signed; this unlocks the W-9/COI step.
+            "agreement_signed": services.agreement_signed_by_sub(db, sub),
             "submitted": sub.vendor_status in ("pending_review", "approved"),
         },
         "outstanding": services.outstanding_requirements(db, sub),
@@ -86,6 +88,10 @@ async def upload_document(
     sub = _resolve(db, token)
     if doc_type not in ("w9", "coi"):
         raise HTTPException(status_code=400, detail="doc_type must be 'w9' or 'coi'")
+    # Inverted flow: the W-9/COI step is only surfaced in the portal after the vendor
+    # signs the agreement (see app.js), and submit is gated on signing. We allow the
+    # upload itself (so staff can collect docs on a vendor's behalf) but it can't be
+    # submitted for review until the agreement is signed.
     if not storage.is_allowed(file.filename):
         allowed = ", ".join(sorted(e[1:] for e in storage.ALLOWED_EXTS))
         raise HTTPException(status_code=400, detail=f"File type not allowed. Accepted: {allowed}")
@@ -116,6 +122,10 @@ async def upload_document(
 def submit_for_review(token: str, db: Session = Depends(get_db)):
     sub = _resolve(db, token)
     services.recompute_compliance(db, sub)  # reflect latest docs/agreement before gating
+    if not services.agreement_signed_by_sub(db, sub):
+        raise HTTPException(status_code=400, detail={
+            "message": "Please sign your Subcontractor Agreement first.",
+            "outstanding": ["Signed Subcontractor Agreement"]})
     outstanding = services.outstanding_requirements(db, sub)
     if outstanding:
         raise HTTPException(status_code=400,

@@ -42,18 +42,13 @@ def send_agreement(sub_id: int, db: Session = Depends(get_db),
     sub = _get_or_404(db, sub_id)
     if not aesign.is_configured():
         raise HTTPException(status_code=503, detail="aesign integration is not configured")
-    # Require the W-9 and COI to be APPROVED before the agreement can be sent.
-    # (COI approval sets coi_status to current/expiring_soon based on its expiry;
-    # an expired COI does not qualify.)
-    problems = []
-    if sub.w9_status != "approved":
-        problems.append("W-9")
-    if sub.coi_status not in ("current", "expiring_soon"):
-        problems.append("COI")
-    if problems:
+    # Inverted flow: the agreement is sent FIRST (before the W-9 and COI). We only
+    # need the company details the agreement is generated from. The W-9/COI are
+    # requested automatically once the subcontractor signs (see the webhook).
+    if not services.company_complete(sub):
         raise HTTPException(
             status_code=409,
-            detail=f"The {' and '.join(problems)} must be approved before sending the agreement.",
+            detail="Add the company's details (legal name, address, contact, email, phone) before sending the agreement.",
         )
     try:
         env = aesign.create_agreement_envelope(
@@ -106,6 +101,20 @@ def aesign_webhook(payload: AesignCallback, request: Request, db: Session = Depe
 
     sub = _get_or_404(db, link.subcontractor_id)
     now = datetime.now(timezone.utc)
+    if payload.status in ("subcontractor_signed", "partially_completed"):
+        # The subcontractor has signed (first signature); Axus still counter-signs.
+        # This is the trigger to request the W-9 and COI. Guard so repeated callbacks
+        # don't re-send the documents request.
+        first_time = link.status not in ("partially_signed", "completed")
+        link.status = "partially_signed"
+        if first_time:
+            log_activity(db, sub.id, None, "agreement_subcontractor_signed",
+                         detail=f"Subcontractor signed the agreement; requesting W-9 and COI (envelope {env_id})")
+            services.request_documents(db, sub)
+        services.recompute_compliance(db, sub)
+        db.commit()
+        return {"ok": True, "agreement_status": sub.agreement_status}
+
     if payload.status == "completed":
         cfg = get_config(db)
         signed = _parse_dt(payload.signedAt) or now
