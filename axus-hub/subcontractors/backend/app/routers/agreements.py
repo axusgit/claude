@@ -107,14 +107,12 @@ def aesign_webhook(payload: AesignCallback, request: Request, db: Session = Depe
     now = datetime.now(timezone.utc)
     if payload.status in ("subcontractor_signed", "partially_completed"):
         # The subcontractor has signed (first signature); Axus still counter-signs.
-        # This is the trigger to request the W-9 and COI. Guard so repeated callbacks
-        # don't re-send the documents request.
-        first_time = link.status not in ("partially_signed", "completed")
-        link.status = "partially_signed"
-        if first_time:
+        # We only record it — the W-9/COI request is sent once at company creation,
+        # not tied to signing.
+        if link.status not in ("partially_signed", "completed"):
             log_activity(db, sub.id, None, "agreement_subcontractor_signed",
-                         detail=f"Subcontractor signed the agreement; requesting W-9 and COI (envelope {env_id})")
-            services.request_documents(db, sub)
+                         detail=f"Subcontractor signed the agreement; awaiting Axus counter-signature (envelope {env_id})")
+        link.status = "partially_signed"
         services.recompute_compliance(db, sub)
         db.commit()
         return {"ok": True, "agreement_status": sub.agreement_status}

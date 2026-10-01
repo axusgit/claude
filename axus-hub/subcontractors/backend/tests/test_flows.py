@@ -56,9 +56,7 @@ def test_full_onboarding_and_approval(client, make_vendor):
                 files={"file": ("w9.pdf", b"W9", "application/pdf")})
     client.post(f"/api/onboarding/{tok}/documents", data={"doc_type": "coi"},
                 files={"file": ("coi.pdf", b"COI", "application/pdf")})
-    # blocked until the agreement is signed
-    assert client.post(f"/api/onboarding/{tok}/submit").status_code == 400
-    _complete_agreement(v["id"])
+    # W-9/COI are independent of the agreement — submit once they're provided.
     assert client.post(f"/api/onboarding/{tok}/submit").status_code == 200
 
     docs = client.get(f"/api/subcontractors/{v['id']}/documents").json()
@@ -67,6 +65,9 @@ def test_full_onboarding_and_approval(client, make_vendor):
     client.post(f"/api/subcontractors/{v['id']}/documents/{w9['id']}/review", json={"action": "approve"})
     client.post(f"/api/subcontractors/{v['id']}/documents/{coi['id']}/review",
                 json={"action": "approve", "expiration_date": (date.today() + timedelta(days=200)).isoformat()})
+    # Final vendor approval still requires the agreement to be fully signed.
+    assert client.post(f"/api/subcontractors/{v['id']}/review", json={"action": "approve"}).status_code == 409
+    _complete_agreement(v["id"])
     rv = client.post(f"/api/subcontractors/{v['id']}/review", json={"action": "approve"}).json()
     assert rv["vendor_status"] == "approved"
     assert rv["compliance_status"] == "compliant"
@@ -107,26 +108,26 @@ def test_inactive_stops_reminders(client, make_vendor):
 
 
 def test_engine_idempotent(client, make_vendor):
+    # Onboarding reminders are disabled (the W-9/COI request is a one-time send at
+    # creation). Idempotency is now exercised via the COI-expiry renewal reminder:
+    # approve a COI expiring within the notice window, then confirm multiple engine
+    # runs in one day send exactly one renewal reminder.
     v = make_vendor("Idem Co")
     tok = _token(client.post(f"/api/subcontractors/{v['id']}/invite").json())
-    # Inverted flow: W-9/COI (the onboarding reminder's subject) are only outstanding
-    # once the agreement is signed, so sign it before exercising the reminder cadence.
-    _complete_agreement(v["id"])
+    client.post(f"/api/onboarding/{tok}/documents", data={"doc_type": "coi"},
+                files={"file": ("coi.pdf", b"COI", "application/pdf")})
+    coi = next(d for d in client.get(f"/api/subcontractors/{v['id']}/documents").json()
+               if d["doc_type"] == "coi")
+    client.post(f"/api/subcontractors/{v['id']}/documents/{coi['id']}/review",
+                json={"action": "approve",
+                      "expiration_date": (date.today() + timedelta(days=10)).isoformat()})
     from app.database import SessionLocal
     from app import compliance
-    from app.models.document_request import DocumentRequest
     from app.models.email_log import EmailLog
-    # make the onboarding reminder due
-    db = SessionLocal()
-    req = db.query(DocumentRequest).filter(
-        DocumentRequest.subcontractor_id == v["id"],
-        DocumentRequest.request_type == "onboarding").first()
-    req.next_notification_at = datetime.now(timezone.utc) - timedelta(days=1)
-    db.commit(); db.close()
     for _ in range(3):  # multiple same-day runs
         db = SessionLocal(); compliance.run(db); db.close()
     db = SessionLocal()
     n = db.query(EmailLog).filter(EmailLog.subcontractor_id == v["id"],
-                                  EmailLog.email_type == "onboarding_reminder").count()
+                                  EmailLog.email_type == "coi_renewal").count()
     db.close()
-    assert n == 1  # exactly one reminder despite three runs
+    assert n == 1  # exactly one renewal reminder despite three runs

@@ -148,7 +148,9 @@ def run(db: Session) -> dict:
     ).all()
     for sub in subs:
         services.recompute_compliance(db, sub)
-        _check_onboarding(db, sub, cfg, now)
+        # Onboarding W-9/COI reminders are intentionally NOT sent — the W-9/COI request
+        # goes out once, at company creation (no reminder cadence). COI-expiry and
+        # agreement-renewal reminders (for already-active vendors) still run below.
         _check_coi(db, sub, cfg, now, today)
         _check_agreement(db, sub, cfg, now, today)
     db.commit()

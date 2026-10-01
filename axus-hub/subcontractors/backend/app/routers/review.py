@@ -53,6 +53,7 @@ def review_vendor(sub_id: int, payload: VendorReview, db: Session = Depends(get_
 
     if action == "approve":
         # A vendor cannot be approved until W-9, COI, and the Agreement are all approved.
+        services.recompute_compliance(db, sub)  # gate on fresh status
         problems = []
         if sub.w9_status != "approved":
             problems.append("W-9")
