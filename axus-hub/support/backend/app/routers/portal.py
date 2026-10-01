@@ -271,6 +271,7 @@ class PortalTicketIn(BaseModel):
     priority: str = "medium"
     contact_address: Optional[str] = None
     contact_phone: Optional[str] = None
+    po_number: Optional[str] = None
 
 
 class PortalReplyIn(BaseModel):
@@ -335,6 +336,7 @@ def submit_ticket(
 ):
     address = (data.contact_address or "").strip() or None   # optional
     phone = (data.contact_phone or "").strip() or None       # optional
+    po = (data.po_number or "").strip() or None               # optional
     ticket = Ticket(
         title=data.title,
         description=data.description,
@@ -342,6 +344,7 @@ def submit_ticket(
         priority=data.priority,
         contact_address=address,
         contact_phone=phone,
+        po_number=po,
         client_id=user.client_id,        # forced to the user's own company
         created_by_id=user.id,
         reporter_user_id=user.id,         # the client who opened it (for scoping + participants)

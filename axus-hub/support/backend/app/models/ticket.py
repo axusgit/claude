@@ -58,6 +58,7 @@ class Ticket(Base):
     category = Column(String, nullable=True)  # e.g. Hardware, Software, Network, Email
     contact_address = Column(Text, nullable=True)   # customer-provided when opening via portal
     contact_phone = Column(String, nullable=True)   # customer-provided when opening via portal
+    po_number = Column(String, nullable=True)        # customer PO#, optional, captured at portal open
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
     priority = Column(Enum(TicketPriority), default=TicketPriority.medium, nullable=False)
     ticket_type = Column(Enum(TicketType), default=TicketType.standard, nullable=False)

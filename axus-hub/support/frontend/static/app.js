@@ -685,6 +685,7 @@ const App = (() => {
           priority: $("nt-priority").value,
           contact_address: $("nt-address").value.trim() || null,
           contact_phone: $("nt-phone").value.trim() || null,
+          po_number: $("nt-po").value.trim() || null,
         }, files);
       } catch (err) { $("nt-error").textContent = err.message; }
     };

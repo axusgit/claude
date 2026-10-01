@@ -215,6 +215,7 @@ class TicketOut(BaseModel):
     # Customer-provided contact info captured at portal open (shown in staff Properties).
     contact_address: Optional[str] = None
     contact_phone: Optional[str] = None
+    po_number: Optional[str] = None
 
     class Config:
         from_attributes = True

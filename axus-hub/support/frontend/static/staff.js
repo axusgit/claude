@@ -776,6 +776,7 @@ const Staff = (() => {
     $("promote-btn").hidden = true;                                    // native tickets are already editable
     $("p-hours").textContent = (current.total_hours || 0) + " h";
     $("p-phone").textContent = current.contact_phone || "—";
+    $("p-po").textContent = current.po_number || "—";
     $("p-address").textContent = current.contact_address || "—";
     $("p-created").textContent = fmtDate(current.created_at);
     // resolve the reporting user's name
