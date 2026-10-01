@@ -124,6 +124,7 @@ def seed_default_boards():
                 ("Projects", "Scheduled project & SOW work"),
                 ("Accounting", "Billing & finance tickets"),
                 ("Talent", "Recruiting & talent management"),
+                ("Purchasing", "Hardware & software purchasing / procurement"),
             ]
             db.add_all([Board(name=n, description=d) for n, d in defaults])
             db.commit()
