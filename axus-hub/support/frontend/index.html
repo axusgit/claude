@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=73" />
-  <link rel="stylesheet" href="/static/portal.css?v=37" />
+  <link rel="stylesheet" href="/static/portal.css?v=38" />
   <style>
     .login-hint { font-size: 12px; margin-top: 10px; text-align: center; }
     .login-hint a.link, a.link { color: var(--accent, #f26722); text-decoration: none; font-weight: 600; cursor: pointer; }
@@ -162,7 +162,7 @@
               <div class="detail-head">
                 <button class="btn btn-ghost btn-sm detail-back" id="back-btn">← Back to tickets</button>
                 <span id="d-ref" class="ref-pill"></span>
-                <span class="meta-group"><span class="meta-lbl">Status</span><span id="d-status" class="badge"></span></span>
+                <span class="meta-group"><span class="meta-lbl">Status</span><span class="status-stack"><span id="d-status" class="badge"></span><span id="d-sched" class="sched-date" hidden></span></span></span>
                 <span class="meta-group"><span class="meta-lbl">Priority</span><span id="d-priority" class="prio-badge"></span></span>
                 <select id="d-raise-prio" class="raise-prio" title="Escalate this ticket — you can raise the priority, not lower it" hidden></select>
               </div>
@@ -346,7 +346,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="/static/confirm.js?v=1"></script>
-  <script src="/static/app.js?v=51"></script>
+  <script src="/static/app.js?v=52"></script>
   <script src="/static/tilt.js?v=2"></script>
 </body>
 </html>

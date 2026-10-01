@@ -28,6 +28,13 @@ const App = (() => {
     sel.hidden = false;
   }
   const statusLabel = s => (s || "").replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+  // Format a date-only string ("YYYY-MM-DD") without a timezone shift.
+  function schedDate(s) {
+    if (!s) return "";
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    if (!m) return s;
+    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  }
   // File types a customer may attach (must match the server-side whitelist).
   const ALLOWED_EXTS = new Set([
     ".doc", ".pdf", ".jpg", ".jpeg", ".gif", ".png", ".xls", ".docx", ".xlsx",
@@ -246,7 +253,7 @@ const App = (() => {
             <span>Updated ${fmtDate(t.updated_at || t.created_at)}</span>
           </div>
         </div>
-        <span class="badge ${t.status}">${statusLabel(t.status)}</span>
+        <span class="status-stack"><span class="badge ${t.status}">${statusLabel(t.status)}</span>${t.status === "scheduled" && t.scheduled_date ? `<span class="sched-date">${schedDate(t.scheduled_date)}</span>` : ""}</span>
       </div>`).join("");
     list.querySelectorAll(".ticket-card").forEach(el => el.onclick = () => openTicket(parseInt(el.dataset.id, 10)));
   }
@@ -258,6 +265,13 @@ const App = (() => {
     $("d-ref").textContent = t.reference || "";
     $("d-status").className = "badge " + t.status;
     $("d-status").textContent = statusLabel(t.status);
+    if (t.status === "scheduled" && t.scheduled_date) {
+      $("d-sched").textContent = schedDate(t.scheduled_date);
+      $("d-sched").hidden = false;
+    } else {
+      $("d-sched").textContent = "";
+      $("d-sched").hidden = true;
+    }
     $("d-priority").className = "prio-badge " + t.priority;
     $("d-priority").textContent = prioLabel(t.priority);
     $("d-priority").title = PRIO_MEANING[t.priority] || "";
