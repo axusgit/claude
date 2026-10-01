@@ -119,7 +119,10 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .mini-avatar.none { background: var(--surface-2); color: var(--muted); border: 1px dashed var(--border); }
 
 /* ---------- Detail ---------- */
-.detail-top { padding: 22px 24px; }
+/* Freeze the ticket header section (ref, status/priority, title, controls)
+   at the top of the viewport while scrolling through the ticket below.
+   Pins just under the sticky topbar, matching the sidebar's offset. */
+.detail-top { padding: 22px 24px; position: sticky; top: var(--top-h, 117px); z-index: 3; }
 .detail-top-head { display: flex; align-items: center; gap: 10px; }
 .dt-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dt-meta .detail-back { margin: 0; white-space: nowrap; }
