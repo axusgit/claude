@@ -32,7 +32,8 @@ a { text-decoration: none; color: inherit; }
 #app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
 .sidebar { background: var(--sidebar); color: var(--sidebar-text); display: flex; flex-direction: column; padding: 20px 14px; position: sticky; top: 0; height: 100vh; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 22px; }
-.brand-logo { height: 28px; filter: brightness(0) invert(1); }
+/* Sidebar is dark in both themes, so always use the white-text dark logo. */
+.brand-logo { height: 28px; content: url('/static/axus-logo-dark.png'); }
 .brand-tag { font-family: "Poppins"; font-weight: 700; font-size: 13px; color: #fff; background: var(--grad); padding: 3px 10px; border-radius: 7px; }
 .side-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .nav-item { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border-radius: 10px; color: var(--sidebar-text); font-weight: 500; font-size: 14px; cursor: pointer; transition: background .15s, color .15s; }

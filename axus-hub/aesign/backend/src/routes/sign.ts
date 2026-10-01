@@ -132,7 +132,7 @@ export async function signRoutes(app: FastifyInstance) {
     const r = rec.rows[0];
     const env = await pool.query(`select id, title, status from envelope where id = $1`, [r.envelope_id]);
     const fields = await pool.query(
-      `select id, type, page, x, y, w, h, value, required from field where recipient_id = $1 order by page`,
+      `select id, type, page, x, y, w, h, value, required, grp, options, fkey from field where recipient_id = $1 order by page`,
       [r.id],
     );
     return {
@@ -184,12 +184,22 @@ export async function signRoutes(app: FastifyInstance) {
     const valueMap = new Map((body.fields ?? []).map((f) => [f.id, f.value]));
 
     const reqFields = await pool.query(
-      `select id, required from field where recipient_id = $1`,
+      `select id, required, type, grp from field where recipient_id = $1`,
       [r.id],
     );
+    const grpChecked = new Map<string, number>();
     for (const f of reqFields.rows) {
       if (f.required && !valueMap.get(f.id)) {
         return reply.code(400).send({ error: "Please complete all required fields." });
+      }
+      const v = valueMap.get(f.id);
+      if (f.type === "checkbox" && f.grp && (v === "true" || v === "1")) {
+        grpChecked.set(f.grp, (grpChecked.get(f.grp) ?? 0) + 1);
+      }
+    }
+    for (const count of grpChecked.values()) {
+      if (count > 1) {
+        return reply.code(400).send({ error: "Only one Entity Type can be selected." });
       }
     }
 

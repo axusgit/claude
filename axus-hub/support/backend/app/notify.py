@@ -150,7 +150,7 @@ def notify_customer_reply(ticket_id: int):
 # Independent of the staff-broadcast hold (NOTIFY_ENABLED); this transactional
 # channel is gated by its own switch, defaulting ON. Tickets whose reference starts
 # with "X" (imported Xcitium history) are skipped so testing stays on new tickets.
-AXUS_LOGO_URL = "https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png"
+AXUS_LOGO_URL = "https://service.axustechnologies.com/static/axus-logo.png"
 
 
 def _participants_enabled() -> bool:

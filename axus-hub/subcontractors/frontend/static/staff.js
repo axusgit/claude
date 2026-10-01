@@ -6,6 +6,50 @@
   let ME = { permissions: [] };
   const can = (p) => ME.permissions.includes(p);
 
+  /* ---------- Theme (dark / light) ---------- */
+  const THEME_KEY = "axus-theme";
+  function applyTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+    document.querySelectorAll(".theme-icon").forEach(el => el.textContent = t === "dark" ? "☀️" : "🌙");
+  }
+  const toggleTheme = () =>
+    applyTheme((document.documentElement.getAttribute("data-theme") || "light") === "dark" ? "light" : "dark");
+
+  /* ---------- Centered dialogs (replace native alert/confirm/prompt) ---------- */
+  function uiDialog(opts) {
+    const { title = "", message = "", kind = "confirm", placeholder = "", value = "" } = opts;
+    return new Promise((resolve) => {
+      const bg = document.createElement("div");
+      bg.className = "modal-bg dialog-bg open";
+      const inputHtml = kind === "prompt"
+        ? `<input class="dialog-input" id="dlg-input" placeholder="${esc(placeholder)}" value="${esc(value)}">` : "";
+      const cancelBtn = kind === "alert" ? "" : `<button class="btn" data-x="cancel">Cancel</button>`;
+      bg.innerHTML = `<div class="modal dialog-modal">
+        ${title ? `<h2 class="dialog-title">${esc(title)}</h2>` : ""}
+        <div class="dialog-msg">${esc(message)}</div>${inputHtml}
+        <div class="modal-foot">${cancelBtn}<button class="btn primary" data-x="ok">OK</button></div>
+      </div>`;
+      document.body.appendChild(bg);
+      const inp = bg.querySelector("#dlg-input");
+      if (inp) setTimeout(() => inp.focus(), 30);
+      const cancelVal = kind === "alert" ? undefined : (kind === "prompt" ? null : false);
+      const okVal = () => (kind === "prompt" ? (inp ? inp.value : "") : true);
+      const close = (v) => { document.removeEventListener("keydown", onKey); bg.remove(); resolve(v); };
+      bg.querySelector('[data-x="ok"]').onclick = () => close(okVal());
+      const c = bg.querySelector('[data-x="cancel"]'); if (c) c.onclick = () => close(cancelVal);
+      bg.onclick = (e) => { if (e.target === bg) close(cancelVal); };
+      function onKey(e) {
+        if (e.key === "Escape") close(cancelVal);
+        else if (e.key === "Enter" && kind !== "alert") { e.preventDefault(); close(okVal()); }
+      }
+      document.addEventListener("keydown", onKey);
+    });
+  }
+  const uiAlert = (message, title) => uiDialog({ kind: "alert", message, title });
+  const uiConfirm = (message, title) => uiDialog({ kind: "confirm", message, title });
+  const uiPrompt = (message, title, o = {}) => uiDialog({ kind: "prompt", message, title, ...o });
+
   const VENDOR_STATUSES = ["invited","onboarding","pending_review","approved",
     "missing_documents","expiring_soon","non_compliant","on_hold","inactive"];
 
@@ -133,7 +177,16 @@
               <div>Status ${badge(v.vendor_status)}</div>
             </div>
           </div>
-          <div class="card"><h3>Documents</h3><ul class="timeline">${docRows}</ul></div>
+          <div class="card"><h3>Documents</h3>
+            ${["invited","onboarding"].includes(v.vendor_status)
+              ? `<p class="muted">The W-9 and COI become visible here after the subcontractor submits their onboarding.</p>`
+              : `<ul class="timeline">${docRows}</ul>
+            ${can("edit_subcontractors") ? `<div class="actions" style="margin-top:10px">
+              <button class="btn small" data-upload="w9">⬆ Upload W-9</button>
+              <button class="btn small" data-upload="coi">⬆ Upload COI</button>
+              <input type="file" id="doc-file" class="hidden" accept=".pdf,.png,.jpg,.jpeg,.gif,.doc,.docx,.xls,.xlsx">
+            </div>` : ""}`}
+          </div>
           <div class="card"><h3>Activity</h3><ul class="timeline">${acts}</ul></div>
         </div>
         <div>
@@ -146,6 +199,30 @@
       </div>`;
     $("#back").onclick = loadDirectory;
 
+    // Staff document upload (W-9 / COI) — multipart, so bypass the JSON api() helper.
+    let pendingDocType = null;
+    const fileInput = $("#doc-file");
+    $$("[data-upload]").forEach(b => b.onclick = () => {
+      pendingDocType = b.dataset.upload;
+      if (fileInput) fileInput.click();
+    });
+    if (fileInput) fileInput.onchange = async () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f || !pendingDocType) return;
+      const fd = new FormData();
+      fd.append("doc_type", pendingDocType);
+      fd.append("file", f);
+      try {
+        const r = await fetch(`/api/subcontractors/${id}/documents`, { method: "POST", body: fd });
+        if (!r.ok) {
+          let d = r.statusText; try { d = (await r.json()).detail || d; } catch (e) {}
+          throw new Error(typeof d === "string" ? d : JSON.stringify(d));
+        }
+        openDetail(id);
+      } catch (e) { await uiAlert("Upload failed: " + e.message, "Upload failed"); }
+      finally { fileInput.value = ""; pendingDocType = null; }
+    };
+
     // vendor-level action buttons (permission-gated)
     const A = [];
     if (can("invite_subcontractors")) A.push(`<button class="btn" data-act="invite">✉ Send / resend invite</button>`);
@@ -154,6 +231,7 @@
     if (can("review_compliance_documents")) A.push(`<button class="btn" data-review="request_correction">Request correction</button>`);
     if (can("override_compliance_status")) A.push(`<button class="btn" data-review="hold">Hold</button>`);
     if (can("deactivate_subcontractors")) A.push(`<button class="btn danger" data-review="inactive">Mark inactive</button>`);
+    if (can("deactivate_subcontractors")) A.push(`<button class="btn danger" data-act="delete">🗑 Delete</button>`);
     $("#vendor-actions").innerHTML = A.join("");
 
     $$("#vendor-actions [data-review]").forEach(b => b.onclick = () => doReview(id, b.dataset.review));
@@ -161,6 +239,8 @@
     if (inviteBtn) inviteBtn.onclick = () => doInvite(id);
     const agBtn = $("#vendor-actions [data-act=agreement]");
     if (agBtn) agBtn.onclick = () => doAgreement(id);
+    const delBtn = $("#vendor-actions [data-act=delete]");
+    if (delBtn) delBtn.onclick = () => doDelete(id, v.legal_name);
     $("#note-add").onclick = async () => {
       const body = $("#note-body").value.trim(); if (!body) return;
       await api(`/api/subcontractors/${id}/notes`, { method:"POST", body: JSON.stringify({ body }) });
@@ -173,45 +253,85 @@
   async function doInvite(id) {
     try {
       const r = await api(`/api/subcontractors/${id}/invite`, { method:"POST" });
-      alert("Invitation " + (r.emailed ? "emailed." : "created (email disabled).") +
-            "\n\nOnboarding link:\n" + r.link);
+      await uiAlert("Invitation " + (r.emailed ? "emailed." : "created (email disabled).") +
+            "\n\nOnboarding link:\n" + r.link, "Invitation");
       openDetail(id);
-    } catch (e) { alert("Error: " + e.message); }
+    } catch (e) { await uiAlert("Error: " + e.message, "Error"); }
+  }
+
+  async function doDelete(id, name) {
+    if (!await uiConfirm(`Delete ${name || "this subcontractor"}?\n\nThey'll be removed from the directory and all lists. The record and its history are retained and can be restored by Axus staff.`, "Delete subcontractor")) return;
+    try {
+      await api(`/api/subcontractors/${id}`, { method: "DELETE" });
+      loadDirectory();
+    } catch (e) { await uiAlert("Error: " + e.message, "Error"); }
   }
 
   async function doAgreement(id) {
-    if (!confirm("Send the Subcontractor Agreement to this vendor for e-signature?")) return;
+    // Precondition FIRST (before the confirm): W-9 + COI must be APPROVED.
+    let v = null;
+    try { v = await api(`/api/subcontractors/${id}`); } catch (e) {}
+    const problems = [];
+    if (!v || v.w9_status !== "approved") problems.push("W-9");
+    if (!v || !["current","expiring_soon"].includes(v.coi_status)) problems.push("COI");
+    if (problems.length) {
+      await uiAlert(`The ${problems.join(" and ")} must be approved before sending the agreement.`, "Approval required");
+      return;
+    }
+    if (!await uiConfirm("Create the Subcontractor Agreement draft in eSign?\n\nIt will NOT be emailed yet — you review it in eSign, then click Send from there.", "Send agreement")) return;
     try {
       const r = await api(`/api/subcontractors/${id}/agreement/send`, { method:"POST" });
-      alert("Subcontractor Agreement sent for signature." +
-            (r.sign_url ? "\n\nSigning link:\n" + r.sign_url : ""));
+      if (r.review_url) {
+        if (await uiConfirm("Draft created in eSign. It has NOT been sent.\n\nOpen it in eSign now to review and send?", "Draft created")) {
+          window.open(r.review_url, "_blank");
+        }
+      } else {
+        await uiAlert("Agreement draft created in eSign. Open eSign to review and send.", "Draft created");
+      }
       openDetail(id);
-    } catch (e) { alert("Error: " + e.message); }
+    } catch (e) { await uiAlert("Error: " + e.message, "Error"); }
   }
 
   async function doReview(id, action) {
+    if (action === "approve") {
+      // Block approval unless W-9, COI, and Agreement are all approved.
+      let v = null;
+      try { v = await api(`/api/subcontractors/${id}`); } catch (e) {}
+      const probs = [];
+      if (!v || v.w9_status !== "approved") probs.push("W-9");
+      if (!v || !["current","expiring_soon"].includes(v.coi_status)) probs.push("COI");
+      if (!v || !["current","renewal_due"].includes(v.agreement_status)) probs.push("Agreement");
+      if (probs.length) {
+        await uiAlert(`This company cannot be approved yet — the following are not approved: ${probs.join(", ")}.`, "Approval blocked");
+        return;
+      }
+    }
+    if (!await uiConfirm(`Confirm: ${action.replace(/_/g," ")}?`, "Confirm")) return;
     let reason = null;
     if (["request_correction","hold","reject"].includes(action))
-      reason = prompt("Reason (optional):") || null;
-    if (!confirm(`Confirm: ${action.replace(/_/g," ")}?`)) return;
+      reason = await uiPrompt("Reason (optional):", action.replace(/_/g," "), { placeholder: "Optional" }) || null;
     try {
       await api(`/api/subcontractors/${id}/review`, { method:"POST", body: JSON.stringify({ action, reason }) });
       openDetail(id);
-    } catch (e) { alert("Error: " + e.message); }
+    } catch (e) { await uiAlert("Error: " + e.message, "Error"); }
   }
 
   async function reviewDoc(id, docId, action, docType) {
     const body = { action };
     if (action === "approve" && docType === "coi") {
-      const exp = prompt("COI expiration date (YYYY-MM-DD):");
-      if (!exp) return;
-      body.expiration_date = exp;
+      const d = new Date(); d.setFullYear(d.getFullYear() + 1); // default: 1 year ahead
+      const oneYear = `${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")}/${d.getFullYear()}`;
+      const raw = await uiPrompt("COI expiration date (MM/DD/YYYY):", "Approve COI", { placeholder: "MM/DD/YYYY", value: oneYear });
+      if (!raw) return;
+      const m = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!m) { await uiAlert("Enter the date as MM/DD/YYYY.", "Invalid date"); return; }
+      body.expiration_date = `${m[3]}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;
     }
-    if (action === "reject") body.reason = prompt("Rejection reason:") || null;
+    if (action === "reject") body.reason = await uiPrompt("Rejection reason:", "Reject document", { placeholder: "Reason" }) || null;
     try {
       await api(`/api/subcontractors/${id}/documents/${docId}/review`, { method:"POST", body: JSON.stringify(body) });
       openDetail(id);
-    } catch (e) { alert("Error: " + e.message); }
+    } catch (e) { await uiAlert("Error: " + e.message, "Error"); }
   }
 
   // ---- add modal ----
@@ -222,13 +342,13 @@
       "city","state","zip","website","services_provided"];
     const body = {};
     fields.forEach(f => { const val = $("#f-"+f).value.trim(); if (val) body[f] = val; });
-    if (!body.legal_name || !body.email) { alert("Company name and email are required."); return; }
+    if (!body.legal_name || !body.email) { await uiAlert("Company name and email are required.", "Missing information"); return; }
     try {
       const v = await api("/api/subcontractors", { method:"POST", body: JSON.stringify(body) });
       closeAdd();
       fields.forEach(f => $("#f-"+f).value = "");
       openDetail(v.id);
-    } catch (e) { alert("Error: " + e.message); }
+    } catch (e) { await uiAlert("Error: " + e.message, "Error"); }
   }
 
   // ---- helpers ----
@@ -237,6 +357,8 @@
 
   // ---- init ----
   async function start() {
+    try { applyTheme(localStorage.getItem(THEME_KEY) || "light"); } catch (e) { applyTheme("light"); }
+    const tt = $("#theme-toggle"); if (tt) tt.onclick = toggleTheme;
     try { ME = await api("/api/me"); } catch (e) { ME = { name:"?", role:"?", permissions:[] }; }
     $("#who-name").textContent = ME.name || "";
     $("#who-role").textContent = ME.role || "";

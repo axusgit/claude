@@ -36,7 +36,7 @@ DEFAULT_EXCLUDE = {
 }
 EXCLUDE = DEFAULT_EXCLUDE | {e.strip().lower() for e in (os.getenv("EXCLUDE", "").split(",")) if e.strip()}
 PORTAL = "https://service.axustechnologies.com"
-LOGO = "https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png"
+LOGO = "https://service.axustechnologies.com/static/axus-logo.png"
 
 
 def _shell(inner_html: str) -> str:

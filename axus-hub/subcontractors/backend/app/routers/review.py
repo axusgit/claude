@@ -52,6 +52,19 @@ def review_vendor(sub_id: int, payload: VendorReview, db: Session = Depends(get_
     now = datetime.now(timezone.utc)
 
     if action == "approve":
+        # A vendor cannot be approved until W-9, COI, and the Agreement are all approved.
+        problems = []
+        if sub.w9_status != "approved":
+            problems.append("W-9")
+        if sub.coi_status not in ("current", "expiring_soon"):
+            problems.append("COI")
+        if sub.agreement_status not in ("current", "renewal_due"):
+            problems.append("Agreement")
+        if problems:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot approve — not approved yet: {', '.join(problems)}.",
+            )
         sub.vendor_status = "approved"
         for req in db.query(DocumentRequest).filter(
             DocumentRequest.subcontractor_id == sub.id,

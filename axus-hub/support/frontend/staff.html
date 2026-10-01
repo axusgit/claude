@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=68" />
+  <link rel="stylesheet" href="/static/styles.css?v=70" />
   <link rel="stylesheet" href="/static/staff.css?v=86" />
 </head>
 <body>
@@ -16,7 +16,7 @@
     <button class="theme-toggle theme-toggle-float" id="theme-toggle-login" title="Toggle dark / light"><span class="theme-icon">🌙</span></button>
     <div class="login-aurora"></div>
     <div class="login-card">
-      <img class="login-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus Technologies" />
+      <img class="login-logo" src="/static/axus-logo.png?v=1" alt="Axus Technologies" />
       <h1>Service Desk</h1>
       <p class="login-sub">Staff sign-in</p>
       <!-- Production: staff authenticate through Authentik SSO. Shown by default so
@@ -40,7 +40,7 @@
   <div id="app-view" class="hidden">
     <header class="topbar">
       <div class="topbar-left">
-        <img class="topbar-logo" src="https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png" alt="Axus" />
+        <img class="topbar-logo" src="/static/axus-logo.png?v=1" alt="Axus" />
         <span class="desk-tag">Service Desk</span>
       </div>
       <div class="topbar-right">
@@ -601,6 +601,7 @@
 
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="/static/staff.js?v=106"></script>
+  <script src="/static/confirm.js?v=1"></script>
+  <script src="/static/staff.js?v=107"></script>
 </body>
 </html>

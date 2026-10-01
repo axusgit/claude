@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { axusConfirm } from "@/lib/confirm";
 
 // Removes one line from a saved quote (quote screen). Confirms first, then
 // refreshes so the subtotal updates.
@@ -10,7 +11,7 @@ export function RemoveLineButton({ quoteId, lineId }: { quoteId: string; lineId:
   const [busy, setBusy] = useState(false);
 
   async function remove() {
-    if (!window.confirm("Remove this item from the quote?")) return;
+    if (!(await axusConfirm("Remove this item from the quote?"))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/quotes/${quoteId}/remove-line`, {

@@ -48,7 +48,7 @@ export function App() {
       <header className="esign-topbar">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-5">
           <Link to="/" className="flex items-center gap-2">
-            <img src="/assets/axus-logo.png" alt="Axus Technologies" className="h-8 w-auto" />
+            <img src="/assets/axus-logo.png" alt="Axus Technologies" className="h-8 w-auto brand-logo" />
             <span className="brand-gradient text-[15px] font-semibold">eSign</span>
           </Link>
           <nav className="flex items-center gap-1">
@@ -61,17 +61,17 @@ export function App() {
             <NavLink to="/contacts" className={navCls}>
               Contacts
             </NavLink>
-            <NavLink to="/reference" className={navCls}>
-              Quick reference
+            <NavLink to="/recycle" className={navCls}>
+              Recycle Bin
             </NavLink>
             <NavLink to="/archive" className={navCls}>
               Archive
             </NavLink>
-            <NavLink to="/recycle" className={navCls}>
-              Recycle Bin
-            </NavLink>
             <NavLink to="/activity" className={navCls}>
               Activity
+            </NavLink>
+            <NavLink to="/reference" className={navCls}>
+              Quick reference
             </NavLink>
           </nav>
           <div className="ml-auto flex items-center gap-1">

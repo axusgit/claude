@@ -7,17 +7,17 @@ import { sealPdf } from "../seal.js";
 import { sendCompleted, sendProgress, sendReminder, sendDeclined } from "../mail.js";
 import { envelopeDocName } from "../docname.js";
 import { logActivity } from "./activity.js";
-import { isOnCallQuote, notifyOnCallQuoteCompleted } from "../oncall.js";
+import { isOnCallQuote, notifyOnCallQuoteCompleted, notifyEnvelopeCallback } from "../oncall.js";
 // Seal the CURRENT state and email every participant a copy. On the last
 // signature it adds the certificate page, marks the envelope completed, and
 // stores the sealed file. Returns whether it's now fully complete.
 async function sealAndNotify(envId, signerName) {
-    const env = await pool.query(`select id, title, pdf_file, sequential, created_by, doc_type, company, quote_data from envelope where id = $1`, [envId]);
+    const env = await pool.query(`select id, title, pdf_file, sequential, created_by, doc_type, company, quote_data, callback_url from envelope where id = $1`, [envId]);
     const e = env.rows[0];
     if (!e?.pdf_file)
         return false;
     const fields = await pool.query(`select type, page, x, y, w, h, value from field where envelope_id = $1`, [envId]);
-    const recs = await pool.query(`select id, name, email, role, sign_token, ip, status,
+    const recs = await pool.query(`select id, name, email, role, sign_token, ip, status, consent_at,
             to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
      from recipient where envelope_id = $1 order by sign_order`, [envId]);
     // Copy-only viewers (role 'viewer') don't sign — exclude them from completion
@@ -25,7 +25,12 @@ async function sealAndNotify(envId, signerName) {
     const signers = recs.rows.filter((r) => r.role !== "viewer");
     const allSigned = signers.every((r) => r.status === "signed");
     logActivity(signerName, "Signed document", e.title, e.id);
-    const { bytes, sha256 } = await sealPdf(join(config.storageDir, e.pdf_file), fields.rows, signers, { title: e.title, envelopeId: e.id }, allSigned);
+    // A signer who is 'signed' but never consented electronically signed OFFLINE
+    // (a paper copy uploaded by staff) — mark them so on the certificate.
+    const manualSignerEmails = new Set(signers
+        .filter((r) => r.status === "signed" && !r.consent_at)
+        .map((r) => r.email.toLowerCase()));
+    const { bytes, sha256 } = await sealPdf(join(config.storageDir, e.pdf_file), fields.rows, signers, { title: e.title, envelopeId: e.id, manualSignerEmails }, allSigned);
     const attachment = { filename: `${envelopeDocName(e)}.pdf`, content: Buffer.from(bytes) };
     if (allSigned) {
         const sealedName = `${envId}-sealed.pdf`;
@@ -36,14 +41,21 @@ async function sealAndNotify(envId, signerName) {
         for (const r of recs.rows) {
             await sendCompleted({ to: r.email, recipientName: r.name, title: e.title, attachment, envelopeId: envId, recipientId: r.id });
         }
-        // Also notify the sender (staff) with the final signed copy.
-        if (e.created_by && !recs.rows.some((r) => r.email === e.created_by)) {
-            await sendCompleted({ to: e.created_by, recipientName: "Axus Team", title: e.title, attachment, envelopeId: envId });
+        // Also notify the Axus team inbox (info@) with the final signed copy — always,
+        // regardless of who created the envelope. Skip only if it's already a recipient.
+        const notifyTo = config.mail.notifyTo;
+        if (notifyTo && !recs.rows.some((r) => r.email.toLowerCase() === notifyTo.toLowerCase())) {
+            await sendCompleted({ to: notifyTo, recipientName: "Axus Team", title: e.title, attachment, envelopeId: envId });
         }
         // If this is an On Call quote, notify On Call so it shows under Invoices.
         // Fire-and-forget (the helper never throws) so completion stays snappy.
         if (isOnCallQuote(e)) {
             void notifyOnCallQuoteCompleted(e, bytes, sha256, recs.rows);
+        }
+        // Any envelope carrying a callback_url (e.g. a Subcontractor Agreement) gets a
+        // completion POST to that URL. Fire-and-forget; the helper never throws.
+        if (e.callback_url) {
+            void notifyEnvelopeCallback(e, sha256, signers);
         }
     }
     else {
@@ -91,7 +103,7 @@ export async function signRoutes(app) {
             return reply.code(404).send({ error: "This signing link is invalid or has expired." });
         const r = rec.rows[0];
         const env = await pool.query(`select id, title, status from envelope where id = $1`, [r.envelope_id]);
-        const fields = await pool.query(`select id, type, page, x, y, w, h, value, required from field where recipient_id = $1 order by page`, [r.id]);
+        const fields = await pool.query(`select id, type, page, x, y, w, h, value, required, grp, options, fkey from field where recipient_id = $1 order by page`, [r.id]);
         return {
             envelope: env.rows[0],
             recipient: { name: r.name, email: r.email, status: r.status },
@@ -138,10 +150,20 @@ export async function signRoutes(app) {
         const ip = req.ip;
         const ua = req.headers["user-agent"] ?? "";
         const valueMap = new Map((body.fields ?? []).map((f) => [f.id, f.value]));
-        const reqFields = await pool.query(`select id, required from field where recipient_id = $1`, [r.id]);
+        const reqFields = await pool.query(`select id, required, type, grp from field where recipient_id = $1`, [r.id]);
+        const grpChecked = new Map();
         for (const f of reqFields.rows) {
             if (f.required && !valueMap.get(f.id)) {
                 return reply.code(400).send({ error: "Please complete all required fields." });
+            }
+            const v = valueMap.get(f.id);
+            if (f.type === "checkbox" && f.grp && (v === "true" || v === "1")) {
+                grpChecked.set(f.grp, (grpChecked.get(f.grp) ?? 0) + 1);
+            }
+        }
+        for (const count of grpChecked.values()) {
+            if (count > 1) {
+                return reply.code(400).send({ error: "Only one Entity Type can be selected." });
             }
         }
         const client = await pool.connect();
@@ -207,12 +229,17 @@ export async function signRoutes(app) {
         // Notify the sender + every other participant, with the reason.
         const others = await pool.query(`select name, email from recipient where envelope_id = $1 and id <> $2`, [envId, r.id]);
         const notify = [
-            { name: "Axus Team", email: env.created_by },
+            { name: "Axus Team", email: config.mail.notifyTo },
             ...others.rows.map((o) => ({ name: o.name, email: o.email })),
         ];
+        const seen = new Set();
         for (const p of notify) {
             if (!p.email)
                 continue;
+            const key = p.email.toLowerCase();
+            if (seen.has(key))
+                continue; // don't double-send if info@ is also a participant
+            seen.add(key);
             await sendDeclined({ to: p.email, recipientName: p.name, declinerName: r.name, title: env.title, reason, envelopeId: envId });
         }
         return { ok: true, declined: true };

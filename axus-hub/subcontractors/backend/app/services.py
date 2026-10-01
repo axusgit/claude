@@ -73,8 +73,9 @@ def outstanding_requirements(db: Session, sub: Subcontractor) -> list[str]:
         items.append("W-9")
     if sub.coi_status in ("missing", "rejected", "expired"):
         items.append("Certificate of Insurance (COI)")
-    if sub.agreement_status not in ("current", "renewal_due"):
-        items.append("Signed Subcontractor Agreement")
+    # The Subcontractor Agreement is NOT part of the vendor's onboarding submission:
+    # Axus sends it for signature only AFTER the W-9 and COI are approved. So it is
+    # intentionally excluded from the vendor-facing outstanding list / submit gating.
     return items
 
 

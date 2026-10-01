@@ -45,12 +45,16 @@ const MAX_ROW_Y = 660; // items break to a new page past this (keeps them above 
 // Normalized (0..1, top-left) signature-field rectangles, so the editor can
 // AUTO-PLACE signer fields onto the blanks instead of the sender clicking them.
 export interface SignField {
-  type: "signature" | "date" | "name" | "title" | "text";
+  type: "signature" | "date" | "name" | "title" | "text" | "checkbox" | "select";
   page: number; // 1-based (matches the Field model)
   x: number;
   y: number;
   w: number;
   h: number;
+  required?: boolean; // defaults to true when inserted
+  group?: string; // checkboxes sharing a group are mutually exclusive (radio)
+  options?: string[]; // choices for a "select" (dropdown) field
+  key?: string; // stable role marker for conditional logic (e.g. "entity_other")
 }
 export interface SignSlot {
   role: string;

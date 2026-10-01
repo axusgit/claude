@@ -1,5 +1,5 @@
 export interface SignField {
-  type: "signature" | "date" | "name" | "title" | "text";
+  type: "signature" | "date" | "name" | "title" | "text" | "checkbox" | "select";
   page: number; // 1-based
   x: number;
   y: number;
@@ -65,7 +65,7 @@ export interface EmailLogEntry {
   at: string;
 }
 
-export type FieldType = "signature" | "name" | "title" | "initials" | "date" | "text";
+export type FieldType = "signature" | "name" | "title" | "initials" | "date" | "text" | "checkbox" | "select";
 
 export interface Field {
   id?: string;
@@ -78,6 +78,9 @@ export interface Field {
   h: number;
   value?: string | null;
   required?: boolean;
+  grp?: string | null; // checkboxes sharing a grp are mutually exclusive (radio)
+  options?: string[] | null; // choices for a "select" (dropdown) field
+  fkey?: string | null; // role marker (e.g. "entity_other", "entity_other_text")
 }
 
 export interface EnvelopeDetail {

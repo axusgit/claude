@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Archive, Check, Circle, Copy, Download, FilePen, FileSignature, HardDrive, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
+import { confirmDialog } from "@/lib/confirm";
 
 const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote"];
 // Types that open a pre-filled template on creation (deferred until Save). BAA is a
@@ -177,9 +178,12 @@ export function EnvelopeList() {
 
   async function del(docId: string, docTitle: string) {
     if (
-      !window.confirm(
-        `Move "${docTitle}" to the Recycle Bin? You can restore it within 90 days.`,
-      )
+      !(await confirmDialog({
+        title: "Move to Recycle Bin",
+        message: `Move "${docTitle}" to the Recycle Bin? You can restore it within 90 days.`,
+        confirmText: "Move",
+        danger: true,
+      }))
     )
       return;
     try {

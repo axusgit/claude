@@ -156,6 +156,22 @@ tr.new td{animation:flash-in 1.2s}
 @media(max-width:600px){.sysgauges{gap:4px;padding:6px 8px 4px}.gauge{width:58px}.gauge svg{width:58px;height:32px}}
 `;
 
+// Centered confirm modal (replaces native confirm(), which browsers pin to the
+// top). Self-contained, inline-styled; exposes window.axusConfirm() -> Promise.
+const AXUS_MODAL_JS = `window.axusConfirm=function(msg,opts){opts=opts||{};return new Promise(function(res){
+var ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,23,42,.5);backdrop-filter:blur(2px)';
+var c=document.createElement('div');c.style.cssText='width:100%;max-width:420px;background:#fff;color:#0f172a;border-radius:14px;box-shadow:0 20px 60px rgba(2,6,23,.4);padding:22px;font-family:Inter,system-ui,sans-serif';
+var p=document.createElement('p');p.textContent=msg;p.style.cssText='margin:0;font-size:14px;line-height:1.55;white-space:pre-line;color:#334155';
+var row=document.createElement('div');row.style.cssText='display:flex;justify-content:flex-end;gap:10px;margin-top:22px';
+function fin(v){document.removeEventListener('keydown',k);ov.remove();res(v);}
+function k(e){if(e.key==='Escape')fin(false);else if(e.key==='Enter')fin(true);}
+var cancel=document.createElement('button');cancel.type='button';cancel.textContent=opts.cancelText||'Cancel';cancel.style.cssText='font:600 14px Inter,sans-serif;padding:10px 18px;border-radius:9px;cursor:pointer;background:transparent;border:1px solid rgba(0,0,0,.16);color:#475569';cancel.onclick=function(){fin(false)};
+var ok=document.createElement('button');ok.type='button';ok.textContent=opts.confirmText||'OK';ok.style.cssText='font:600 14px Inter,sans-serif;padding:10px 18px;border-radius:9px;cursor:pointer;color:#fff;border:1px solid transparent;background:linear-gradient(135deg,#f26522,#f7941d);box-shadow:0 4px 12px rgba(242,101,34,.35)';ok.onclick=function(){fin(true)};
+row.appendChild(cancel);row.appendChild(ok);c.appendChild(p);c.appendChild(row);ov.appendChild(c);
+ov.addEventListener('mousedown',function(e){if(e.target===ov)fin(false)});
+document.addEventListener('keydown',k);document.body.appendChild(ov);ok.focus();});};
+window.axusAlert=function(msg){return window.axusConfirm(msg,{cancelText:null}).then(function(){});};`;
+
 function layout({ title, body, extraJs = '' }) {
   return `<!doctype html>
 <html lang="en">
@@ -169,6 +185,7 @@ function layout({ title, body, extraJs = '' }) {
 </head>
 <body>
 ${body}
+<script>${AXUS_MODAL_JS}</script>
 ${extraJs ? `<script>${extraJs}</script>` : ''}
 </body>
 </html>`;
@@ -623,7 +640,7 @@ async function fwAdd(){
   else fwFlash(d.error||'Failed',false);
 }
 async function fwDeny(src){
-  if(!confirm('Remove firewall rule for '+src+'?'))return;
+  if(!await axusConfirm('Remove firewall rule for '+src+'?'))return;
   const res=await fetch('/api/firewall/deny',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:src})});
   const d=await res.json();
   if(res.ok){fwFlash('Removed '+d.source,true);renderFw(d);}
@@ -715,7 +732,7 @@ async function devToggle(id,enabled){
   if(res.ok)loadDevices(); else devFlash('Update failed',false);
 }
 async function devDelete(id){
-  if(!confirm('Delete this monitored device?'))return;
+  if(!await axusConfirm('Delete this monitored device?'))return;
   const res=await fetch('/api/devices/'+id,{method:'DELETE'});
   if(res.ok){devFlash('Deleted.',true);loadDevices();} else devFlash('Delete failed',false);
 }
@@ -774,7 +791,7 @@ async function discAdopt(id){
   if(res.ok){discFlash('Now monitoring.',true);loadDiscovery();loadDevices();} else discFlash(d.error||'Failed',false);
 }
 async function discForget(id){
-  if(!confirm('Dismiss this source? It will stop showing here (a linked monitored device is NOT removed).'))return;
+  if(!await axusConfirm('Dismiss this source? It will stop showing here (a linked monitored device is NOT removed).'))return;
   const res=await fetch('/api/discovery/'+id,{method:'DELETE'});
   if(res.ok){discFlash('Dismissed.',true);loadDiscovery();} else discFlash('Failed',false);
 }

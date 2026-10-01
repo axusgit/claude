@@ -88,6 +88,16 @@ temporarily so the Adobe cutover on Sept 25 is never at risk.
 - **Next:** deploy to a box (Postgres + Traefik route + Authentik `app-aesign`
   gate + DNS) so it's clickable; then Word→PDF (Gotenberg) + send/sign flow.
 
+## Backlog / TODO
+- **[DONE 2026-09-30] Deleted documents auto-move to Archive (protection).**
+  Deleting a document soft-deletes it to the **Recycle Bin** (90-day undo window,
+  as before). At 90 days it is now **auto-moved to the Archive** — files + all rows
+  preserved — instead of being permanently destroyed, so nothing is ever lost
+  automatically. Only the explicit **purge** action (`DELETE /:id/purge`) removes a
+  document for good. Impl: `reminders.ts` `runReminders()` (auto-flush → auto-archive,
+  logs `Auto-archived from Recycle Bin`); Recycle Bin UI copy + "Auto-archive"
+  column updated.
+
 ## Milestones
 - **Wk 1:** scaffold app + Hub wiring; upload→render→place fields→save.
 - **Wk 2:** send flow (tokenized signer links) + sign UI + sealed PDF + audit.

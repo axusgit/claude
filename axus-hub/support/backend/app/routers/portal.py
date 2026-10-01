@@ -194,7 +194,7 @@ def magic_request(data: MagicRequestIn, background: BackgroundTasks, db: Session
     return _NEUTRAL
 
 
-AXUS_LOGO_URL = "https://axustechnologies.com/wp-content/themes/awi/img/axus-technologies-logo.png"
+AXUS_LOGO_URL = "https://service.axustechnologies.com/static/axus-logo.png"
 
 
 def _magic_link_html(name: str, link: str) -> str:

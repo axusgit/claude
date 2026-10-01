@@ -1,4 +1,4 @@
-import { FileSignature, FileText, Receipt, ShieldCheck, Upload } from "lucide-react";
+import { Archive, FileSignature, FileText, Receipt, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Card, StatusBadge } from "@/components/ui";
 
 const STATUS_FLOW: { status: string; when: string }[] = [
@@ -133,6 +133,36 @@ export function QuickReferencePage() {
           <li>• When everyone signs, the document is <span className="font-medium text-ink">Completed</span>: a sealed PDF with a certificate of completion is emailed to all parties, and reminders stop.</li>
           <li>• Every action is recorded in the document's audit trail (who, when, IP).</li>
         </ul>
+      </Card>
+
+      {/* Deleting, Recycle Bin & Archive */}
+      <Card className="p-5">
+        <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
+          <Trash2 className="h-4 w-4 text-brand" /> Deleting, Recycle Bin &amp; Archive
+        </div>
+        <p className="mb-3 text-sm text-muted">
+          A document is never destroyed automatically — this is the safety net for deleted docs.
+        </p>
+        <ol className="space-y-2.5">
+          {[
+            "Delete a document (from Documents or Archive) → it moves to the Recycle Bin — a 90-day undo window. Nothing is deleted yet.",
+            "In the Recycle Bin you can Restore it to Documents, Move it to the Archive now, Download it, or Purge it (“Delete forever”).",
+            "After 90 days in the Recycle Bin, a document is automatically moved to the Archive (files + full audit trail kept) — it is never auto-destroyed.",
+            "The Archive is long-term storage: Restore to Documents, Download, or delete (which sends it back to the Recycle Bin).",
+            "Permanent deletion is only ever possible via Purge in the Recycle Bin, behind a confirm. The Archive has no delete-forever action.",
+          ].map((step, i) => (
+            <li key={i} className="flex gap-2.5 text-sm">
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-canvas text-[11px] font-semibold text-muted">
+                {i + 1}
+              </span>
+              <span className="text-ink/90">{step}</span>
+            </li>
+          ))}
+        </ol>
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-canvas px-3 py-2 text-xs text-muted">
+          <Archive className="h-3.5 w-3.5 shrink-0 text-brand" />
+          Flow: Documents → Delete → Recycle Bin → (Purge = gone forever, or after 90 days → Archive).
+        </div>
       </Card>
 
       <p className="text-xs text-muted">

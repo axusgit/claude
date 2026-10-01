@@ -782,7 +782,7 @@ const Staff = (() => {
   }
   async function convertToProject() {
     if (!current || current.ticket_type === "sow") return;
-    if (!confirm("Convert this ticket into a Project? It will move to the Projects board and be assigned.")) return;
+    if (!await axusConfirm("Convert this ticket into a Project? It will move to the Projects board and be assigned.")) return;
     try {
       await api(`/api/tickets/${current.id}/convert-to-project`, { method: "POST" });
       await loadTickets(); await openTicket(current.id);
@@ -847,7 +847,7 @@ const Staff = (() => {
     };
   }
   async function delComment(ticketId, cid) {
-    if (!confirm("Delete this note?")) return;
+    if (!await axusConfirm("Delete this note?")) return;
     try { await api(`/api/tickets/${ticketId}/comments/${cid}`, { method: "DELETE" });
       await Promise.all([loadThread(ticketId), loadActivity(ticketId)]); toast("Note deleted"); }
     catch (e) { toast(e.message); }
@@ -973,7 +973,7 @@ const Staff = (() => {
       $("canned-id").value = c.id; $("canned-title").value = c.title; $("canned-body").value = c.body; $("canned-title").focus();
     });
     box.querySelectorAll("[data-del]").forEach(a => a.onclick = async () => {
-      if (!confirm("Delete this canned response?")) return;
+      if (!await axusConfirm("Delete this canned response?")) return;
       try { await api(`/api/canned/${a.dataset.del}`, { method: "DELETE" }); await loadCanned(); renderCannedList(); clearCannedForm(); toast("Deleted"); }
       catch (err) { toast(err.message); }
     });
@@ -1046,7 +1046,7 @@ const Staff = (() => {
       const t = glossaryData.find(x => String(x.id) === a.dataset.edit); if (t) openGlossaryModal(t);
     });
     box.querySelectorAll("[data-del]").forEach(a => a.onclick = async () => {
-      if (!confirm("Delete this glossary term?")) return;
+      if (!await axusConfirm("Delete this glossary term?")) return;
       try { await api(`/api/glossary/${a.dataset.del}`, { method: "DELETE" }); await loadGlossary(); toast("Deleted"); }
       catch (err) { toast(err.message); }
     });
@@ -1157,7 +1157,7 @@ const Staff = (() => {
   async function promoteXcitium() {
     if (!current || current.source !== "xcitium") return;
     const ext = -current.id;
-    if (!confirm("Import this Xcitium ticket into Axus so you can edit it?\n\nThe imported copy becomes a normal editable ticket, and the hourly sync will no longer overwrite it.")) return;
+    if (!await axusConfirm("Import this Xcitium ticket into Axus so you can edit it?\n\nThe imported copy becomes a normal editable ticket, and the hourly sync will no longer overwrite it.")) return;
     try {
       const r = await api(`/api/xcitium/tickets/${ext}/promote`, { method: "POST" });
       toast("Imported — now editable");
@@ -1167,7 +1167,7 @@ const Staff = (() => {
   }
   async function deleteTicket() {
     const ref = current.reference || "this ticket";
-    if (!confirm(`Permanently delete ${ref}?\n\nThis removes the ticket and all of its replies, notes, time entries, and attachments. This cannot be undone.`)) return;
+    if (!await axusConfirm(`Permanently delete ${ref}?\n\nThis removes the ticket and all of its replies, notes, time entries, and attachments. This cannot be undone.`)) return;
     try {
       await api(`/api/tickets/${current.id}`, { method: "DELETE" });
       toast(`Deleted ${ref}`);
@@ -1483,7 +1483,7 @@ const Staff = (() => {
       const del = tr.querySelector("[data-del-user]");
       if (del) del.onclick = async (e) => {
         e.stopPropagation();
-        if (!confirm(`Delete ${del.dataset.delName}?\n\nThey will not be re-created when Xcitium syncs.`)) return;
+        if (!await axusConfirm(`Delete ${del.dataset.delName}?\n\nThey will not be re-created when Xcitium syncs.`)) return;
         try {
           const r = await api(`/api/users/${del.dataset.delUser}`, { method: "DELETE" });
           toast("User deleted"); await refreshUsers(); renderUsers();
@@ -1850,7 +1850,7 @@ const Staff = (() => {
       const cid = parseInt(e.target.value);
       if (!cid || cid === current.client_id) return;
       const name = clientMap[cid] || "the selected business";
-      if (!confirm(`Move this ticket to ${name}? The current contact (from the previous business) will be cleared.`)) {
+      if (!await axusConfirm(`Move this ticket to ${name}? The current contact (from the previous business) will be cleared.`)) {
         e.target.value = String(current.client_id); return;
       }
       try {

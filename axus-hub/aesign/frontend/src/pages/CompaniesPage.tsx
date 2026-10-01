@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Building2, Check, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { companiesApi, contactsApi, type Company, type Contact } from "@/lib/api";
 import { Button, Card, Input } from "@/components/ui";
+import { confirmDialog } from "@/lib/confirm";
 
 export function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -94,7 +95,7 @@ export function CompaniesPage() {
     }
   }
   async function remove(id: string) {
-    if (!window.confirm("Delete this company?")) return;
+    if (!(await confirmDialog({ message: "Delete this company?", confirmText: "Delete", danger: true }))) return;
     try {
       await companiesApi.remove(id);
       setCompanies((cs) => cs.filter((c) => c.id !== id));

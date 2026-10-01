@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Archive, Download, RotateCcw, Search, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
 import { Card, Input, StatusBadge } from "@/components/ui";
+import { confirmDialog } from "@/lib/confirm";
 
 const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote", "Others"];
 
-// Days a document is kept in the bin before it's automatically purged.
+// Days a document is kept in the bin before it's automatically moved to the
+// Archive (a protection for deleted docs — nothing is ever auto-destroyed).
 const RETENTION_DAYS = 90;
 
 export function RecycleBinPage() {
@@ -50,9 +52,12 @@ export function RecycleBinPage() {
 
   async function purge(docId: string, docTitle: string) {
     if (
-      !window.confirm(
-        `Permanently delete "${docTitle}"? This cannot be undone — it removes the document, its files, and its audit trail.`,
-      )
+      !(await confirmDialog({
+        title: "Permanently delete",
+        message: `Permanently delete "${docTitle}"? This cannot be undone — it removes the document, its files, and its audit trail.`,
+        confirmText: "Delete permanently",
+        danger: true,
+      }))
     )
       return;
     try {
@@ -83,7 +88,7 @@ export function RecycleBinPage() {
         })
       : "—";
 
-  // Whole days remaining before auto-purge (min 0).
+  // Whole days remaining before the doc is auto-moved to the Archive (min 0).
   const daysLeft = (deletedAt?: string | null) => {
     if (!deletedAt) return RETENTION_DAYS;
     const elapsed = (Date.now() - new Date(deletedAt).getTime()) / 86400000;
@@ -95,8 +100,9 @@ export function RecycleBinPage() {
       <div>
         <h1 className="text-xl font-semibold">Recycle Bin</h1>
         <p className="text-sm text-muted">
-          Deleted documents are kept here for {RETENTION_DAYS} days, then permanently removed
-          automatically. Restore one to the Documents tab, or delete it forever.
+          Deleted documents are kept here for {RETENTION_DAYS} days, then automatically moved to the
+          Archive for safekeeping — they're never destroyed automatically. Restore one to the
+          Documents tab, move it to the Archive now, or delete it forever.
         </p>
       </div>
 
@@ -148,7 +154,7 @@ export function RecycleBinPage() {
                 <th className="px-4 py-3 font-medium">Company</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Deleted</th>
-                <th className="px-4 py-3 font-medium">Auto-purge</th>
+                <th className="px-4 py-3 font-medium">Auto-archive</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>

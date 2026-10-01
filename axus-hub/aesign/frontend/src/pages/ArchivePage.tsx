@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Archive, ArchiveRestore, Copy, Download, Search, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
 import { Card, Input, StatusBadge } from "@/components/ui";
+import { confirmDialog } from "@/lib/confirm";
 
 const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote"];
 
@@ -40,9 +41,12 @@ export function ArchivePage() {
 
   async function del(docId: string, docTitle: string) {
     if (
-      !window.confirm(
-        `Move "${docTitle}" to the Recycle Bin? You can restore it within 90 days.`,
-      )
+      !(await confirmDialog({
+        title: "Move to Recycle Bin",
+        message: `Move "${docTitle}" to the Recycle Bin? You can restore it within 90 days.`,
+        confirmText: "Move",
+        danger: true,
+      }))
     )
       return;
     try {

@@ -5,6 +5,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { CheckCircle2, ScrollText } from "lucide-react";
 import { signApi, type Field, type SignView } from "@/lib/api";
+import { alertDialog } from "@/lib/confirm";
 import { Button } from "@/components/ui";
 import { SignaturePad } from "@/features/SignaturePad";
 import axusLogo from "@/assets/axus-logo.png";
@@ -70,11 +71,56 @@ export function SignPage() {
   }, [token]);
 
   function setValue(id: string, val: string) {
-    setValues((v) => ({ ...v, [id]: val }));
+    setValues((v) => {
+      const next = { ...v, [id]: val };
+      // Keep every date field for this signer in sync — the Effective Date mirrors
+      // the signature date, since they all represent the one signing date.
+      const changed = view?.fields.find((f) => f.id === id);
+      if (changed?.type === "date") {
+        for (const f of view?.fields ?? []) {
+          if (f.type === "date" && f.id !== id) next[f.id!] = val;
+        }
+      }
+      // One choice only: checking a box CLEARS every other box in its group, so at
+      // most one is ever selected. Warn if this replaced an existing choice.
+      if (changed?.type === "checkbox" && changed.grp && val === "true") {
+        let hadOther = false;
+        for (const f of view?.fields ?? []) {
+          if (f.type === "checkbox" && f.grp === changed.grp && f.id !== id) {
+            if (v[f.id!] === "true" || next[f.id!] === "true") hadOther = true;
+            next[f.id!] = "";
+          }
+        }
+        if (hadOther) {
+          setTimeout(
+            () =>
+              alertDialog({
+                title: "One choice only",
+                message: "Only one Entity Type can be selected — your previous choice was cleared.",
+              }),
+            0,
+          );
+        }
+      }
+      return next;
+    });
   }
 
-  const required = view?.fields.filter((f) => f.required) ?? [];
-  const allFilled = required.every((f) => (values[f.id!] ?? "").length > 0);
+  const allFields = view?.fields ?? [];
+  const required = allFields.filter((f) => f.required);
+  // Entity Type group: at least one box selected; if "Other" is checked, its text is required.
+  const entityBoxes = allFields.filter((f) => f.type === "checkbox" && f.grp === "entity_type");
+  const entityCount = entityBoxes.filter((f) => values[f.id!] === "true").length;
+  const entityChosen = entityCount === 1;
+  const otherCb = allFields.find((f) => f.type === "checkbox" && f.fkey === "entity_other");
+  const otherTxt = allFields.find((f) => f.fkey === "entity_other_text");
+  const otherNeedsText = !!(
+    otherCb && values[otherCb.id!] === "true" && otherTxt && !(values[otherTxt.id!] ?? "").trim()
+  );
+  // Require EXACTLY one entity type (0 or >1 blocks signing), plus Other text if chosen.
+  const entityBlocked = (entityBoxes.length > 0 && entityCount !== 1) || otherNeedsText;
+  const allFilled =
+    required.every((f) => (values[f.id!] ?? "").length > 0) && !entityBlocked;
   const canSubmit = consent && allFilled && !submitting;
 
   async function submit() {
@@ -156,7 +202,11 @@ export function SignPage() {
     );
   }
 
-  const remaining = view.fields.filter((f) => f.required && !(values[f.id!] ?? "").length);
+  const remaining: { id: string }[] = view.fields
+    .filter((f) => f.required && !(values[f.id!] ?? "").length)
+    .map((f) => ({ id: f.id! }));
+  if (entityBoxes.length > 0 && !entityChosen && entityBoxes[0]?.id) remaining.push({ id: entityBoxes[0].id });
+  else if (otherNeedsText && otherTxt?.id) remaining.push({ id: otherTxt.id });
   function scrollToNext() {
     const next = remaining[0];
     if (!next) return;
@@ -310,8 +360,8 @@ export function SignPage() {
                   placeholder={sigField.type === "initials" ? "Your initials" : "Type your full name"}
                   className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
                 />
-                <div className="grid h-28 place-items-center rounded-lg border border-line bg-canvas">
-                  <span style={{ fontFamily: SCRIPT_FONT, fontStyle: "italic", fontSize: 40 }}>
+                <div className="grid h-28 place-items-center rounded-lg border border-line bg-white">
+                  <span style={{ fontFamily: SCRIPT_FONT, fontStyle: "italic", fontSize: 40, color: "#111827" }}>
                     {typedName || "Preview"}
                   </span>
                 </div>
@@ -518,18 +568,66 @@ function FieldInput({
       </button>
     );
   }
+  if (field.type === "checkbox") {
+    const checked = value === "true" || value === "1";
+    return (
+      <button
+        id={id}
+        type="button"
+        className={
+          "absolute grid place-items-center rounded-sm border-[1.5px] font-bold text-gray-900 leading-none " +
+          (checked ? "border-green-500 bg-green-50" : "border-yellow-500 bg-yellow-200/70 hover:bg-yellow-200")
+        }
+        style={{ ...style, fontSize }}
+        onClick={() => setValue(checked ? "" : "true")}
+        aria-pressed={checked}
+      >
+        {checked ? "✓" : ""}
+      </button>
+    );
+  }
+  if (field.type === "select") {
+    return (
+      <select
+        id={id}
+        className={
+          "absolute rounded-sm border-[1.5px] px-1 leading-none outline-none text-gray-900 " +
+          (filled ? "border-green-500 bg-green-50 focus:bg-white" : "border-yellow-500 bg-yellow-200/70 focus:bg-white")
+        }
+        style={{ ...style, fontSize }}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      >
+        <option value="">Select…</option>
+        {(field.options ?? []).map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    );
+  }
   return (
     <input
       id={id}
       type="text"
       className={
-        "absolute rounded-sm border-[1.5px] px-1 leading-none outline-none " +
+        // Field values sit on the (always-light) document, so force dark ink +
+        // a light focus background — never the theme's surface (dark in night mode).
+        "absolute rounded-sm border-[1.5px] px-1 leading-none outline-none text-gray-900 placeholder:text-gray-500 " +
         (filled
-          ? "border-green-500 bg-green-50 focus:bg-surface"
-          : "border-yellow-500 bg-yellow-200/70 focus:bg-surface")
+          ? "border-green-500 bg-green-50 focus:bg-white"
+          : "border-yellow-500 bg-yellow-200/70 focus:bg-white")
       }
       style={{ ...style, fontSize }}
       value={value}
+      title={
+        field.type === "date"
+          ? field.page === 1
+            ? "Effective Date — automatically set to your signature date. Changing any date updates all of them."
+            : "Signing date — defaults to today; changing it also updates the Effective Date."
+          : undefined
+      }
       placeholder={
         field.type === "date"
           ? "Date"

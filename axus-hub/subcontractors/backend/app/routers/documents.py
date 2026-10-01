@@ -7,13 +7,13 @@ compliance and, on rejection, notifies the vendor with a fresh upload link.
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import (
     AppUser, get_current_user, require_staff, require_permission,
-    P_VIEW_W9, P_REVIEW_DOCS,
+    P_VIEW_W9, P_REVIEW_DOCS, P_EDIT,
 )
 from app.activity import log_activity
 from app.tokens import issue_token
@@ -44,6 +44,45 @@ def list_documents(sub_id: int, db: Session = Depends(get_db), _: AppUser = Depe
         }
         for d in docs
     ]
+
+
+@router.post("/{sub_id}/documents")
+async def staff_upload_document(
+    sub_id: int,
+    doc_type: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: AppUser = Depends(require_permission(P_EDIT)),
+):
+    """Staff upload a W-9 or COI on the subcontractor's behalf (mirrors the vendor
+    onboarding upload). Lands as pending_review, same as a vendor upload."""
+    sub = _get_or_404(db, sub_id)
+    if doc_type not in ("w9", "coi"):
+        raise HTTPException(status_code=400, detail="doc_type must be 'w9' or 'coi'")
+    if not storage.is_allowed(file.filename):
+        allowed = ", ".join(sorted(e[1:] for e in storage.ALLOWED_EXTS))
+        raise HTTPException(status_code=400, detail=f"File type not allowed. Accepted: {allowed}")
+    content = await file.read()
+    if len(content) > storage.MAX_ATTACHMENT_BYTES:
+        mb = storage.MAX_ATTACHMENT_BYTES // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"File exceeds the {mb} MB limit")
+    stored_name = storage.save_encrypted(content)
+    doc = SubcontractorDocument(
+        subcontractor_id=sub.id, doc_type=doc_type,
+        version=services.next_version(db, sub.id, doc_type),
+        status="pending_review", stored_name=stored_name,
+        original_filename=file.filename, content_type=file.content_type,
+        size=len(content), uploaded_by=user.email,
+    )
+    db.add(doc)
+    db.flush()
+    if sub.vendor_status == "invited":
+        sub.vendor_status = "onboarding"
+    log_activity(db, sub.id, user.email, "document_uploaded",
+                 detail=f"{doc_type.upper()} uploaded by staff ({user.email}) (v{doc.version})")
+    services.recompute_compliance(db, sub)
+    db.commit()
+    return {"id": doc.id, "doc_type": doc_type, "status": doc.status, "version": doc.version}
 
 
 @router.get("/{sub_id}/documents/{doc_id}/download")

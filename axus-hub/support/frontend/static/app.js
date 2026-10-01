@@ -637,7 +637,7 @@ const App = (() => {
     $("d-raise-prio").onchange = async e => {
       const p = e.target.value; e.target.value = "";
       if (!p) return;
-      if (!confirm(`Raise this ticket's priority to ${prioLabel(p)}? Priority can be raised but not lowered from the portal.`)) return;
+      if (!await axusConfirm(`Raise this ticket's priority to ${prioLabel(p)}? Priority can be raised but not lowered from the portal.`)) return;
       try {
         await api(`/api/portal/tickets/${currentTicket}/priority`, { method: "PATCH", body: { priority: p } });
         await openTicket(currentTicket);

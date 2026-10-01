@@ -20,6 +20,36 @@ export function quoteTotalCents(quote) {
 export function isOnCallQuote(e) {
     return e.doc_type === "Quote" && e.created_by === "oncall@axustechnologies.com";
 }
+// Any envelope created via the external API with a stored callback_url (e.g. the
+// Subcontractors product's agreements) gets a completion POST to that URL.
+export async function notifyEnvelopeCallback(e, sha256, signers) {
+    const url = (e.callback_url ?? "").trim();
+    if (!url || !config.externalToken)
+        return;
+    try {
+        const signer = signers[0];
+        const payload = {
+            envelopeId: e.id,
+            status: "completed",
+            sha256,
+            signedAt: signer?.signed_at ?? null,
+            signer: signer ? { name: signer.name, email: signer.email } : null,
+        };
+        const res = await fetch(url, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${config.externalToken}`,
+            },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok)
+            console.error(`[callback] envelope ${e.id} → ${url} failed: HTTP ${res.status}`);
+    }
+    catch (err) {
+        console.error(`[callback] envelope ${e.id} error: ${err.message}`);
+    }
+}
 export async function notifyOnCallQuoteCompleted(e, sealedBytes, sha256, signers) {
     if (!config.onCallCallbackUrl || !config.externalToken)
         return;

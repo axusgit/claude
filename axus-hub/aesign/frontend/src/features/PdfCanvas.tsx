@@ -17,6 +17,8 @@ export const FIELD_DEFAULTS: Record<FieldType, { w: number; h: number; label: st
   initials: { w: 0.1, h: 0.03, label: "Initials" },
   date: { w: 0.16, h: 0.026, label: "Date" },
   text: { w: 0.22, h: 0.026, label: "Text" },
+  checkbox: { w: 0.02, h: 0.016, label: "Check" },
+  select: { w: 0.22, h: 0.026, label: "Select" },
 };
 
 // A text run from the PDF (a label like "Signature: ______", normalized coords).

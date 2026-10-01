@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { axusConfirm } from "@/lib/confirm";
 
 // Admin-only: delete a test/unused quote from the quotes list.
 export function DeleteQuoteButton({ quoteId, label }: { quoteId: string; label?: string }) {
@@ -9,7 +10,7 @@ export function DeleteQuoteButton({ quoteId, label }: { quoteId: string; label?:
   const [busy, setBusy] = useState(false);
 
   async function del() {
-    if (!window.confirm(`Delete quote ${label ?? quoteId}? This can't be undone.`)) return;
+    if (!(await axusConfirm(`Delete quote ${label ?? quoteId}? This can't be undone.`))) return;
     setBusy(true);
     try {
       const res = await fetch("/admin/quotes/delete", {

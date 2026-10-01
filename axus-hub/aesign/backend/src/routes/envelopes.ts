@@ -155,7 +155,9 @@ export async function envelopeRoutes(app: FastifyInstance) {
   });
 
   // Delete an envelope (and its recipients/fields/events + stored files).
-  // Soft-delete: move a document to the Recycle Bin (kept 90 days, then flushed).
+  // Soft-delete: move a document to the Recycle Bin. After 90 days it is
+  // auto-moved to the Archive (never destroyed) — see runReminders(). Only the
+  // explicit "purge" action permanently removes a document.
   app.delete("/:id", async (req, reply) => {
     const id = requireStaff(req, reply);
     if (!id) return;

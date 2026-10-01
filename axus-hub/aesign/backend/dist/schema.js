@@ -32,8 +32,9 @@ alter table recipient add column if not exists decline_reason text;        -- wh
 alter table recipient add column if not exists declined_at timestamptz;
 alter table envelope add column if not exists archived boolean not null default false;  -- moved to the Archive tab
 alter table envelope add column if not exists archived_at timestamptz;
-alter table envelope add column if not exists deleted boolean not null default false;   -- soft-deleted → Recycle Bin (auto-flushed after 90 days)
+alter table envelope add column if not exists deleted boolean not null default false;   -- soft-deleted → Recycle Bin (auto-moved to Archive after 90 days, never destroyed)
 alter table envelope add column if not exists deleted_at timestamptz;
+alter table envelope add column if not exists callback_url text;   -- external product to POST on completion (e.g. Subcontractors)
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),
@@ -60,6 +61,10 @@ create table if not exists field (
   value        text,
   required     boolean not null default true
 );
+-- Radio-group key: checkboxes sharing a non-null grp are mutually exclusive.
+alter table field add column if not exists grp text;
+alter table field add column if not exists options jsonb;   -- choices for a select/dropdown field
+alter table field add column if not exists fkey text;       -- role marker (e.g. entity_other)
 
 -- Append-only audit log (never updated/deleted) — the backbone of legal validity.
 create table if not exists event (

@@ -4,6 +4,7 @@ All routes require staff identity; write actions require the matching granular
 permission. Every mutation writes an audit row. Records are assigned a permanent
 AXV-###### public id on create. Soft-deleted (tombstoned) rows are excluded.
 """
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import (
     AppUser, require_staff, require_permission,
-    P_CREATE, P_EDIT,
+    P_CREATE, P_EDIT, P_DEACTIVATE,
 )
 from app.activity import log_activity
 from app.ids import format_public_id
@@ -80,7 +81,17 @@ def create_subcontractor(
     sub.public_id = format_public_id(sub.id)
     log_activity(db, sub.id, user.email, "created",
                  detail=f"Subcontractor created: {sub.legal_name} ({sub.public_id})")
-    db.commit()
+    # Automatically send the onboarding invite ("Complete your Axus subcontractor
+    # onboarding") as soon as the company is created. Lazy import avoids a circular
+    # import (invite.py imports from this module). _do_invite commits.
+    try:
+        from app.routers.invite import _do_invite
+        _do_invite(db, sub, user.email, resend=False)
+    except Exception as e:
+        # Never fail creation if the invite email can't be sent; log and continue.
+        log_activity(db, sub.id, user.email, "invitation_error",
+                     detail=f"Auto onboarding invite could not be sent: {e}")
+        db.commit()
     db.refresh(sub)
     return _detail(sub)
 
@@ -117,6 +128,21 @@ def update_subcontractor(
     db.commit()
     db.refresh(sub)
     return _detail(sub)
+
+
+@router.delete("/{sub_id}", status_code=204)
+def delete_subcontractor(
+    sub_id: int,
+    db: Session = Depends(get_db),
+    user: AppUser = Depends(require_permission(P_DEACTIVATE)),
+):
+    """Soft-delete a subcontractor (admin only): sets deleted_at so it drops out
+    of the directory and all queries, but the record + its history are retained."""
+    sub = _get_or_404(db, sub_id)
+    sub.deleted_at = datetime.now(timezone.utc)
+    log_activity(db, sub.id, user.email, "deleted",
+                 detail=f"Subcontractor {sub.legal_name} deleted")
+    db.commit()
 
 
 # ----- helpers -----

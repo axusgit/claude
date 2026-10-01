@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUpDown, Check, FileDown, Pencil, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { companiesApi, contactsApi, type Company, type Contact } from "@/lib/api";
 import { Button, Card, Input } from "@/components/ui";
+import { confirmDialog } from "@/lib/confirm";
 
 // Minimal CSV parser (handles quoted fields, embedded commas/newlines).
 function parseCsv(text: string): string[][] {
@@ -159,7 +160,7 @@ export function ContactsPage() {
     }
   }
   async function remove(id: string) {
-    if (!window.confirm("Delete this contact?")) return;
+    if (!(await confirmDialog({ message: "Delete this contact?", confirmText: "Delete", danger: true }))) return;
     try {
       await contactsApi.remove(id);
       setContacts((cs) => cs.filter((c) => c.id !== id)); // stay in place

@@ -34,6 +34,7 @@ import {
   type SignSlot,
 } from "@/lib/api";
 import { Button, Card, Input, StatusBadge } from "@/components/ui";
+import { confirmDialog } from "@/lib/confirm";
 import { recipientColor } from "@/lib/utils";
 import { PdfCanvas } from "@/features/PdfCanvas";
 
@@ -484,9 +485,12 @@ export function EnvelopeEditor() {
   const [sending, setSending] = useState(false);
   async function send() {
     if (
-      !window.confirm(
-        "Send this document to all recipients for signature? Each will receive an email with their signing link.",
-      )
+      !(await confirmDialog({
+        title: "Send for signature",
+        message:
+          "Send this document to all recipients for signature? Each will receive an email with their signing link.",
+        confirmText: "Send",
+      }))
     )
       return;
     setSending(true);
@@ -561,7 +565,7 @@ export function EnvelopeEditor() {
     }
   }
   async function cancelDoc() {
-    if (!window.confirm("Cancel this document? Recipients will no longer be able to sign it.")) return;
+    if (!(await confirmDialog({ title: "Cancel document", message: "Cancel this document? Recipients will no longer be able to sign it.", confirmText: "Cancel document", cancelText: "Keep", danger: true }))) return;
     try {
       await api.cancelEnvelope(id);
       await load();
@@ -1447,8 +1451,8 @@ function RecipientsPanel({
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 <button
-                  onClick={() => {
-                    if (window.confirm(`Remove ${r.name}?`)) onRemove(r.id!);
+                  onClick={async () => {
+                    if (await confirmDialog({ message: `Remove ${r.name}?`, confirmText: "Remove", danger: true })) onRemove(r.id!);
                   }}
                   className="text-muted hover:text-red-600"
                   title="Remove recipient"

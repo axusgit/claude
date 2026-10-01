@@ -115,6 +115,24 @@ tr:last-child td{border-bottom:none}
 .foot{text-align:center;color:var(--muted);font-size:12px;margin-top:32px}
 `;
 
+// Centered confirm modal (replaces native confirm(), which browsers pin to the
+// top). Self-contained, inline-styled. axusConfirmSubmit() is a drop-in for
+// form onsubmit="return axusConfirmSubmit(event,...)": it blocks the submit, shows the modal,
+// and submits programmatically on OK.
+const AXUS_MODAL_JS = `window.axusConfirm=function(msg,opts){opts=opts||{};return new Promise(function(res){
+var ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,23,42,.5);backdrop-filter:blur(2px)';
+var c=document.createElement('div');c.style.cssText='width:100%;max-width:420px;background:#fff;color:#0f172a;border-radius:14px;box-shadow:0 20px 60px rgba(2,6,23,.4);padding:22px;font-family:Inter,system-ui,sans-serif';
+var p=document.createElement('p');p.textContent=msg;p.style.cssText='margin:0;font-size:14px;line-height:1.55;white-space:pre-line;color:#334155';
+var row=document.createElement('div');row.style.cssText='display:flex;justify-content:flex-end;gap:10px;margin-top:22px';
+function fin(v){document.removeEventListener('keydown',k);ov.remove();res(v);}
+function k(e){if(e.key==='Escape')fin(false);else if(e.key==='Enter')fin(true);}
+var cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';cancel.style.cssText='font:600 14px Inter,sans-serif;padding:10px 18px;border-radius:9px;cursor:pointer;background:transparent;border:1px solid rgba(0,0,0,.16);color:#475569';cancel.onclick=function(){fin(false)};
+var ok=document.createElement('button');ok.type='button';ok.textContent=opts.confirmText||'OK';ok.style.cssText='font:600 14px Inter,sans-serif;padding:10px 18px;border-radius:9px;cursor:pointer;color:#fff;border:1px solid transparent;background:linear-gradient(135deg,#f26522,#f7941d);box-shadow:0 4px 12px rgba(242,101,34,.35)';ok.onclick=function(){fin(true)};
+row.appendChild(cancel);row.appendChild(ok);c.appendChild(p);c.appendChild(row);ov.appendChild(c);
+ov.addEventListener('mousedown',function(e){if(e.target===ov)fin(false)});
+document.addEventListener('keydown',k);document.body.appendChild(ov);ok.focus();});};
+window.axusConfirmSubmit=function(e,msg){e.preventDefault();var f=e.target;window.axusConfirm(msg).then(function(ok){if(ok)f.submit();});return false;};`;
+
 function layout({ title, body, extraCss = '', extraJs = '' }) {
   return `<!doctype html>
 <html lang="en">
@@ -128,6 +146,7 @@ function layout({ title, body, extraCss = '', extraJs = '' }) {
 </head>
 <body>
 ${body}
+<script>${AXUS_MODAL_JS}</script>
 ${extraJs ? `<script>${extraJs}</script>` : ''}
 </body>
 </html>`;
@@ -190,7 +209,7 @@ function linkRow(link, baseUrl, statusOf) {
              </form>`
       }
       <a class="btn sm ghost" href="/admin/links/${esc(link.id)}/edit">Edit</a>
-      <form method="post" action="/admin/links/${esc(link.id)}/delete" onsubmit="return confirm('Delete this link and all files uploaded through it? This cannot be undone.')">
+      <form method="post" action="/admin/links/${esc(link.id)}/delete" onsubmit="return axusConfirmSubmit(event,'Delete this link and all files uploaded through it? This cannot be undone.')">
         <button class="btn sm danger" type="submit">Del</button>
       </form>
     </div>
@@ -222,10 +241,10 @@ function fileRows(links) {
   <td style="white-space:nowrap">${fmtDate(up.uploadedAt)}</td>
   <td style="white-space:nowrap">
     <a class="btn sm ghost" href="/admin/files/${esc(link.token)}/${encodeURIComponent(up.storedName)}">Download</a>
-    <form method="post" action="/admin/files/${esc(link.token)}/${encodeURIComponent(up.storedName)}/share" style="display:inline" onsubmit="return confirm('Create a public download link for this file? Anyone with the link will be able to download it.')">
+    <form method="post" action="/admin/files/${esc(link.token)}/${encodeURIComponent(up.storedName)}/share" style="display:inline" onsubmit="return axusConfirmSubmit(event,'Create a public download link for this file? Anyone with the link will be able to download it.')">
       <button class="btn sm ghost" type="submit">Share</button>
     </form>
-    <form method="post" action="/admin/files/${esc(link.token)}/${encodeURIComponent(up.storedName)}/delete" style="display:inline" onsubmit="return confirm('Delete this file permanently?')">
+    <form method="post" action="/admin/files/${esc(link.token)}/${encodeURIComponent(up.storedName)}/delete" style="display:inline" onsubmit="return axusConfirmSubmit(event,'Delete this file permanently?')">
       <button class="btn sm danger" type="submit">Delete</button>
     </form>
   </td>
@@ -274,7 +293,7 @@ function sendRow(send, baseUrl, sendStatusOf) {
                <button class="btn pill disable" type="submit">Disable</button>
              </form>`
       }
-      <form method="post" action="/admin/sends/${esc(send.id)}/delete" onsubmit="return confirm('Delete this download link and its files? This cannot be undone.')">
+      <form method="post" action="/admin/sends/${esc(send.id)}/delete" onsubmit="return axusConfirmSubmit(event,'Delete this download link and its files? This cannot be undone.')">
         <button class="btn sm danger" type="submit">Del</button>
       </form>
     </div>

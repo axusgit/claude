@@ -9,9 +9,14 @@ export interface NamedEnvelope {
   quote_data?: { quote_number?: string } | null;
 }
 
-// Strip characters that are illegal in file names / Content-Disposition.
+// Strip characters that are illegal in file names / Content-Disposition. The
+// Content-Disposition header must be ASCII, so normalize dashes and drop any
+// remaining non-ASCII (e.g. an em dash in a title would otherwise 500 the
+// document download with ERR_INVALID_CHAR).
 function clean(s: string): string {
   return s
+    .replace(/[‐-―]/g, "-") // hyphen/figure/en/em dashes → ASCII hyphen
+    .replace(/[^\x20-\x7E]/g, "") // drop remaining non-ASCII
     .replace(/[\\/:*?"<>|\r\n]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()

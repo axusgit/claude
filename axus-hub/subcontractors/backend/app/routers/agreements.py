@@ -19,8 +19,9 @@ from app.database import get_db
 from app.auth import AppUser, require_permission, P_MANAGE_AGREEMENTS
 from app.activity import log_activity
 from app.config_util import get_config
-from app import aesign, services
+from app import aesign, services, storage
 from app.models.agreement_link import AgreementLink
+from app.models.document import SubcontractorDocument
 from app.routers.subcontractors import _get_or_404
 
 router = APIRouter(tags=["agreements"])
@@ -41,22 +42,36 @@ def send_agreement(sub_id: int, db: Session = Depends(get_db),
     sub = _get_or_404(db, sub_id)
     if not aesign.is_configured():
         raise HTTPException(status_code=503, detail="aesign integration is not configured")
+    # Require the W-9 and COI to be APPROVED before the agreement can be sent.
+    # (COI approval sets coi_status to current/expiring_soon based on its expiry;
+    # an expired COI does not qualify.)
+    problems = []
+    if sub.w9_status != "approved":
+        problems.append("W-9")
+    if sub.coi_status not in ("current", "expiring_soon"):
+        problems.append("COI")
+    if problems:
+        raise HTTPException(
+            status_code=409,
+            detail=f"The {' and '.join(problems)} must be approved before sending the agreement.",
+        )
     try:
-        env = aesign.create_agreement_envelope(sub)
+        env = aesign.create_agreement_envelope(
+            sub, axus_signer={"name": user.name, "email": user.email})
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"aesign error: {e}")
     cfg = get_config(db)
     link = AgreementLink(
         subcontractor_id=sub.id, envelope_id=env["envelope_id"],
-        agreement_version=cfg_version(cfg), status="sent",
+        agreement_version=cfg_version(cfg), status="draft",
     )
     db.add(link)
     sub.agreement_status = "pending_signature"
-    log_activity(db, sub.id, user.email, "agreement_sent",
-                 detail=f"Subcontractor Agreement sent for signature (envelope {env['envelope_id']})")
+    log_activity(db, sub.id, user.email, "agreement_drafted",
+                 detail=f"Subcontractor Agreement drafted in eSign for review (envelope {env['envelope_id']})")
     db.commit()
-    return {"envelope_id": env["envelope_id"], "sign_url": env.get("sign_url"),
-            "status": "sent"}
+    return {"envelope_id": env["envelope_id"], "review_url": env.get("review_url"),
+            "status": "draft"}
 
 
 def cfg_version(cfg) -> str:
@@ -100,6 +115,24 @@ def aesign_webhook(payload: AesignCallback, request: Request, db: Session = Depe
         link.renewal_date = _add_months(signed.date(), cfg.agreement_renewal_months)
         log_activity(db, sub.id, None, "agreement_signed",
                      detail=f"Subcontractor Agreement signed (envelope {env_id})")
+        # Keep a copy of the fully-signed agreement in the subcontractor system,
+        # next to the W-9 and COI (the original also stays in eSign).
+        try:
+            content, fname, ctype = aesign.fetch_agreement_pdf(env_id)
+            stored_name = storage.save_encrypted(content)
+            doc = SubcontractorDocument(
+                subcontractor_id=sub.id, doc_type="agreement",
+                version=services.next_version(db, sub.id, "agreement"),
+                status="approved", stored_name=stored_name,
+                original_filename=fname, content_type=ctype, size=len(content),
+                uploaded_by="esign", reviewed_by="esign", reviewed_at=now,
+            )
+            db.add(doc)
+            log_activity(db, sub.id, None, "agreement_copy_stored",
+                         detail=f"Signed agreement copied into documents ({fname})")
+        except Exception as e:  # don't fail the webhook if the copy can't be fetched
+            log_activity(db, sub.id, None, "agreement_copy_failed",
+                         detail=f"Could not copy signed agreement from eSign: {e}")
         # complete any open agreement_renewal request
         from app.models.document_request import DocumentRequest
         for req in db.query(DocumentRequest).filter(

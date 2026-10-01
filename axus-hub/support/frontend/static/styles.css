@@ -117,7 +117,7 @@ h1, h2, h3 { font-family: "Space Grotesk", "Poppins", "Inter", sans-serif; margi
 }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 .login-logo { height: 46px; margin-bottom: 18px; object-fit: contain; }
-html[data-theme="dark"] .login-logo { filter: brightness(0) invert(1) drop-shadow(0 0 0 #fff); }
+html[data-theme="dark"] .login-logo { content: url('/static/axus-logo-dark.png'); filter: none; }
 .login-card h1 { font-size: 24px; }
 .login-sub { color: var(--muted); margin: 6px 0 22px; font-size: 14px; }
 .login-sso-note { margin: 12px 0 0; color: var(--muted); font-size: 12.5px; }
@@ -167,7 +167,7 @@ textarea { resize: vertical; }
   border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 4;
 }
 .topbar-logo { height: 34px; object-fit: contain; }
-html[data-theme="dark"] .topbar-logo { filter: brightness(0) invert(1); }
+html[data-theme="dark"] .topbar-logo { content: url('/static/axus-logo-dark.png'); filter: none; }
 .topbar-right { display: flex; align-items: center; gap: 14px; }
 .who { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
 .who-name { font-weight: 600; font-size: 14px; }

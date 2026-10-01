@@ -6,12 +6,13 @@ import { randomBytes, createHash } from "node:crypto";
 import { pool } from "../db.js";
 import { config } from "../config.js";
 import { getIdentity, hasEsignAccess } from "../identity.js";
+import { sealPdf } from "../seal.js";
 import { sendSigningInvite, sendPendingReminder, sendCompleted, sendCopy } from "../mail.js";
 import { generateBaaPdf, etTodayLong } from "../baapdf.js";
 import { generateCocPdf } from "../cocpdf.js";
 import { generateSlaPdf } from "../slapdf.js";
 import { envelopeDocName } from "../docname.js";
-import { isOnCallQuote, notifyOnCallQuoteCompleted } from "../oncall.js";
+import { isOnCallQuote, notifyOnCallQuoteCompleted, notifyEnvelopeCallback } from "../oncall.js";
 import { logActivity, renameActivity } from "./activity.js";
 function requireStaff(req, reply) {
     const id = getIdentity(req);
@@ -125,7 +126,9 @@ export async function envelopeRoutes(app) {
         return { envelope: rows[0] };
     });
     // Delete an envelope (and its recipients/fields/events + stored files).
-    // Soft-delete: move a document to the Recycle Bin (kept 90 days, then flushed).
+    // Soft-delete: move a document to the Recycle Bin. After 90 days it is
+    // auto-moved to the Archive (never destroyed) — see runReminders(). Only the
+    // explicit "purge" action permanently removes a document.
     app.delete("/:id", async (req, reply) => {
         const id = requireStaff(req, reply);
         if (!id)
@@ -268,18 +271,25 @@ export async function envelopeRoutes(app) {
         logActivity(id.email, "Cancelled document", r.rows[0].title, envId);
         return { ok: true };
     });
-    // Complete a document from a MANUALLY signed copy. Used when a recipient signed
-    // OFFLINE (e.g. printed the quote PDF, wet-signed it, and returned it) rather
-    // than through the eSign link. The uploaded PDF becomes the sealed (final) copy,
-    // the envelope is marked completed, every non-declined recipient is recorded as
-    // signed, and — for an On Call-originated quote — On Call is notified so the
-    // signed quote appears under its Invoices, exactly like an e-signed completion.
+    // Upload a copy that was printed and signed OFFLINE (wet ink), then returned.
+    // Staff indicate WHICH signer(s) actually signed on this paper copy via the
+    // `?signers=<id>,<id>` query (omit → every signer signed on it: the legacy
+    // "fully signed offline" case). The system then:
+    //   • marks those signers signed offline and REMOVES their fields, so their
+    //     placeholder boxes no longer sit on top of the wet-ink signatures;
+    //   • makes the uploaded copy the working document;
+    //   • for any signer who did NOT sign on the copy, moves the document to
+    //     'partially_completed' and emails them their link to e-sign ON the
+    //     uploaded copy — the document only COMPLETES once everyone (offline or
+    //     electronic) has signed;
+    //   • if no one is left, seals & completes now (burning any earlier-e-signed
+    //     values onto the copy + certificate; a pure-paper copy is sealed as-is).
     app.post("/:id/upload-signed", async (req, reply) => {
         const id = requireStaff(req, reply);
         if (!id)
             return;
         const envId = req.params.id;
-        const env = await pool.query(`select id, title, status, created_by, doc_type, company, quote_data from envelope where id = $1`, [envId]);
+        const env = await pool.query(`select id, title, status, created_by, doc_type, company, quote_data, callback_url from envelope where id = $1`, [envId]);
         if (!env.rowCount)
             return reply.code(404).send({ error: "Not found" });
         const e = env.rows[0];
@@ -289,6 +299,24 @@ export async function envelopeRoutes(app) {
         if (e.status === "cancelled" || e.status === "declined") {
             return reply.code(409).send({ error: `This document has been ${e.status} and can't be completed.` });
         }
+        // Signers only (copy-only viewers never sign), excluding anyone who declined.
+        const signersQ = await pool.query(`select id, name, email, role, status, sign_token from recipient
+       where envelope_id = $1 and role <> 'viewer' and status <> 'declined' order by sign_order`, [envId]);
+        const signers = signersQ.rows;
+        if (!signers.length) {
+            return reply.code(400).send({ error: "This document has no signers to complete." });
+        }
+        // Which signers signed on THIS copy. Absent param = all of them (legacy).
+        const rawSel = req.query.signers;
+        const selectedIds = rawSel === undefined
+            ? new Set(signers.map((s) => s.id))
+            : new Set(rawSel.split(",").map((s) => s.trim()).filter(Boolean));
+        const manualSigners = signers.filter((s) => selectedIds.has(s.id));
+        if (!manualSigners.length) {
+            return reply.code(400).send({ error: "Select at least one person who signed on this copy." });
+        }
+        // Signers who did NOT sign on the copy and haven't already e-signed.
+        const remaining = signers.filter((s) => !selectedIds.has(s.id) && s.status !== "signed");
         const file = await req.file();
         if (!file)
             return reply.code(400).send({ error: "No file uploaded" });
@@ -301,37 +329,111 @@ export async function envelopeRoutes(app) {
         const stored = `${envId}-signed.pdf`;
         await pipeline(file.file, createWriteStream(join(config.storageDir, stored)));
         const bytes = await readFile(join(config.storageDir, stored));
-        const sha256 = createHash("sha256").update(bytes).digest("hex");
-        // The uploaded signed PDF is the final sealed copy.
-        await pool.query(`update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`, [stored, sha256, envId]);
-        // Record every SIGNER (who hasn't declined) as signed offline. Copy-only
-        // viewers are left untouched — they didn't sign.
+        // Mark the offline signers signed, and REMOVE their fields so their
+        // placeholder boxes no longer overlay the wet-ink signatures on the copy.
+        const manualIds = manualSigners.map((s) => s.id);
         await pool.query(`update recipient set status = 'signed', signed_at = coalesce(signed_at, now())
-       where envelope_id = $1 and status <> 'declined' and role <> 'viewer'`, [envId]);
-        await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'completed', $3)`, [envId, id.email, `Manually signed copy uploaded (signed offline). SHA-256 ${sha256}`]);
-        logActivity(id.email, "Completed document (manual signed copy)", e.title, envId);
-        // Email copy-only viewers the finished PDF, same as the e-signed path does.
-        const viewers = await pool.query(`select id, name, email from recipient where envelope_id = $1 and role = 'viewer'`, [envId]);
-        if (viewers.rowCount) {
-            const attachment = { filename: `${envelopeDocName(e)}.pdf`, content: bytes };
-            for (const v of viewers.rows) {
-                await sendCompleted({
-                    to: v.email,
-                    recipientName: v.name,
+       where id = any($1::uuid[])`, [manualIds]);
+        await pool.query(`delete from field where recipient_id = any($1::uuid[])`, [manualIds]);
+        for (const s of manualSigners) {
+            await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'signed', $3)`, [envId, s.email, `${s.name} — signed offline (paper copy uploaded)`]);
+        }
+        // --- Some parties still need to sign electronically ------------------------
+        if (remaining.length) {
+            // The uploaded (wet-ink) copy becomes the document everyone now signs on.
+            await pool.query(`update envelope set pdf_file = $1, status = 'partially_completed',
+           sent_at = coalesce(sent_at, now()) where id = $2`, [stored, envId]);
+            await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'uploaded', $3)`, [
+                envId,
+                id.email,
+                `Offline-signed copy uploaded (${manualSigners.map((s) => s.name).join(", ")}); awaiting ${remaining
+                    .map((s) => s.name)
+                    .join(", ")}`,
+            ]);
+            // Email each remaining signer their link to e-sign ON the uploaded copy.
+            let invited = 0;
+            for (const r of remaining) {
+                let token = r.sign_token;
+                if (!token) {
+                    token = randomBytes(24).toString("base64url");
+                    await pool.query(`update recipient set sign_token = $1 where id = $2`, [token, r.id]);
+                }
+                await pool.query(`update recipient set status = 'sent' where id = $1 and status <> 'signed'`, [
+                    r.id,
+                ]);
+                const res = await sendSigningInvite({
+                    to: r.email,
+                    recipientName: r.name,
+                    senderName: id.name,
                     title: e.title,
-                    attachment,
+                    url: `${config.publicBaseUrl}/sign/${token}`,
                     envelopeId: envId,
-                    recipientId: v.id,
+                    recipientId: r.id,
                 });
+                if (res.success)
+                    invited++;
             }
+            logActivity(id.email, "Uploaded offline-signed copy (awaiting e-signature)", e.title, envId);
+            return {
+                ok: true,
+                completed: false,
+                awaiting: remaining.map((r) => ({ name: r.name, email: r.email })),
+                invited,
+            };
+        }
+        // --- Everyone has signed → seal & complete --------------------------------
+        const fieldsQ = await pool.query(`select type, page, x, y, w, h, value from field where envelope_id = $1`, [envId]);
+        const hasValues = fieldsQ.rows.some((f) => f.value != null && f.value !== "");
+        const recsQ = await pool.query(`select id, name, email, role, ip,
+              to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
+       from recipient where envelope_id = $1 order by sign_order`, [envId]);
+        // Pure paper (no earlier e-signature to composite): the uploaded copy IS the
+        // final sealed copy, byte-for-byte, so its SHA-256 matches the wet-ink
+        // artifact. Anything with e-signed values gets composited + a certificate.
+        let sealedName;
+        let sha256;
+        let attachmentBytes;
+        if (!hasValues) {
+            sealedName = stored;
+            sha256 = createHash("sha256").update(bytes).digest("hex");
+            attachmentBytes = bytes;
+        }
+        else {
+            const manualEmails = new Set(manualSigners.map((s) => s.email.toLowerCase()));
+            const sealed = await sealPdf(join(config.storageDir, stored), fieldsQ.rows, recsQ.rows.filter((r) => r.role !== "viewer"), { title: e.title, envelopeId: envId, manualSignerEmails: manualEmails }, true);
+            sealedName = `${envId}-sealed.pdf`;
+            await writeFile(join(config.storageDir, sealedName), sealed.bytes);
+            sha256 = sealed.sha256;
+            attachmentBytes = Buffer.from(sealed.bytes);
+        }
+        await pool.query(`update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`, [sealedName, sha256, envId]);
+        await pool.query(`insert into event (envelope_id, actor, type, detail) values ($1, $2, 'completed', $3)`, [envId, id.email, `Completed from offline-signed copy. SHA-256 ${sha256}`]);
+        logActivity(id.email, "Completed document (offline-signed copy)", e.title, envId);
+        // Email every participant (signers + copy-only viewers) the finished PDF.
+        const attachment = { filename: `${envelopeDocName(e)}.pdf`, content: attachmentBytes };
+        for (const r of recsQ.rows) {
+            await sendCompleted({
+                to: r.email,
+                recipientName: r.name,
+                title: e.title,
+                attachment,
+                envelopeId: envId,
+                recipientId: r.id,
+            });
+        }
+        const notifyTo = config.mail.notifyTo;
+        if (notifyTo && !recsQ.rows.some((r) => r.email.toLowerCase() === notifyTo.toLowerCase())) {
+            await sendCompleted({ to: notifyTo, recipientName: "Axus Team", title: e.title, attachment, envelopeId: envId });
         }
         // On Call-originated quote: notify On Call so it shows under Invoices, same as
         // an e-signed completion. Fire-and-forget (the helper never throws).
         if (isOnCallQuote(e)) {
-            const recs = await pool.query(`select name, email,
-                to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
-         from recipient where envelope_id = $1 order by sign_order`, [envId]);
-            void notifyOnCallQuoteCompleted(e, bytes, sha256, recs.rows);
+            void notifyOnCallQuoteCompleted(e, attachmentBytes, sha256, recsQ.rows.filter((r) => r.role !== "viewer"));
+        }
+        // Any envelope with a callback_url (e.g. a Subcontractor Agreement) gets a
+        // completion POST to that URL. Fire-and-forget; the helper never throws.
+        if (e.callback_url) {
+            void notifyEnvelopeCallback(e, sha256, recsQ.rows.filter((r) => r.role !== "viewer"));
         }
         return { ok: true, completed: true };
     });

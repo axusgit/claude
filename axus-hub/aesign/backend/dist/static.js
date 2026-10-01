@@ -33,6 +33,14 @@ export function registerStatic(app, dir) {
         if (!existsSync(file))
             return reply.code(404).send("Not found");
         reply.header("Content-Type", TYPES[extname(file)] ?? "application/octet-stream");
+        // Hashed build assets are immutable; the SPA shell (index.html) must always be
+        // revalidated so a new deploy is picked up without a hard refresh.
+        if (file === index || extname(file) === ".html") {
+            reply.header("Cache-Control", "no-cache, must-revalidate");
+        }
+        else if (/[/\\]assets[/\\]/.test(file)) {
+            reply.header("Cache-Control", "public, max-age=31536000, immutable");
+        }
         return reply.send(createReadStream(file));
     });
 }

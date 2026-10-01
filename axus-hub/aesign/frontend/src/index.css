@@ -71,6 +71,10 @@ html[data-theme="dark"] {
   color-scheme: dark;
 }
 
+/* On the dark glass topbar the grey wordmark is low-contrast — swap to the
+   white-text logo variant (orange kept). */
+html[data-theme="dark"] .brand-logo { content: url('/assets/axus-logo-dark.png'); }
+
 /* Status badges use fixed gray/slate literals; give them dark equivalents. */
 html[data-theme="dark"] .bg-gray-100,
 html[data-theme="dark"] .bg-slate-200 {

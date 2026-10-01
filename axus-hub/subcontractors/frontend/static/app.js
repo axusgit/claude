@@ -9,9 +9,9 @@
 
   const COMPANY_FIELDS = [
     ["legal_name","Legal company name",true],["dba","DBA",false],
-    ["primary_contact_name","Primary contact",false],["email","Email",false],
-    ["phone","Phone",false],["address","Business address",false],
-    ["city","City",false],["state","State",false],["zip","ZIP",false],
+    ["primary_contact_name","Primary contact",true],["email","Email",true],
+    ["phone","Phone",true],["address","Business address",true],
+    ["city","City",true],["state","State",true],["zip","ZIP",true],
     ["website","Website",false],["services_provided","Services provided",false],
     ["geographic_coverage","Geographic service area",false],
   ];
@@ -54,14 +54,13 @@
         <div class="step ${done(p.company_complete)}"><span class="dot">${p.company_complete?"✓":"1"}</span>Company</div>
         <div class="step ${done(p.w9_status!=='missing' && p.w9_status!=='rejected')}"><span class="dot">${p.w9_status!=='missing'&&p.w9_status!=='rejected'?"✓":"2"}</span>W-9</div>
         <div class="step ${done(['current','pending_review','approved'].includes(p.coi_status))}"><span class="dot">${['current','pending_review','approved'].includes(p.coi_status)?"✓":"3"}</span>COI</div>
-        <div class="step ${done(['current','renewal_due'].includes(p.agreement_status))}"><span class="dot">${['current','renewal_due'].includes(p.agreement_status)?"✓":"4"}</span>Agreement</div>
       </div>`;
 
     const c = st.company;
     const companyForm = COMPANY_FIELDS.map(([k,label,req]) =>
       `<div class="${['legal_name','address','services_provided','geographic_coverage'].includes(k)?'full':''}">
-        <label>${label}${req?' *':''}</label>
-        <input id="c-${k}" value="${esc(c[k]||"")}"></div>`).join("");
+        <label>${label}${req?' <span class="req-tag">required</span>':''}</label>
+        <input id="c-${k}" value="${esc(c[k]||"")}"${k==="email"?" readonly":""}></div>`).join("");
 
     const ai = st.coi_additional_insured || {};
     app.innerHTML = `
@@ -99,18 +98,10 @@
       </div>
 
       <div class="glass">
-        <h2>4 · Subcontractor Agreement</h2>
-        <div class="doc-row"><span>Axus Subcontractor Agreement ${badge(p.agreement_status)}</span></div>
-        <p class="muted" style="font-size:13px">
-          ${['current','renewal_due'].includes(p.agreement_status)
-            ? "Thank you — your agreement is signed."
-            : "You'll receive a secure link to review and electronically sign the Axus Subcontractor Agreement. This step is completed through our e-signature system."}
-        </p>
-      </div>
-
-      <div class="glass">
         <h2>Submit for review</h2>
-        <p class="muted" style="font-size:13px">When everything above is complete, submit your onboarding for Axus review.</p>
+        <p class="muted" style="font-size:13px">When your company info, W-9, and COI are complete, submit for Axus review.
+          After Axus approves your W-9 and COI, we'll email you a secure link to review and electronically sign the
+          Axus Subcontractor Agreement.</p>
         <button class="btn" id="submit" ${st.outstanding.length ? "disabled" : ""}>Submit for review</button>
       </div>`;
 
@@ -130,7 +121,6 @@
         <div class="step done"><span class="dot">✓</span>Company</div>
         <div class="step done"><span class="dot">✓</span>W-9</div>
         <div class="step done"><span class="dot">✓</span>COI</div>
-        <div class="step done"><span class="dot">✓</span>Agreement</div>
         <div class="step done"><span class="dot">✓</span>Submitted</div>
       </div></div>`;
   }
@@ -139,20 +129,20 @@
     const body = {};
     COMPANY_FIELDS.forEach(([k]) => { const v = document.getElementById("c-"+k).value.trim(); if (v !== "") body[k] = v; });
     try { const st = await api("/api/onboarding/" + TOKEN + "/company", { method:"PATCH", body: JSON.stringify(body) }); render(st); }
-    catch (e) { alert("Error: " + e.message); }
+    catch (e) { axusAlert("Error: " + e.message); }
   }
 
   async function upload(docType, inputId) {
     const f = document.getElementById(inputId).files[0];
-    if (!f) { alert("Please choose a file first."); return; }
+    if (!f) { axusAlert("Please choose a file first."); return; }
     const fd = new FormData(); fd.append("doc_type", docType); fd.append("file", f);
     try { const st = await api("/api/onboarding/" + TOKEN + "/documents", { method:"POST", body: fd }); render(st); }
-    catch (e) { alert("Upload failed: " + e.message); }
+    catch (e) { axusAlert("Upload failed: " + e.message); }
   }
 
   async function submit() {
     try { const st = await api("/api/onboarding/" + TOKEN + "/submit", { method:"POST" }); render(st); }
-    catch (e) { alert("Cannot submit yet: " + e.message); }
+    catch (e) { axusAlert("Cannot submit yet: " + e.message); }
   }
 
   load();
