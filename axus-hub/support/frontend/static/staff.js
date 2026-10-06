@@ -795,11 +795,25 @@ const Staff = (() => {
     $("p-po").textContent = current.po_number || "—";
     $("p-address").textContent = current.contact_address || "—";
     $("p-created").textContent = fmtDate(current.created_at);
-    // resolve the reporting user's name
+    // "Opened by": the client contact the case is for and, when a staff member
+    // opened it on the client's behalf, that staff member too ("Client / Staff").
+    // Only origin "axus_tech" means staff genuinely opened it themselves — every
+    // other origin (client portal/email/phone, monitoring, Xcitium imports) is
+    // client/system-originated, so we must NOT attribute it to a staff member even
+    // though created_by_id points at a tech or the "Email Intake" system account.
+    // Staff-only — this is the staff console; the client portal never shows it.
+    const staffOpener = (current.origin === "axus_tech" && current.created_by_id)
+      ? staffUsers.find(u => u.id === current.created_by_id) : null;
+    const setOpenedBy = clientName => {
+      const parts = [];
+      if (clientName) parts.push(clientName);
+      if (staffOpener) parts.push(staffOpener.full_name);
+      $("p-contact").textContent = parts.length ? parts.join(" / ") : "—";
+    };
     if (current.reporter_user_id) {
-      try { const us = await api(`/api/clients/${current.client_id}/portal-users`); const u = us.find(x => x.id === current.reporter_user_id); $("p-contact").textContent = u ? u.full_name : "—"; }
-      catch (e) { $("p-contact").textContent = "—"; }
-    } else { $("p-contact").textContent = "—"; }
+      try { const us = await api(`/api/clients/${current.client_id}/portal-users`); const u = us.find(x => x.id === current.reporter_user_id); setOpenedBy(u ? u.full_name : null); }
+      catch (e) { setOpenedBy(null); }
+    } else { setOpenedBy(null); }
     $("reply-internal").checked = false; $("reply-form").classList.remove("internal-mode");
     $("reply-files").value = ""; renderReplyFiles();   // clear files staged on the previous ticket
     $("reply-body").style.height = "";   // back to the default height on every ticket open (undo any drag-resize)

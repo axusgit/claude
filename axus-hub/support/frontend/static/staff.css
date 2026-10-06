@@ -109,15 +109,21 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .ticket-table tbody tr:hover { background: var(--surface-2); }
 .ticket-table tbody tr:last-child td { border-bottom: none; }
 .cell-ref { font-weight: 700; color: var(--orange); white-space: nowrap; font-size: 18.9px; }
-/* Scheduled date shown under the status badge on the ticket board. */
+/* Scheduled date shown under the status badge on the ticket board — stacked and
+   centered on the same vertical axis as the badge. */
+.col-status { text-align: center; }
 .sched-date { font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
 .cell-subject { font-weight: 600; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell-muted { color: var(--muted); white-space: nowrap; }
 .prio-dot { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; text-transform: capitalize; }
 .prio-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .assignee-pill { display: inline-flex; align-items: center; gap: 7px; }
-.mini-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--grad); color: #fff;
-  font-size: 10.5px; font-weight: 700; display: grid; place-items: center; }
+/* flex-shrink:0 + aspect-ratio keep the avatar a perfect circle even when the
+   sibling name wraps to two lines; grid place-items + line-height:1 keep the
+   initials dead-centered. */
+.mini-avatar { width: 24px; height: 24px; aspect-ratio: 1; flex-shrink: 0; border-radius: 50%;
+  background: var(--grad); color: #fff; font-size: 10.5px; font-weight: 700; line-height: 1;
+  display: grid; place-items: center; }
 .mini-avatar.none { background: var(--surface-2); color: var(--muted); border: 1px dashed var(--border); }
 
 /* ---------- Detail ---------- */

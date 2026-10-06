@@ -209,6 +209,11 @@ def time_to_close(period: str = "month", db: Session = Depends(get_db),
         period = "month"
     now = datetime.now(timezone.utc)
 
+    # Exclude tickets that took longer than 30 days to resolve: these long-tail
+    # cases (stale/parked tickets, projects) badly skew the average and median and
+    # aren't representative of normal resolution time.
+    MAX_RESOLUTION_HOURS = 30 * 24
+
     samples = []
     for t in db.query(Ticket).all():
         # Skip rows imported from Xcitium: their created_at/closed_at are import
@@ -220,13 +225,17 @@ def time_to_close(period: str = "month", db: Session = Depends(get_db),
             continue
         created, closed = _aware(t.created_at), _aware(t.closed_at)
         if created and closed:
-            samples.append((closed, _hours(closed - created)))
+            hours = _hours(closed - created)
+            if hours <= MAX_RESOLUTION_HOURS:
+                samples.append((closed, hours))
 
     for xt in db.query(XcitiumTicket).all():
         if (xt.status or "") != "closed":
             continue
         created, closed = _aware(xt.create_date), _aware(xt.update_date or xt.create_date)
         if created and closed:
-            samples.append((closed, _hours(closed - created)))
+            hours = _hours(closed - created)
+            if hours <= MAX_RESOLUTION_HOURS:
+                samples.append((closed, hours))
 
     return _duration_report(period, now, samples)
