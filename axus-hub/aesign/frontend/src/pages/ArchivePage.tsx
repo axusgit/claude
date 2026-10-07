@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Archive, ArchiveRestore, Copy, Download, Search, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
-import { Card, Input, StatusBadge } from "@/components/ui";
+import { Card, Input, SortHeader, StatusBadge } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
+import { dirCmp, useSort } from "@/lib/sort";
 
 const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote"];
+
+type ArchiveSortKey = "title" | "type" | "company" | "status" | "archived";
 
 export function ArchivePage() {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
@@ -13,6 +16,7 @@ export function ArchivePage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
+  const { key: sort, dir, toggle } = useSort<ArchiveSortKey>("archived", "desc");
   const nav = useNavigate();
 
   async function load() {
@@ -65,6 +69,17 @@ export function ArchivePage() {
     }
     return true;
   });
+  const sortVal = (e: Envelope): string | number =>
+    ({
+      title: e.title,
+      type: e.doc_type ?? "",
+      company: e.company ?? "",
+      status: e.status,
+      archived: Date.parse(e.archived_at ?? "") || 0,
+    })[sort];
+  const sorted = [...filtered].sort(
+    (a, b) => dirCmp(sortVal(a), sortVal(b), dir) || a.title.localeCompare(b.title),
+  );
 
   const when = (d?: string | null) =>
     d
@@ -129,16 +144,22 @@ export function ArchivePage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-4 py-3 font-medium">Title ({filtered.length})</th>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Company</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Archived</th>
+                <SortHeader
+                  label="Title"
+                  active={sort === "title"}
+                  dir={dir}
+                  onClick={() => toggle("title")}
+                  suffix={<span className="ml-1 normal-case tracking-normal text-muted">({filtered.length})</span>}
+                />
+                <SortHeader label="Type" active={sort === "type"} dir={dir} onClick={() => toggle("type")} />
+                <SortHeader label="Company" active={sort === "company"} dir={dir} onClick={() => toggle("company")} />
+                <SortHeader label="Status" active={sort === "status"} dir={dir} onClick={() => toggle("status")} />
+                <SortHeader label="Archived" active={sort === "archived"} dir={dir} onClick={() => toggle("archived")} />
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => (
+              {sorted.map((e) => (
                 <tr key={e.id} className="group border-b border-line last:border-0">
                   <td className="px-4 py-3 font-medium">{e.title}</td>
                   <td className="px-4 py-3 text-muted">{e.doc_type ?? "—"}</td>

@@ -1,5 +1,7 @@
 import * as React from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { SortDir } from "@/lib/sort";
 
 type ButtonVariant = "primary" | "outline" | "ghost" | "danger";
 
@@ -53,6 +55,51 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   declined: { label: "Declined", cls: "bg-red-100 text-red-700" },
   expired: { label: "Expired", cls: "bg-gray-200 text-gray-600" },
 };
+
+// A sortable table-header cell. Shows an up/down arrow when it's the active sort
+// column and a neutral arrow otherwise. `suffix` is rendered after the label
+// (e.g. a row count) and isn't part of the clickable sort control.
+export function SortHeader({
+  label,
+  active,
+  dir,
+  onClick,
+  className,
+  suffix,
+}: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+  onClick: () => void;
+  className?: string;
+  suffix?: React.ReactNode;
+}) {
+  return (
+    <th className={cn("px-4 py-3 font-medium", className)}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "inline-flex items-center gap-1 uppercase tracking-wide",
+          active ? "text-brand" : "hover:text-ink",
+        )}
+        title={`Sort by ${label.toLowerCase()}`}
+      >
+        {label}
+        {active ? (
+          dir === "asc" ? (
+            <ArrowUp className="h-3 w-3" />
+          ) : (
+            <ArrowDown className="h-3 w-3" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-60" />
+        )}
+      </button>
+      {suffix}
+    </th>
+  );
+}
 
 export function StatusBadge({ status }: { status: string }) {
   const s = STATUS_META[status] ?? { label: status, cls: "bg-gray-100 text-gray-700" };

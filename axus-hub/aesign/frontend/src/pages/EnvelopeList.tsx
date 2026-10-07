@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Archive, Check, Circle, Copy, Download, FilePen, FileSignature, HardDrive, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
-import { Button, Card, Input, StatusBadge } from "@/components/ui";
+import { Button, Card, Input, SortHeader, StatusBadge } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
+import { dirCmp, useSort } from "@/lib/sort";
+
+type DocSortKey = "title" | "type" | "company" | "status" | "created";
 
 const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote"];
 // Types that open a pre-filled template on creation (deferred until Save). BAA is a
@@ -99,6 +102,7 @@ export function EnvelopeList() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const { key: sort, dir, toggle } = useSort<DocSortKey>("created", "desc");
   const nav = useNavigate();
 
   const filtered = envelopes.filter((e) => {
@@ -110,6 +114,17 @@ export function EnvelopeList() {
     }
     return true;
   });
+  const sortVal = (e: Envelope): string | number =>
+    ({
+      title: e.title,
+      type: e.doc_type ?? "",
+      company: e.company ?? "",
+      status: e.status,
+      created: Date.parse(e.created_at) || 0,
+    })[sort];
+  const sorted = [...filtered].sort(
+    (a, b) => dirCmp(sortVal(a), sortVal(b), dir) || a.title.localeCompare(b.title),
+  );
 
   async function load() {
     setLoading(true);
@@ -349,11 +364,11 @@ export function EnvelopeList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-4 py-3 font-medium">Title</th>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Company</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Created</th>
+                <SortHeader label="Title" active={sort === "title"} dir={dir} onClick={() => toggle("title")} />
+                <SortHeader label="Type" active={sort === "type"} dir={dir} onClick={() => toggle("type")} />
+                <SortHeader label="Company" active={sort === "company"} dir={dir} onClick={() => toggle("company")} />
+                <SortHeader label="Status" active={sort === "status"} dir={dir} onClick={() => toggle("status")} />
+                <SortHeader label="Created" active={sort === "created"} dir={dir} onClick={() => toggle("created")} />
                 <th className="px-4 py-3 text-right">
                   <button
                     onClick={openArchive}
@@ -366,14 +381,14 @@ export function EnvelopeList() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
+              {sorted.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-muted">
                     No documents match your search.
                   </td>
                 </tr>
               )}
-              {filtered.map((e) => (
+              {sorted.map((e) => (
                 <tr
                   key={e.id}
                   className="cursor-pointer border-b border-line last:border-0 hover:bg-canvas"

@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { Building2, Check, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { companiesApi, contactsApi, type Company, type Contact } from "@/lib/api";
-import { Button, Card, Input } from "@/components/ui";
+import { Button, Card, Input, SortHeader } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
+import { dirCmp, useSort } from "@/lib/sort";
+
+type CompanySortKey = "name" | "address" | "phone" | "contacts";
 
 export function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -11,6 +14,7 @@ export function CompaniesPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "with" | "without">("all");
+  const { key: sort, dir, toggle } = useSort<CompanySortKey>("name", "asc");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [addr, setAddr] = useState("");
@@ -56,6 +60,16 @@ export function CompaniesPage() {
     const matchesF = filter === "all" || (filter === "with" ? has : !has);
     return matchesQ && matchesF;
   });
+  const sortVal = (c: Company): string | number =>
+    ({
+      name: c.name,
+      address: c.address ?? "",
+      phone: c.phone ?? "",
+      contacts: namesFor(c).length,
+    })[sort];
+  const sorted = [...filtered].sort(
+    (a, b) => dirCmp(sortVal(a), sortVal(b), dir) || a.name.localeCompare(b.name),
+  );
 
   async function add() {
     if (!name.trim()) return;
@@ -170,17 +184,25 @@ export function CompaniesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-4 py-3 font-medium">
-                  Company ({filtered.length === companies.length ? companies.length : `${filtered.length} of ${companies.length}`})
-                </th>
-                <th className="px-4 py-3 font-medium">Address</th>
-                <th className="px-4 py-3 font-medium">Phone</th>
-                <th className="px-4 py-3 font-medium">Contacts</th>
+                <SortHeader
+                  label="Company"
+                  active={sort === "name"}
+                  dir={dir}
+                  onClick={() => toggle("name")}
+                  suffix={
+                    <span className="ml-1 normal-case tracking-normal text-muted">
+                      ({filtered.length === companies.length ? companies.length : `${filtered.length} of ${companies.length}`})
+                    </span>
+                  }
+                />
+                <SortHeader label="Address" active={sort === "address"} dir={dir} onClick={() => toggle("address")} />
+                <SortHeader label="Phone" active={sort === "phone"} dir={dir} onClick={() => toggle("phone")} />
+                <SortHeader label="Contacts" active={sort === "contacts"} dir={dir} onClick={() => toggle("contacts")} />
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c) =>
+              {sorted.map((c) =>
                 editId === c.id ? (
                   <tr key={c.id} className="border-b border-line last:border-0">
                     <td className="px-3 py-2">

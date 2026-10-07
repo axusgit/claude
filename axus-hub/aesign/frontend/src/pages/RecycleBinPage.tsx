@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { Archive, Download, RotateCcw, Search, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
-import { Card, Input, StatusBadge } from "@/components/ui";
+import { Card, Input, SortHeader, StatusBadge } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
+import { dirCmp, useSort } from "@/lib/sort";
 
 const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote", "Others"];
+
+type BinSortKey = "title" | "type" | "company" | "status" | "deleted" | "autoarchive";
 
 // Days a document is kept in the bin before it's automatically moved to the
 // Archive (a protection for deleted docs — nothing is ever auto-destroyed).
@@ -16,6 +19,7 @@ export function RecycleBinPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
+  const { key: sort, dir, toggle } = useSort<BinSortKey>("deleted", "desc");
 
   async function load() {
     setLoading(true);
@@ -95,6 +99,19 @@ export function RecycleBinPage() {
     return Math.max(0, Math.ceil(RETENTION_DAYS - elapsed));
   };
 
+  const sortVal = (e: Envelope): string | number =>
+    ({
+      title: e.title,
+      type: e.doc_type ?? "",
+      company: e.company ?? "",
+      status: e.status,
+      deleted: Date.parse(e.deleted_at ?? "") || 0,
+      autoarchive: daysLeft(e.deleted_at),
+    })[sort];
+  const sorted = [...filtered].sort(
+    (a, b) => dirCmp(sortVal(a), sortVal(b), dir) || a.title.localeCompare(b.title),
+  );
+
   return (
     <div className="space-y-5">
       <div>
@@ -149,17 +166,23 @@ export function RecycleBinPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-4 py-3 font-medium">Title ({filtered.length})</th>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Company</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Deleted</th>
-                <th className="px-4 py-3 font-medium">Auto-archive</th>
+                <SortHeader
+                  label="Title"
+                  active={sort === "title"}
+                  dir={dir}
+                  onClick={() => toggle("title")}
+                  suffix={<span className="ml-1 normal-case tracking-normal text-muted">({filtered.length})</span>}
+                />
+                <SortHeader label="Type" active={sort === "type"} dir={dir} onClick={() => toggle("type")} />
+                <SortHeader label="Company" active={sort === "company"} dir={dir} onClick={() => toggle("company")} />
+                <SortHeader label="Status" active={sort === "status"} dir={dir} onClick={() => toggle("status")} />
+                <SortHeader label="Deleted" active={sort === "deleted"} dir={dir} onClick={() => toggle("deleted")} />
+                <SortHeader label="Auto-archive" active={sort === "autoarchive"} dir={dir} onClick={() => toggle("autoarchive")} />
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => (
+              {sorted.map((e) => (
                 <tr key={e.id} className="group border-b border-line last:border-0">
                   <td className="px-4 py-3 font-medium">{e.title}</td>
                   <td className="px-4 py-3 text-muted">{e.doc_type ?? "—"}</td>
