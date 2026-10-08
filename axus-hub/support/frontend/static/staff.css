@@ -74,7 +74,7 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
    columns and pack to the left (no full-width stretch pushing them to the edge). */
 .dash-row { display: grid; grid-template-columns: 96px 560px 104px 260px; align-items: center; gap: 12px;
   padding: 9px 6px; border-top: 1px solid var(--border); cursor: pointer; }
-.dash-row .badge { justify-self: start; }
+.dash-status { justify-self: start; display: inline-flex; flex-direction: column; align-items: center; }
 .dash-co { max-width: 200px; }
 .dash-row:first-child { border-top: none; }
 .dash-row:hover { background: var(--surface-2); }

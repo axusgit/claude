@@ -91,7 +91,7 @@ class TicketIn(BaseModel):
     contact_address: Optional[str] = None   # optional customer contact info
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
-    scheduled_date: Optional[date] = None
+    scheduled_date: Optional[datetime] = None
 
 
 class TicketUpdate(BaseModel):
@@ -109,7 +109,7 @@ class TicketUpdate(BaseModel):
     contact_address: Optional[str] = None
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
-    scheduled_date: Optional[date] = None
+    scheduled_date: Optional[datetime] = None
 
 
 class TimeEntryIn(BaseModel):
@@ -182,6 +182,16 @@ def _fmt(value):
     return value.value if hasattr(value, "value") else value
 
 
+def _fmt_sched(dt):
+    """Human-friendly scheduled date (date only) for client emails/activity."""
+    if dt is None:
+        return ""
+    try:
+        return dt.strftime("%A, %B %-d, %Y")
+    except (ValueError, AttributeError, TypeError):
+        return str(dt)
+
+
 # Fields whose changes are recorded in the ticket activity log, with display labels.
 AUDITED_FIELDS = {
     "status": "Status",
@@ -224,7 +234,7 @@ class TicketOut(BaseModel):
     contact_address: Optional[str] = None
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
-    scheduled_date: Optional[date] = None
+    scheduled_date: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -404,6 +414,17 @@ def update_ticket(ticket_id: int, data: TicketUpdate, background: BackgroundTask
         changes["reporter_user_id"] = None
     # Snapshot audited fields before applying, so we can log what actually changed.
     old = {field: getattr(ticket, field) for field in AUDITED_FIELDS if field in changes}
+    old_status = str(getattr(ticket.status, "value", ticket.status))
+    old_scheduled = ticket.scheduled_date
+
+    # A ticket may only be moved to (or kept in) Scheduled with a scheduled date.
+    # Enforce it server-side so no path — UI or API — can land in Scheduled without one.
+    result_status = changes.get("status", old_status)
+    if result_status == "scheduled" and not changes.get("scheduled_date", ticket.scheduled_date):
+        raise HTTPException(
+            status_code=400,
+            detail="A scheduled date is required before a ticket can be set to Scheduled.",
+        )
 
     for key, value in changes.items():
         setattr(ticket, key, value)
@@ -447,9 +468,21 @@ def update_ticket(ticket_id: int, data: TicketUpdate, background: BackgroundTask
         background.add_task(notify.notify_participants_closed, ticket.id, "",
                             current_user.id, current_user.full_name)
     else:
-        summary = [f"{label} changed to {_fmt(changes[f])}."
-                   for f, label in _NOTIFY_UPDATE_FIELDS.items()
-                   if f in changes and changes[f] != old.get(f)]
+        summary = []
+        for f, label in _NOTIFY_UPDATE_FIELDS.items():
+            if f in changes and changes[f] != old.get(f):
+                if f == "status" and str(_fmt(changes[f])) == "scheduled":
+                    continue  # announced below, together with the scheduled date+time
+                summary.append(f"{label} changed to {_fmt(changes[f])}.")
+        # When the ticket is Scheduled, tell the client the date+time — both when it's
+        # first scheduled and when an existing schedule is moved to a new time.
+        now_status = str(getattr(ticket.status, "value", ticket.status))
+        if now_status == "scheduled" and ticket.scheduled_date is not None:
+            when = _fmt_sched(ticket.scheduled_date)
+            if "status" in changes and old_status != "scheduled":
+                summary.append(f"This ticket has been scheduled for {when}.")
+            elif ticket.scheduled_date != old_scheduled:
+                summary.append(f"This ticket has been rescheduled for {when}.")
         if summary:
             background.add_task(notify.notify_participants_update, ticket.id,
                                 " ".join(summary), current_user.id, current_user.full_name)

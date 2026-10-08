@@ -45,3 +45,5 @@ auto-push-all.log
 
 # On Call decommissioned archive — contains .env secrets + deploy key + DB, NEVER commit
 oncall-archive/
+# Axus Syslog out-of-production archive — contains .env secrets, NEVER commit
+syslog-archive/

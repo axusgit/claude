@@ -152,10 +152,16 @@ const Staff = (() => {
   // Format a date-only string ("YYYY-MM-DD") without a timezone shift.
   function schedDate(s) {
     if (!s) return "";
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s));
     if (!m) return s;
     const d = new Date(+m[1], +m[2] - 1, +m[3]);
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  }
+  // Stored scheduled value (ISO date or date+time) -> an <input type=date> value (date part).
+  function schedInputVal(s) {
+    if (!s) return "";
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(s));
+    return m ? m[1] : "";
   }
   // Show/hide + populate the detail "Scheduled date" field based on status.
   function toggleScheduled(status) {
@@ -465,7 +471,7 @@ const Staff = (() => {
     const rowHtml = t => `<div class="dash-row" data-id="${t.id}">
         <span class="dash-ref">${esc(t.reference || "")}</span>
         <span class="dash-title">${esc(t.title)}</span>
-        <span class="badge ${t.status}">${cap(t.status)}</span>
+        <span class="dash-status"><span class="badge ${t.status}">${cap(t.status)}</span>${t.status === "scheduled" && t.scheduled_date ? `<span class="sched-date">${schedDate(t.scheduled_date)}</span>` : ""}</span>
         <span class="dash-co cell-muted">${esc(t.client_name || clientMap[t.client_id] || "—")}</span>
       </div>`;
     const fill = (elId, rows, empty) => {
@@ -776,7 +782,7 @@ const Staff = (() => {
     $("d-title").textContent = current.title;
     $("d-desc").textContent = current.description || "No description provided.";
     $("d-status").value = current.status;
-    $("d-scheduled-date").value = current.scheduled_date || "";
+    $("d-scheduled-date").value = schedInputVal(current.scheduled_date);
     toggleScheduled(current.status);
     $("d-priority").value = current.priority;
     $("d-assignee").value = current.assigned_to_id || "";
@@ -1063,7 +1069,7 @@ const Staff = (() => {
       $("d-status-badge").className = "badge " + current.status;
       $("d-status-badge").textContent = statusLabel(current.status);
       $("reopen-btn").hidden = current.status !== "closed";
-      $("d-scheduled-date").value = current.scheduled_date || "";
+      $("d-scheduled-date").value = schedInputVal(current.scheduled_date);
       toggleScheduled(current.status);
     }
     if (field === "priority") {
@@ -1072,6 +1078,22 @@ const Staff = (() => {
       $("d-prio-badge").title = PRIO_MEANING[value] || "";
     }
     toast(cap(field) + " updated");
+  }
+  // Update several fields in ONE request (used to move a ticket to Scheduled with its
+  // date+time atomically, so the status never lands without a time).
+  async function patchFields(fields) {
+    await api(`/api/tickets/${current.id}`, { method: "PUT", body: fields });
+    current = await api(`/api/tickets/${current.id}`);
+    if ("status" in fields) {
+      $("d-status").value = current.status;
+      $("d-status-badge").className = "badge " + current.status;
+      $("d-status-badge").textContent = statusLabel(current.status);
+      $("reopen-btn").hidden = current.status !== "closed";
+    }
+    $("d-scheduled-date").value = schedInputVal(current.scheduled_date);
+    toggleScheduled(current.status);
+    await Promise.all([loadActivity(current.id), loadTickets()]);
+    toast("Updated");
   }
   async function reopenTicket() {
     $("d-status").value = "open";
@@ -2062,8 +2084,79 @@ const Staff = (() => {
     wireNavDD("users-dd-btn", "users-dd-menu", () => { showUsers(); renderUsers(); });
 
     // detail controls
-    $("d-status").onchange = e => { toggleScheduled(e.target.value); patch("status", e.target.value); };
-    $("d-scheduled-date").onchange = e => patch("scheduled_date", e.target.value || null);
+    // Moving a ticket to "Scheduled" requires a date+time FIRST: we reveal the picker
+    // and defer committing the status until a time is chosen (sent together). Other
+    // statuses commit immediately.
+    $("d-status").onchange = e => {
+      const v = e.target.value;
+      if (v === "scheduled") {
+        toggleScheduled("scheduled");
+        const el = $("d-scheduled-date");
+        if (!el.value) el.value = schedInputVal(current.scheduled_date);
+        el.focus();
+        if (el.showPicker) { try { el.showPicker(); } catch (_) {} }
+        toast("Enter the scheduled date & time to confirm");
+        // intentionally NOT patched yet — commit happens when the time is set
+      } else {
+        toggleScheduled(v);
+        patch("status", v).catch(err => toast(err.message));
+      }
+    };
+    function revertSchedule() {
+      $("d-status").value = current.status;
+      $("d-scheduled-date").value = schedInputVal(current.scheduled_date);
+      toggleScheduled(current.status);
+    }
+    // Commit a Scheduled change only once the user has FINISHED entering the date+time —
+    // not on every intermediate keystroke (datetime-local fires 'change' as soon as a
+    // complete value exists, e.g. after the first minute digit). We debounce typing and
+    // also commit immediately on blur or Enter. schedBusy guards against a double dialog.
+    let schedTimer = null, schedBusy = false;
+    async function commitSchedule() {
+      if (schedBusy) return;                              // a confirm dialog is already open
+      if ($("d-status").value !== "scheduled") return;
+      const val = $("d-scheduled-date").value || null;
+      if (!val) return;                                   // date+time not fully entered yet
+      const rescheduling = current.status === "scheduled";
+      if (rescheduling && schedInputVal(current.scheduled_date) === val) return;  // unchanged
+      schedBusy = true;
+      try {
+        const when = schedDate(val);
+        const ok = await axusConfirm(
+          (rescheduling
+            ? "Reschedule this ticket to:\n\n" + when + "\n\nThe client will be emailed the new scheduled date."
+            : "Schedule this ticket for:\n\n" + when + "\n\nThe client will be emailed this scheduled date."),
+          { title: rescheduling ? "Confirm reschedule" : "Confirm scheduled appointment",
+            confirmText: rescheduling ? "Reschedule & notify client" : "Schedule & notify client" }
+        );
+        if (!ok) { revertSchedule(); return; }            // cancelled — nothing saved, no email
+        if (rescheduling) await patch("scheduled_date", val);      // reschedule: update the time
+        else await patchFields({ status: "scheduled", scheduled_date: val });  // commit together
+      } catch (err) {
+        toast(err.message);
+        revertSchedule();
+      } finally {
+        schedBusy = false;
+      }
+    }
+    // Typing: wait a moment after the last change (so the full date is entered) before asking.
+    $("d-scheduled-date").oninput = () => {
+      clearTimeout(schedTimer);
+      schedTimer = setTimeout(commitSchedule, 600);
+    };
+    $("d-scheduled-date").onkeydown = e => {
+      if (e.key === "Enter") { clearTimeout(schedTimer); commitSchedule(); }  // finished now
+    };
+    // Leaving the field: commit if a time was entered, else revert the "Scheduled" pick.
+    $("d-scheduled-date").onblur = () => {
+      clearTimeout(schedTimer);
+      if ($("d-scheduled-date").value) {
+        commitSchedule();
+      } else if ($("d-status").value === "scheduled" && current.status !== "scheduled") {
+        $("d-status").value = current.status;
+        toggleScheduled(current.status);
+      }
+    };
     $("d-priority").onchange = e => patch("priority", e.target.value);
     $("d-assignee").onchange = e => { if (e.target.value) patch("assigned_to_id", parseInt(e.target.value)); };
     $("d-board").onchange = e => patch("board_id", e.target.value ? parseInt(e.target.value) : null);

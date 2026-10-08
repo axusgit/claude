@@ -60,7 +60,7 @@ class Ticket(Base):
     contact_address = Column(Text, nullable=True)   # customer-provided when opening via portal
     contact_phone = Column(String, nullable=True)   # customer-provided when opening via portal
     po_number = Column(String, nullable=True)        # customer PO#, optional, captured at portal open
-    scheduled_date = Column(Date, nullable=True)     # set when status == scheduled
+    scheduled_date = Column(DateTime, nullable=True)  # date+time (wall-clock ET), set when status == scheduled
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
     priority = Column(Enum(TicketPriority), default=TicketPriority.medium, nullable=False)
     ticket_type = Column(Enum(TicketType), default=TicketType.standard, nullable=False)

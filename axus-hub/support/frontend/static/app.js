@@ -31,9 +31,10 @@ const App = (() => {
   // Format a date-only string ("YYYY-MM-DD") without a timezone shift.
   function schedDate(s) {
     if (!s) return "";
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s));
     if (!m) return s;
-    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   }
   // File types a customer may attach (must match the server-side whitelist).
   const ALLOWED_EXTS = new Set([
