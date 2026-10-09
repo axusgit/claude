@@ -258,32 +258,61 @@ def time_to_close(period: str = "month", db: Session = Depends(get_db),
 @router.get("/tickets-by-company")
 def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
                        _: User = Depends(require_staff)):
-    """Open vs. closed native ticket counts per company (Business), ranked by
-    total tickets: the top 11 companies plus an aggregated 'Others' bucket for
-    the rest. Scoped to tickets created within the same window the trend charts
-    show (last 12 weeks / 12 months; all-time for 'year')."""
+    """Open vs. closed ticket counts per company (Business), ranked by total
+    tickets: the top 11 companies plus an aggregated 'Others' bucket for the
+    rest. Includes the read-only Xcitium mirror history (every mirror row is
+    closed). 'Open' means status == open only (in-progress/waiting/scheduled
+    don't count). Scoped to tickets created within the same window the trend
+    charts show (last 12 weeks / 12 months; all-time for 'year')."""
     if period not in ("week", "month", "year"):
         period = "month"
     now = datetime.now(timezone.utc)
     start = _window_start(period, now)
 
-    counts = {}   # client_id -> [open, closed]
+    # Company-name lookups: native client_id -> name, plus a case-insensitive
+    # map so the Xcitium mirror's organization_name merges into the same company.
+    client_names = dict(db.query(Client.id, Client.company_name).all())
+    canon = {}
+    for name in client_names.values():
+        if name:
+            canon.setdefault(name.strip().lower(), name)
+
+    counts = {}   # company label -> [open, closed]
+
+    def bump(label, is_closed):
+        counts.setdefault(label, [0, 0])[1 if is_closed else 0] += 1
+
+    # Native tickets. Skip origin=="xcitium": those rows are also in the mirror
+    # below, so counting both would double-count them.
     for t in db.query(Ticket).all():
+        if (t.origin or "") == "xcitium":
+            continue
         created = _aware(t.created_at)
         if start is not None and (created is None or created < start):
             continue
         status = str(getattr(t.status, "value", t.status))
-        # Only the two terminal-interest states count: status == open and
-        # status == closed. In-progress / waiting / scheduled are excluded.
+        label = client_names.get(t.client_id) or f"#{t.client_id}"
         if status == "open":
-            counts.setdefault(t.client_id, [0, 0])[0] += 1
+            bump(label, False)
         elif status == "closed":
-            counts.setdefault(t.client_id, [0, 0])[1] += 1
+            bump(label, True)
 
-    names = dict(db.query(Client.id, Client.company_name).all())
-    rows = [{"label": names.get(cid) or f"#{cid}",
-             "open": o, "closed": c, "total": o + c}
-            for cid, (o, c) in counts.items()]
+    # Xcitium legacy mirror (read-only; every row is closed). Map the org name
+    # onto the matching native company so counts combine; blank org -> Unknown.
+    for xt in db.query(XcitiumTicket).all():
+        created = _aware(xt.create_date)
+        if start is not None and (created is None or created < start):
+            continue
+        org = (xt.organization_name or "").strip()
+        label = canon.get(org.lower(), org) if org else "(Unknown)"
+        status = (xt.status or "").lower()
+        if status == "open":
+            bump(label, False)
+        elif status == "closed":
+            bump(label, True)
+
+    rows = [{"label": lbl, "open": o, "closed": c, "total": o + c}
+            for lbl, (o, c) in counts.items()]
     rows.sort(key=lambda r: (r["total"], r["open"]), reverse=True)
 
     TOP = 11
