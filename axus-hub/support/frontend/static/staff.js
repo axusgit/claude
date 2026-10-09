@@ -99,7 +99,7 @@ const Staff = (() => {
      ONLY what actually changed, so the queue and the open case stay current on their
      own. Guards below make sure we never yank away a reply being typed or a note being
      edited inline. */
-  const LIVE_QUEUE_MS = 15000;    // queue + counts + dashboard
+  const LIVE_QUEUE_MS = 10000;    // queue + counts + dashboard
   const LIVE_DETAIL_MS = 8000;    // the open case — snappier so it feels instant
   let _queueSig = null;           // fingerprint of the last rendered queue
   let _detailSig = null;          // fingerprint of the last rendered open case
