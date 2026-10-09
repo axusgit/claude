@@ -406,12 +406,12 @@ const Staff = (() => {
     catch (e) { toast("Couldn't load Tickets by company: " + e.message); return; }
     const rows = data.companies || [];
     const labels = rows.map(r => r.label);
-    const open = rows.map(r => r.open);
+    const opened = rows.map(r => r.opened);
     const closed = rows.map(r => r.closed);
-    const totO = open.reduce((a, b) => a + b, 0), totC = closed.reduce((a, b) => a + b, 0);
+    const totO = opened.reduce((a, b) => a + b, 0), totC = closed.reduce((a, b) => a + b, 0);
     const per = period === "week" ? "12 weeks" : period === "month" ? "12 months" : "all time";
     $("company-summary").textContent = rows.length
-      ? `${totO} open · ${totC} closed · ${rows.length} rows (${per})` : "no data yet";
+      ? `${totO} opened · ${totC} closed · ${rows.length} rows (${per})` : "no data yet";
 
     const css = getComputedStyle(document.documentElement);
     const textCol = css.getPropertyValue("--text").trim() || "#e9f0fb";
@@ -419,7 +419,7 @@ const Staff = (() => {
     const cfg = {
       type: "bar",
       data: { labels, datasets: [
-        { label: "Open", data: open, backgroundColor: "#f26722", borderRadius: 4 },
+        { label: "Opened", data: opened, backgroundColor: "#f26722", borderRadius: 4 },
         { label: "Closed", data: closed, backgroundColor: "#3a9d5d", borderRadius: 4 },
       ] },
       options: {

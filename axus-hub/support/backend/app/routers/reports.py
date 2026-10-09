@@ -258,12 +258,13 @@ def time_to_close(period: str = "month", db: Session = Depends(get_db),
 @router.get("/tickets-by-company")
 def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
                        _: User = Depends(require_staff)):
-    """Open vs. closed ticket counts per company (Business), ranked by total
-    tickets: the top 11 companies plus an aggregated 'Others' bucket for the
-    rest. Includes the read-only Xcitium mirror history (every mirror row is
-    closed). 'Open' means status == open only (in-progress/waiting/scheduled
-    don't count). Scoped to tickets created within the same window the trend
-    charts show (last 12 weeks / 12 months; all-time for 'year')."""
+    """Opened vs. closed ticket counts per company (Business) during the period,
+    ranked by total activity: the top 11 companies plus an aggregated 'Others'
+    bucket. This is a throughput view (the per-company decomposition of the
+    ticket-trends chart): Opened = tickets created in the window, Closed =
+    tickets closed in the window; a ticket opened and later closed within the
+    window counts in both. Includes the read-only Xcitium mirror history.
+    Window matches the trend charts (last 12 weeks / 12 months; 'year' = all)."""
     if period not in ("week", "month", "year"):
         period = "month"
     now = datetime.now(timezone.utc)
@@ -277,49 +278,47 @@ def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
         if name:
             canon.setdefault(name.strip().lower(), name)
 
-    counts = {}   # company label -> [open, closed]
+    counts = {}   # company label -> [opened, closed]
 
-    def bump(label, is_closed):
-        counts.setdefault(label, [0, 0])[1 if is_closed else 0] += 1
+    def in_window(dt):
+        dt = _aware(dt)
+        return dt is not None and (start is None or dt >= start)
 
-    # ALL native tickets, including origin=="xcitium" rows: those are distinct
-    # tickets that do NOT appear in the read-only mirror below (verified: zero
-    # ref overlap), so counting both is correct, not a double-count.
+    def add(label, idx):
+        counts.setdefault(label, [0, 0])[idx] += 1
+
+    # Native tickets (all origins; origin=="xcitium" rows are distinct from the
+    # mirror -- verified zero ref overlap). Opened = created in window; Closed =
+    # closed in window.
     for t in db.query(Ticket).all():
-        created = _aware(t.created_at)
-        if start is not None and (created is None or created < start):
-            continue
-        status = str(getattr(t.status, "value", t.status))
         label = client_names.get(t.client_id) or f"#{t.client_id}"
-        if status == "open":
-            bump(label, False)
-        elif status == "closed":
-            bump(label, True)
+        if in_window(t.created_at):
+            add(label, 0)
+        status = str(getattr(t.status, "value", t.status))
+        if status == "closed" and in_window(t.closed_at):
+            add(label, 1)
 
-    # Xcitium legacy mirror (read-only; every row is closed). Map the org name
-    # onto the matching native company so counts combine; blank org -> Unknown.
+    # Xcitium legacy mirror (read-only). Map org name onto the matching native
+    # company; blank org -> Unknown. Opened by create_date, closed by update_date
+    # (the mirror's close proxy) -- same as the ticket-trends chart.
     for xt in db.query(XcitiumTicket).all():
-        created = _aware(xt.create_date)
-        if start is not None and (created is None or created < start):
-            continue
         org = (xt.organization_name or "").strip()
         label = canon.get(org.lower(), org) if org else "(Unknown)"
-        status = (xt.status or "").lower()
-        if status == "open":
-            bump(label, False)
-        elif status == "closed":
-            bump(label, True)
+        if in_window(xt.create_date):
+            add(label, 0)
+        if (xt.status or "").lower() == "closed" and in_window(xt.update_date or xt.create_date):
+            add(label, 1)
 
-    rows = [{"label": lbl, "open": o, "closed": c, "total": o + c}
+    rows = [{"label": lbl, "opened": o, "closed": c, "total": o + c}
             for lbl, (o, c) in counts.items()]
-    rows.sort(key=lambda r: (r["total"], r["open"]), reverse=True)
+    rows.sort(key=lambda r: (r["total"], r["opened"]), reverse=True)
 
     TOP = 11
     top, rest = rows[:TOP], rows[TOP:]
     if rest:
         top.append({
             "label": f"Others ({len(rest)})",
-            "open": sum(r["open"] for r in rest),
+            "opened": sum(r["opened"] for r in rest),
             "closed": sum(r["closed"] for r in rest),
             "total": sum(r["total"] for r in rest),
         })
