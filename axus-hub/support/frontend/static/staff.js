@@ -93,6 +93,118 @@ const Staff = (() => {
     window.addEventListener("online", checkSso);
   }
 
+  /* ---------- Live refresh (auto-update — no manual Ctrl+Shift+R needed) ----------
+     The console had no live sync: a customer's portal/email reply or another tech's
+     change only showed up after a hard refresh. We poll in the background and repaint
+     ONLY what actually changed, so the queue and the open case stay current on their
+     own. Guards below make sure we never yank away a reply being typed or a note being
+     edited inline. */
+  const LIVE_QUEUE_MS = 15000;    // queue + counts + dashboard
+  const LIVE_DETAIL_MS = 8000;    // the open case — snappier so it feels instant
+  let _queueSig = null;           // fingerprint of the last rendered queue
+  let _detailSig = null;          // fingerprint of the last rendered open case
+  let _detailId = null;           // which ticket _detailSig belongs to
+  let _queueBusy = false, _detailBusy = false;
+
+  // Cheap fingerprint of everything the queue renders — so we repaint only on a real
+  // change and otherwise leave scroll position + selection untouched (no flicker).
+  function queueSig(list) {
+    return list.map(t => `${t.id}:${t.status}:${t.priority}:${t.assigned_to_id || 0}:` +
+      `${t.board_id || 0}:${t.scheduled_date || ""}:${t.updated_at || t.created_at}:${t.title}`).join("|");
+  }
+  function detailSig(fresh, comments) {
+    const last = comments.length ? comments[comments.length - 1].id : 0;
+    return `${comments.length}:${last}:${fresh.updated_at || ""}:${fresh.status}:${fresh.priority}:` +
+      `${fresh.assigned_to_id || 0}:${fresh.board_id || 0}:${fresh.scheduled_date || ""}`;
+  }
+
+  async function liveQueueTick() {
+    if (_queueBusy || !me || document.hidden) return;
+    // Only when a ticket-backed view is actually on screen.
+    const live = ["queue-view", "dashboard-view", "detail-view"].some(v => $(v) && !$(v).classList.contains("hidden"));
+    if (!live) return;
+    _queueBusy = true;
+    try {
+      const fresh = await api("/api/tickets/");
+      const sig = queueSig(fresh);
+      if (sig !== _queueSig) {
+        _queueSig = sig;
+        tickets = fresh;
+        renderCounts(); renderStats(); renderQueue(); renderDashboard();
+      }
+    } catch (e) { /* transient (offline / SSO bounce — handled by api()/the SSO watch) */ }
+    finally { _queueBusy = false; }
+  }
+
+  async function liveDetailTick() {
+    if (_detailBusy || !me || document.hidden) return;
+    const id = current && current.id;
+    // Nothing open, the read-only Xcitium mirror, or the detail isn't showing → nothing to do.
+    if (!id || id < 0 || !$("detail-view") || $("detail-view").classList.contains("hidden")) { _detailSig = null; return; }
+    _detailBusy = true;
+    try {
+      // Comments catch customer replies (portal AND email); the ticket GET catches a
+      // status/priority/assignee/board/schedule change made by another tech.
+      const [fresh, comments] = await Promise.all([
+        api(`/api/tickets/${id}`),
+        api(`/api/tickets/${id}/comments`),
+      ]);
+      // Bail if the user navigated away (or to another ticket) while we were fetching.
+      if (!current || current.id !== id || $("detail-view").classList.contains("hidden")) return;
+      const sig = detailSig(fresh, comments);
+      if (_detailId !== id) { _detailId = id; _detailSig = sig; return; }  // (re)baseline on open
+      if (sig === _detailSig) return;                                      // nothing changed
+      _detailSig = sig;
+
+      // Repaint the conversation — but never on top of an inline note edit in progress.
+      const editingNote = !!$("thread").querySelector("textarea.edit-area");
+      if (!editingNote) {
+        loadThread(id).catch(() => {});
+        loadActivity(id).catch(() => {});
+        loadAttachments(id).catch(() => {});
+        loadTime(id).catch(() => {});
+      }
+      // Keep badges + the editable fields in sync, without stomping a control the user
+      // is actively using (focused) — e.g. an open dropdown or the schedule picker.
+      syncDetailHeader(fresh);
+    } catch (e) { /* transient — ticket may have been deleted elsewhere, etc. */ }
+    finally { _detailBusy = false; }
+  }
+
+  // Refresh the open case's status/priority badges + editable selects from a fresh
+  // server copy. Only writes a field the user isn't currently interacting with.
+  function syncDetailHeader(fresh) {
+    if (!current) return;
+    Object.assign(current, fresh);
+    const active = document.activeElement;
+    const notEditing = el => el && el !== active;
+    $("d-status-badge").className = "badge " + fresh.status;
+    $("d-status-badge").textContent = statusLabel(fresh.status);
+    $("d-prio-badge").className = "prio-badge " + fresh.priority;
+    $("d-prio-badge").textContent = prioLabel(fresh.priority);
+    $("d-prio-badge").title = PRIO_MEANING[fresh.priority] || "";
+    $("reopen-btn").hidden = fresh.status !== "closed";
+    if (notEditing($("d-status")))   $("d-status").value = fresh.status;
+    if (notEditing($("d-priority"))) $("d-priority").value = fresh.priority;
+    if (notEditing($("d-assignee"))) $("d-assignee").value = fresh.assigned_to_id || "";
+    if (notEditing($("d-board")))    $("d-board").value = fresh.board_id || "";
+    if (notEditing($("d-scheduled-date"))) $("d-scheduled-date").value = schedInputVal(fresh.scheduled_date);
+    toggleScheduled(fresh.status);
+    $("p-hours").textContent = (fresh.total_hours || 0) + " h";
+    $("p-po").textContent = fresh.po_number || "—";
+  }
+
+  function startLiveRefresh() {
+    setInterval(liveQueueTick, LIVE_QUEUE_MS);
+    setInterval(liveDetailTick, LIVE_DETAIL_MS);
+    // Catch up immediately when the tab regains focus / the network returns, so a
+    // staff member flipping back to the console sees the latest at once.
+    const burst = () => { if (!document.hidden) { liveQueueTick(); liveDetailTick(); } };
+    document.addEventListener("visibilitychange", burst);
+    window.addEventListener("online", burst);
+    window.addEventListener("focus", burst);
+  }
+
   /* ---------- Helpers ---------- */
   const $ = id => document.getElementById(id);
   const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -436,7 +548,7 @@ const Staff = (() => {
       pairs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("");
   }
 
-  async function loadTickets() { tickets = await api("/api/tickets/"); renderCounts(); renderStats(); renderQueue(); renderDashboard(); }
+  async function loadTickets() { tickets = await api("/api/tickets/"); _queueSig = queueSig(tickets); renderCounts(); renderStats(); renderQueue(); renderDashboard(); }
 
   /* ---------- Dashboard ---------- */
   function renderDashboard() {
@@ -1077,7 +1189,15 @@ const Staff = (() => {
       $("d-prio-badge").textContent = prioLabel(value);
       $("d-prio-badge").title = PRIO_MEANING[value] || "";
     }
-    toast(cap(field) + " updated");
+    // Friendly confirmation — spell out names/labels, not raw field keys.
+    let msg;
+    if (field === "assigned_to_id") msg = value ? `Assigned to ${userMap[value] || "user"}` : "Unassigned";
+    else if (field === "board_id") msg = value ? `Moved to ${boardMap[value] || "board"}` : "Board cleared";
+    else if (field === "priority") msg = `Priority set to ${prioLabel(value)}`;
+    else if (field === "status") msg = `Status set to ${statusLabel(value)}`;
+    else if (field === "origin") msg = "Origin updated";
+    else msg = cap(field) + " updated";
+    toast(msg);
   }
   // Update several fields in ONE request (used to move a ticket to Scheduled with its
   // date+time atomically, so the status never lands without a time).
@@ -2292,6 +2412,7 @@ const Staff = (() => {
     // central mode); fall back to the login screen.
     try { await enter(); } catch (e) { showLogin(); }
     startSsoWatch();   // auto-recover if the SSO gateway session later expires
+    startLiveRefresh();   // keep the queue + open case live without a manual refresh
   }
   async function enter() { await loadAll(); showApp(); showDashboard(); }
 

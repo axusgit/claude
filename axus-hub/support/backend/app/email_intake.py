@@ -1,5 +1,6 @@
 """Inbound email -> ticket processing, and outbound reply notifications."""
 import re
+from datetime import datetime, timezone
 
 from app.database import SessionLocal
 from app.models.ticket import Ticket, TicketComment, TicketActivity, TicketType
@@ -74,6 +75,9 @@ def _process_one(db, msg):
         ))
         db.add(TicketActivity(ticket_id=ticket.id, user_id=sys_user.id,
                               action="comment_added", detail="Reply received by email"))
+        # A child comment doesn't trigger Ticket.onupdate, so bump updated_at explicitly
+        # (matches the staff/portal reply paths) — keeps the queue's "Updated" column live.
+        ticket.updated_at = datetime.now(timezone.utc)
         db.commit()
         try:
             from app import notify

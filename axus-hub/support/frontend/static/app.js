@@ -106,6 +106,92 @@ const App = (() => {
   function showList()  { $("list-view").classList.remove("hidden");  $("detail-view").classList.add("hidden"); }
   function showDetail(){ $("list-view").classList.add("hidden");     $("detail-view").classList.remove("hidden"); }
 
+  /* ---------- Live refresh (auto-update — no manual reload needed) ----------
+     The portal had no live sync: a staff reply or a status change (e.g. the case
+     being scheduled or closed) only showed after a manual refresh. We poll in the
+     background and repaint ONLY what actually changed, guarded so we never yank away
+     a reply the customer is typing. */
+  const LIVE_LIST_MS = 15000;     // the case list + hero counts
+  const LIVE_DETAIL_MS = 8000;    // the open case — snappier so it feels instant
+  let _listSig = null, _detailSig = null, _detailId = null;
+  let _listBusy = false, _detailBusy = false, _liveStarted = false;
+
+  function listSig(list) {
+    return list.map(t => `${t.id}:${t.status}:${t.priority}:${t.scheduled_date || ""}:` +
+      `${t.updated_at || t.created_at}:${t.title}`).join("|");
+  }
+
+  async function liveListTick() {
+    if (_listBusy || !me || document.hidden) return;
+    if (!$("list-view") || $("list-view").classList.contains("hidden")) return;  // only when the list is on screen
+    _listBusy = true;
+    try {
+      const fresh = await api("/api/portal/tickets");
+      const sig = listSig(fresh);
+      if (sig !== _listSig) { _listSig = sig; ticketsData = fresh; renderTickets(); }
+    } catch (e) { /* transient (offline / expired session handled by api()) */ }
+    finally { _listBusy = false; }
+  }
+
+  async function liveDetailTick() {
+    if (_detailBusy || !me || document.hidden) return;
+    const id = currentTicket;
+    if (!id || !$("detail-view") || $("detail-view").classList.contains("hidden")) { _detailSig = null; _detailId = null; return; }
+    _detailBusy = true;
+    try {
+      const [t, comments, files] = await Promise.all([
+        api(`/api/portal/tickets/${id}`),
+        api(`/api/portal/tickets/${id}/comments`),
+        api(`/api/portal/tickets/${id}/attachments`),
+      ]);
+      if (currentTicket !== id || $("detail-view").classList.contains("hidden")) return;   // navigated away mid-fetch
+      const lastC = comments.length ? comments[comments.length - 1].id : 0;
+      const sig = `${comments.length}:${lastC}:${files.length}:${t.updated_at || ""}:${t.status}:${t.priority}:${t.scheduled_date || ""}`;
+      if (_detailId !== id) { _detailId = id; _detailSig = sig; return; }   // (re)baseline on open
+      if (sig === _detailSig) return;                                        // nothing changed
+      _detailSig = sig;
+      loadThread(id).catch(() => {});   // re-paint the conversation (it re-fetches comments+files itself)
+      syncDetailHeader(t);
+    } catch (e) { /* transient — case may have been deleted, etc. */ }
+    finally { _detailBusy = false; }
+  }
+
+  // Refresh the open case's status/priority/schedule badges from a fresh server copy,
+  // and flip the read-only state if staff closed/reopened it while the customer looked —
+  // but never hide a reply the customer is in the middle of typing.
+  function syncDetailHeader(t) {
+    $("d-status").className = "badge " + t.status;
+    $("d-status").textContent = statusLabel(t.status);
+    if (t.status === "scheduled" && t.scheduled_date) { $("d-sched").textContent = schedDate(t.scheduled_date); $("d-sched").hidden = false; }
+    else { $("d-sched").textContent = ""; $("d-sched").hidden = true; }
+    $("d-priority").className = "prio-badge " + t.priority;
+    $("d-priority").textContent = prioLabel(t.priority);
+    $("d-priority").title = PRIO_MEANING[t.priority] || "";
+    if (document.activeElement !== $("d-raise-prio")) fillRaisePriority(t);   // don't rebuild an open dropdown
+    const closed = t.status === "closed";
+    const replyBox = $("reply-body");
+    const typing = replyBox && (replyBox.value || "").trim();
+    if (closed !== currentClosed && !typing) {
+      currentClosed = closed;
+      $("reply-form").classList.toggle("hidden", closed);
+      $("reply-closed-note").classList.toggle("hidden", !closed);
+      $("participant-email-row").classList.toggle("hidden", closed);
+      $("participant-hint").classList.toggle("hidden", closed);
+    }
+  }
+
+  function startLiveRefresh() {
+    if (_liveStarted) return;
+    _liveStarted = true;
+    setInterval(liveListTick, LIVE_LIST_MS);
+    setInterval(liveDetailTick, LIVE_DETAIL_MS);
+    // Catch up at once when the tab regains focus / the network returns.
+    const burst = () => { if (!document.hidden) { liveListTick(); liveDetailTick(); } };
+    document.addEventListener("visibilitychange", burst);
+    window.addEventListener("online", burst);
+    window.addEventListener("focus", burst);
+  }
+
   /* ---------- Auth (passwordless magic-link) ---------- */
   async function requestMagicLink(email) {
     // Always neutral server-side (no account enumeration); we ignore the body.
@@ -198,6 +284,7 @@ const App = (() => {
   let ticketsData = [];   // all of this client's tickets (filtered client-side)
   async function loadTickets() {
     ticketsData = await api("/api/portal/tickets");
+    _listSig = listSig(ticketsData);
     renderTickets();
   }
   function renderTickets() {
@@ -734,6 +821,7 @@ const App = (() => {
     }
     showApp(); showList();
     await loadTickets();
+    startLiveRefresh();   // keep the list + open case live without a manual refresh
     if (me && me.password_expiry_warning) toast(me.password_expiry_warning);
   }
 
