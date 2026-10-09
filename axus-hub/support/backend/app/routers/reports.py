@@ -272,11 +272,13 @@ def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
         created = _aware(t.created_at)
         if start is not None and (created is None or created < start):
             continue
-        slot = counts.setdefault(t.client_id, [0, 0])
-        if str(getattr(t.status, "value", t.status)) == "closed":
-            slot[1] += 1
-        else:
-            slot[0] += 1
+        status = str(getattr(t.status, "value", t.status))
+        # Only the two terminal-interest states count: status == open and
+        # status == closed. In-progress / waiting / scheduled are excluded.
+        if status == "open":
+            counts.setdefault(t.client_id, [0, 0])[0] += 1
+        elif status == "closed":
+            counts.setdefault(t.client_id, [0, 0])[1] += 1
 
     names = dict(db.query(Client.id, Client.company_name).all())
     rows = [{"label": names.get(cid) or f"#{cid}",

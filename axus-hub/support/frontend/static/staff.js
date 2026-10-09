@@ -423,12 +423,11 @@ const Staff = (() => {
         { label: "Closed", data: closed, backgroundColor: "#3a9d5d", borderRadius: 4 },
       ] },
       options: {
-        indexAxis: "y",
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { labels: { color: textCol } }, tooltip: { mode: "index", intersect: false } },
         scales: {
-          x: { stacked: true, beginAtZero: true, ticks: { color: textCol, precision: 0 }, grid: { color: gridCol } },
-          y: { stacked: true, ticks: { color: textCol }, grid: { color: gridCol } },
+          x: { stacked: true, ticks: { color: textCol, autoSkip: false, maxRotation: 60, minRotation: 45 }, grid: { color: gridCol } },
+          y: { stacked: true, beginAtZero: true, ticks: { color: textCol, precision: 0 }, grid: { color: gridCol } },
         },
       },
     };
