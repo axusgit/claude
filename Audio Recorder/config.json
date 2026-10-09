@@ -1,4 +1,5 @@
 {
   "mic_label": "Headset Microphone (Microsoft LifeChat LX-3000)",
-  "hf_token": "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"
+  "hf_token": "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",
+  "output_label": "Headset Earphone (Microsoft LifeChat LX-3000)"
 }

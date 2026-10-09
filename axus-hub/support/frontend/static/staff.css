@@ -2,8 +2,16 @@
 
 .topbar-left { display: flex; align-items: center; gap: 14px; }
 .desk-tag {
-  font-family: "Poppins", sans-serif; font-weight: 700; font-size: 13px;
-  color: #fff; background: var(--grad); padding: 4px 12px; border-radius: 8px; letter-spacing: .3px;
+  /* Outlined "ghost" badge: orange border, transparent fill, modern look.
+     Font sized so the cap height (~0.70em in Poppins) matches the "Axus" letters
+     in the logo (gray wordmark = 248/563 of the PNG ≈ 38.8px at the 88px logo →
+     38.8 / 0.70 ≈ 55px). The text is optically centered both ways via inline-flex
+     (Poppins' caps sit centered in the em box, so line-height:1 + flex is true-center). */
+  font-family: "Poppins", sans-serif; font-weight: 600; font-size: 55px; line-height: 1;
+  color: var(--orange); background: transparent;
+  border: 2px solid var(--orange); border-radius: 12px;
+  padding: 10px 22px; letter-spacing: .5px;
+  display: inline-flex; align-items: center; justify-content: center; text-align: center;
 }
 
 /* ---------- Layout: sidebar + content ---------- */
