@@ -380,7 +380,7 @@ const Staff = (() => {
   const showReports = () => { hideViews(); $("reports-view").classList.remove("hidden"); loadReports(repPeriod); };
 
   /* ---------- Reports ---------- */
-  let repPeriod = "month", repChart = null, ttaChart = null, ttcChart = null;
+  let repPeriod = "month", repChart = null, ttaChart = null, ttcChart = null, companyChart = null;
 
   // Humanize a duration given in hours → "3.4 h" / "2.1 d" / "—".
   function fmtDur(h) {
@@ -396,6 +396,44 @@ const Staff = (() => {
     loadTrends(period);
     loadDuration("time-to-assign", "tta", "Time to assign");
     loadDuration("time-to-close", "ttc", "Time to resolution");
+    loadCompany(period);
+  }
+
+  // Open vs. closed tickets per company (top 11 + Others), stacked horizontal bars.
+  async function loadCompany(period) {
+    let data;
+    try { data = await api("/api/reports/tickets-by-company?period=" + period); }
+    catch (e) { toast("Couldn't load Tickets by company: " + e.message); return; }
+    const rows = data.companies || [];
+    const labels = rows.map(r => r.label);
+    const open = rows.map(r => r.open);
+    const closed = rows.map(r => r.closed);
+    const totO = open.reduce((a, b) => a + b, 0), totC = closed.reduce((a, b) => a + b, 0);
+    const per = period === "week" ? "12 weeks" : period === "month" ? "12 months" : "all time";
+    $("company-summary").textContent = rows.length
+      ? `${totO} open · ${totC} closed · ${rows.length} rows (${per})` : "no data yet";
+
+    const css = getComputedStyle(document.documentElement);
+    const textCol = css.getPropertyValue("--text").trim() || "#e9f0fb";
+    const gridCol = css.getPropertyValue("--border").trim() || "rgba(255,255,255,.1)";
+    const cfg = {
+      type: "bar",
+      data: { labels, datasets: [
+        { label: "Open", data: open, backgroundColor: "#f26722", borderRadius: 4 },
+        { label: "Closed", data: closed, backgroundColor: "#3a9d5d", borderRadius: 4 },
+      ] },
+      options: {
+        indexAxis: "y",
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textCol } }, tooltip: { mode: "index", intersect: false } },
+        scales: {
+          x: { stacked: true, beginAtZero: true, ticks: { color: textCol, precision: 0 }, grid: { color: gridCol } },
+          y: { stacked: true, ticks: { color: textCol }, grid: { color: gridCol } },
+        },
+      },
+    };
+    if (companyChart) { companyChart.data = cfg.data; companyChart.options = cfg.options; companyChart.update(); }
+    else if (window.Chart) { companyChart = new Chart($("company-chart"), cfg); }
   }
 
   // Shared renderer for the two duration reports (median bars, avg in tooltip).

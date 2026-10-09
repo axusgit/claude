@@ -14,6 +14,7 @@ from app.database import get_db
 from app.models.ticket import Ticket, TicketActivity, TicketStatus
 from app.models.xcitium import XcitiumTicket
 from app.models.user import User
+from app.models.client import Client
 from app.auth import require_staff
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -60,6 +61,19 @@ def _display_keys(period, now):
             keys.append(f"{yy:04d}-{mm:02d}")
         return keys
     return None   # year handled dynamically from the data
+
+
+def _window_start(period, now):
+    """Lower bound on created_at matching the window the trend charts display
+    (last 12 weeks / last 12 months). None for 'year' = all-time."""
+    if period == "week":
+        d = _week_start(now.date()) - timedelta(weeks=11)
+        return _aware(datetime(d.year, d.month, d.day))
+    if period == "month":
+        total = (now.year * 12 + (now.month - 1)) - 11   # 11 months back, inclusive
+        yy, mm = divmod(total, 12)
+        return _aware(datetime(yy, mm + 1, 1))
+    return None
 
 
 @router.get("/ticket-trends")
@@ -239,3 +253,44 @@ def time_to_close(period: str = "month", db: Session = Depends(get_db),
                 samples.append((closed, hours))
 
     return _duration_report(period, now, samples)
+
+
+@router.get("/tickets-by-company")
+def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
+                       _: User = Depends(require_staff)):
+    """Open vs. closed native ticket counts per company (Business), ranked by
+    total tickets: the top 11 companies plus an aggregated 'Others' bucket for
+    the rest. Scoped to tickets created within the same window the trend charts
+    show (last 12 weeks / 12 months; all-time for 'year')."""
+    if period not in ("week", "month", "year"):
+        period = "month"
+    now = datetime.now(timezone.utc)
+    start = _window_start(period, now)
+
+    counts = {}   # client_id -> [open, closed]
+    for t in db.query(Ticket).all():
+        created = _aware(t.created_at)
+        if start is not None and (created is None or created < start):
+            continue
+        slot = counts.setdefault(t.client_id, [0, 0])
+        if str(getattr(t.status, "value", t.status)) == "closed":
+            slot[1] += 1
+        else:
+            slot[0] += 1
+
+    names = dict(db.query(Client.id, Client.company_name).all())
+    rows = [{"label": names.get(cid) or f"#{cid}",
+             "open": o, "closed": c, "total": o + c}
+            for cid, (o, c) in counts.items()]
+    rows.sort(key=lambda r: (r["total"], r["open"]), reverse=True)
+
+    TOP = 11
+    top, rest = rows[:TOP], rows[TOP:]
+    if rest:
+        top.append({
+            "label": f"Others ({len(rest)})",
+            "open": sum(r["open"] for r in rest),
+            "closed": sum(r["closed"] for r in rest),
+            "total": sum(r["total"] for r in rest),
+        })
+    return {"period": period, "companies": top}
