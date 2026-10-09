@@ -36,6 +36,7 @@ APP_CATALOG = [
     {"key": "esign", "name": "eSign", "desc": "E-signatures, agreements & quotes", "group": "app-aesign", "icon": "✍️", "internal": False, "url": "https://aesign.axustechnologies.com"},
     {"key": "subcontractors", "name": "Subcontractors", "desc": "Vendor onboarding & compliance", "group": "app-subcontractors", "icon": "🤝", "internal": False, "host": "subcontractors.hub.axustechnologies.com", "staff_path": "/staff"},
     {"key": "order", "name": "Readiness Order", "desc": "HCN IT hardware ordering & budgetary quotes", "group": "app-order", "icon": "🛒", "internal": False, "url": "https://rorder.axustechnologies.com/admin", "health": "https://rorder.axustechnologies.com/api/health"},
+    {"key": "acas", "name": "Communications Analytics", "desc": "PBX call analytics — wallboards, dashboards & reports", "group": "app-acas", "icon": "📈", "internal": False, "url": "https://acas.axustechnologies.com", "health": "https://acas.axustechnologies.com/api/health"},
     # On-Call: launcher tile + live health only. It keeps its OWN login/auth —
     # NOT gated by Authentik forward-auth (app-oncall just controls tile visibility).
     {"key": "oncall", "name": "On-Call", "desc": "After-hours on-call answering & escalation", "group": "app-oncall", "icon": "📞", "internal": False, "url": "https://oncall.axustechnologies.com", "health": "https://oncall.axustechnologies.com/health"},
