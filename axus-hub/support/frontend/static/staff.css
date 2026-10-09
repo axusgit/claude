@@ -459,8 +459,13 @@ html[data-theme="dark"] .login-logo { filter: none; }
 .topbar-logo { height: 88px; }
 
 /* Reports: charts */
+/* Chart cards lay out two across; future chart cards added to .rep-grid
+   follow the same structure and pair side by side automatically. */
+.rep-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
 .chart-wrap { position: relative; height: 360px; width: 100%; }
-.rep-card { margin-bottom: 18px; }
+.rep-card { margin-bottom: 0; min-width: 0; }
+/* Stack to a single column on narrower screens so charts stay legible. */
+@media (max-width: 900px) { .rep-grid { grid-template-columns: 1fr; } }
 .rep-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .rep-head h3 { margin: 0 0 2px; }
 .rep-note { margin: 2px 0 12px; font-size: 12.5px; }

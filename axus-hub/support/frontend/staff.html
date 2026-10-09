@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=74" />
-  <link rel="stylesheet" href="/static/staff.css?v=104" />
+  <link rel="stylesheet" href="/static/staff.css?v=105" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -136,22 +136,26 @@
             </div>
           </div>
 
-          <div class="card rep-card">
-            <div class="rep-head"><h3>Tickets opened vs. closed</h3><span class="muted" id="rep-summary"></span></div>
-            <p class="muted rep-note">Volume across the whole company — native tickets plus Xcitium history.</p>
-            <div class="chart-wrap"><canvas id="rep-chart"></canvas></div>
-          </div>
+          <!-- Report charts flow in a responsive 2-up grid; add future chart cards
+               as more .rep-card children here and they pair side by side automatically. -->
+          <div class="rep-grid">
+            <div class="card rep-card">
+              <div class="rep-head"><h3>Tickets opened vs. closed</h3><span class="muted" id="rep-summary"></span></div>
+              <p class="muted rep-note">Volume across the whole company — native tickets plus Xcitium history.</p>
+              <div class="chart-wrap"><canvas id="rep-chart"></canvas></div>
+            </div>
 
-          <div class="card rep-card">
-            <div class="rep-head"><h3>Time to assign</h3><span class="muted" id="tta-summary"></span></div>
-            <p class="muted rep-note">How long a client-opened ticket waits before it's assigned to an Axus user. Bucketed by when it was assigned.</p>
-            <div class="chart-wrap"><canvas id="tta-chart"></canvas></div>
-          </div>
+            <div class="card rep-card">
+              <div class="rep-head"><h3>Time to assign</h3><span class="muted" id="tta-summary"></span></div>
+              <p class="muted rep-note">How long a client-opened ticket waits before it's assigned to an Axus user. Bucketed by when it was assigned.</p>
+              <div class="chart-wrap"><canvas id="tta-chart"></canvas></div>
+            </div>
 
-          <div class="card rep-card">
-            <div class="rep-head"><h3>Time to resolution</h3><span class="muted" id="ttc-summary"></span></div>
-            <p class="muted rep-note">How long a ticket takes from opening to closing. Bucketed by close date; includes Xcitium history.</p>
-            <div class="chart-wrap"><canvas id="ttc-chart"></canvas></div>
+            <div class="card rep-card">
+              <div class="rep-head"><h3>Time to resolution</h3><span class="muted" id="ttc-summary"></span></div>
+              <p class="muted rep-note">How long a ticket takes from opening to closing. Bucketed by close date; includes Xcitium history.</p>
+              <div class="chart-wrap"><canvas id="ttc-chart"></canvas></div>
+            </div>
           </div>
         </section>
 
