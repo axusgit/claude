@@ -182,6 +182,16 @@ def _fmt(value):
     return value.value if hasattr(value, "value") else value
 
 
+def _fmt_field(db, field, value):
+    """Render an audited field value for activity, resolving user-id fields to names."""
+    if field in ("assigned_to_id", "reporter_user_id"):
+        if not value:
+            return "Unassigned" if field == "assigned_to_id" else "None"
+        u = db.query(User).filter(User.id == value).first()
+        return (u.full_name or u.email) if u else f"#{value}"
+    return _fmt(value)
+
+
 def _fmt_sched(dt):
     """Human-friendly scheduled date (date only) for client emails/activity."""
     if dt is None:
@@ -448,7 +458,7 @@ def update_ticket(ticket_id: int, data: TicketUpdate, background: BackgroundTask
         if field in changes and changes[field] != old[field]:
             _log_activity(
                 db, ticket.id, current_user.id, f"{field}_changed",
-                f"{label} changed from {_fmt(old[field])} to {_fmt(changes[field])}",
+                f"{label} changed from {_fmt_field(db, field, old[field])} to {_fmt_field(db, field, changes[field])}",
             )
 
     db.commit()
