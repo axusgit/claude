@@ -282,11 +282,10 @@ def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
     def bump(label, is_closed):
         counts.setdefault(label, [0, 0])[1 if is_closed else 0] += 1
 
-    # Native tickets. Skip origin=="xcitium": those rows are also in the mirror
-    # below, so counting both would double-count them.
+    # ALL native tickets, including origin=="xcitium" rows: those are distinct
+    # tickets that do NOT appear in the read-only mirror below (verified: zero
+    # ref overlap), so counting both is correct, not a double-count.
     for t in db.query(Ticket).all():
-        if (t.origin or "") == "xcitium":
-            continue
         created = _aware(t.created_at)
         if start is not None and (created is None or created < start):
             continue
