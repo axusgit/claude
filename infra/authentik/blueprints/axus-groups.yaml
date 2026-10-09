@@ -44,6 +44,12 @@ entries:
   - model: authentik_core.group
     identifiers: {name: app-tools}
     attrs: {name: app-tools}
+  # Gates the ACAS (Communications Analytics) OIDC app AND marks Axus staff for it:
+  # while onboarding, ACAS only admits staff, and membership here (or "authentik
+  # Admins") is what the app treats as staff/admin. Tile visibility too.
+  - model: authentik_core.group
+    identifiers: {name: app-acas}
+    attrs: {name: app-acas}
   # --- eSign app roles (app-scoped, like ain-role-*; read by the eSign app) ---
   - model: authentik_core.group
     identifiers: {name: aesign-role-admin}
