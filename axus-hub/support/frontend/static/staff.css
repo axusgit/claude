@@ -463,7 +463,18 @@ html[data-theme="dark"] .login-logo { filter: none; }
    follow the same structure and pair side by side automatically. */
 .rep-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
 .chart-wrap { position: relative; height: 360px; width: 100%; }
-.rep-card { margin-bottom: 0; min-width: 0; }
+.rep-card { margin-bottom: 0; min-width: 0; position: relative; }
+.rep-head { padding-right: 30px; }   /* reserve space for the maximize icon */
+/* Maximize icon in each chart card's top-right corner. */
+.rep-max { position: absolute; top: 12px; right: 12px; display: inline-flex;
+  align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0;
+  background: transparent; border: 1px solid var(--border); border-radius: 7px;
+  color: var(--muted); cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.rep-max:hover { background: var(--border); color: var(--text); }
+/* Maximized chart overlay: wide card with a tall chart body. */
+#chart-modal .modal { width: 92vw; max-width: 1200px; }
+.chart-modal-body { height: 72vh; position: relative; }
+.chart-modal-body .chart-wrap { height: 100%; }
 /* Stack to a single column on narrower screens so charts stay legible. */
 @media (max-width: 900px) { .rep-grid { grid-template-columns: 1fr; } }
 .rep-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

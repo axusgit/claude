@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=74" />
-  <link rel="stylesheet" href="/static/staff.css?v=105" />
+  <link rel="stylesheet" href="/static/staff.css?v=106" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -476,6 +476,14 @@
     </div>
   </div>
 
+  <!-- MAXIMIZED CHART MODAL -->
+  <div id="chart-modal" class="modal-overlay hidden">
+    <div class="modal chart-modal-card">
+      <div class="modal-head"><h2 id="chart-modal-title">Chart</h2><button class="modal-x" id="chart-modal-close">×</button></div>
+      <div id="chart-modal-body" class="chart-modal-body"></div>
+    </div>
+  </div>
+
   <!-- ADD BUSINESS USER MODAL -->
   <div id="puser-modal" class="modal-overlay hidden">
     <div class="modal">
@@ -655,6 +663,6 @@
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="/static/confirm.js?v=1"></script>
-  <script src="/static/staff.js?v=122"></script>
+  <script src="/static/staff.js?v=123"></script>
 </body>
 </html>

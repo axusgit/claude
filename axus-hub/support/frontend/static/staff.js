@@ -381,6 +381,47 @@ const Staff = (() => {
 
   /* ---------- Reports ---------- */
   let repPeriod = "month", repChart = null, ttaChart = null, ttcChart = null, companyChart = null;
+  let chartHome = null;   // { wrap, parent, next } while a chart is maximized
+
+  // Maximize any report chart into a large centered overlay. Generic over every
+  // .rep-card (current and future): injects the corner icon and moves the chart's
+  // .chart-wrap into the modal, then back to its card on close. Chart.js auto-fits.
+  function openChartModal(card) {
+    const wrap = card.querySelector(".chart-wrap");
+    if (!wrap) return;
+    const title = card.querySelector(".rep-head h3");
+    chartHome = { wrap, parent: wrap.parentNode, next: wrap.nextSibling };
+    $("chart-modal-title").textContent = title ? title.textContent : "Chart";
+    $("chart-modal-body").appendChild(wrap);
+    $("chart-modal").classList.remove("hidden");
+    window.dispatchEvent(new Event("resize"));   // let Chart.js refit to the big size
+  }
+  function closeChartModal() {
+    if (chartHome) { chartHome.parent.insertBefore(chartHome.wrap, chartHome.next); chartHome = null; }
+    $("chart-modal").classList.add("hidden");
+    window.dispatchEvent(new Event("resize"));
+  }
+  function setupChartMaximize() {
+    const overlay = $("chart-modal");
+    if (!overlay) return;
+    if (!overlay.dataset.wired) {
+      overlay.dataset.wired = "1";
+      $("chart-modal-close").onclick = closeChartModal;
+      overlay.onclick = e => { if (e.target === overlay) closeChartModal(); };
+      document.addEventListener("keydown", e => {
+        if (e.key === "Escape" && !overlay.classList.contains("hidden")) closeChartModal();
+      });
+    }
+    document.querySelectorAll("#reports-view .rep-card").forEach(card => {
+      if (card.querySelector(".rep-max")) return;
+      const btn = document.createElement("button");
+      btn.className = "rep-max"; btn.type = "button";
+      btn.title = "Maximize"; btn.setAttribute("aria-label", "Maximize chart");
+      btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+      btn.onclick = () => openChartModal(card);
+      card.appendChild(btn);
+    });
+  }
 
   // Humanize a duration given in hours → "3.4 h" / "2.1 d" / "—".
   function fmtDur(h) {
@@ -2181,6 +2222,7 @@ const Staff = (() => {
       showReports();
     };
     document.querySelectorAll("#rep-period button").forEach(b => b.onclick = () => loadReports(b.dataset.p));
+    setupChartMaximize();   // add the maximize icon to each report chart card
     $("nav-canned").onclick = () => openCannedModal();   // review/edit outside a ticket
     $("gl-new-btn").onclick = () => openGlossaryModal(null);
     $("gl-close").onclick = closeGlossaryModal;
