@@ -309,17 +309,24 @@ def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
         if (xt.status or "").lower() == "closed" and in_window(xt.update_date or xt.create_date):
             add(label, 1)
 
+    # Untagged legacy tickets (no org on the Xcitium side) aren't a real company,
+    # so keep "(Unknown)" out of the ranking -- its tickets are folded into Others
+    # instead, leaving every top slot for an actual company.
+    unknown = counts.pop("(Unknown)", [0, 0])
+
     rows = [{"label": lbl, "opened": o, "closed": c, "total": o + c}
             for lbl, (o, c) in counts.items()]
     rows.sort(key=lambda r: (r["total"], r["opened"]), reverse=True)
 
     TOP = 11
     top, rest = rows[:TOP], rows[TOP:]
-    if rest:
+    others_opened = sum(r["opened"] for r in rest) + unknown[0]
+    others_closed = sum(r["closed"] for r in rest) + unknown[1]
+    if rest or others_opened or others_closed:
         top.append({
             "label": f"Others ({len(rest)})",
-            "opened": sum(r["opened"] for r in rest),
-            "closed": sum(r["closed"] for r in rest),
-            "total": sum(r["total"] for r in rest),
+            "opened": others_opened,
+            "closed": others_closed,
+            "total": others_opened + others_closed,
         })
     return {"period": period, "companies": top}
