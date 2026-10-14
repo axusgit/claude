@@ -323,7 +323,7 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
         if NEW_TICKET_INBOX and NEW_TICKET_INBOX.lower() not in seen and (
                 staff_to_inbox or not t.assigned_to_id):
             recips.append((None, NEW_TICKET_INBOX, True, True))
-        subject = f"[{t.reference}] {subject_word} · {t.title}"
+        subject = f"[{t.reference}] {subject_word} · {_biz(t)} · {t.title}"
         for name, email, is_staff, can_view in recips:
             if not is_staff and client_blocked(email):
                 continue   # pre-production: client emails suppressed unless allow-listed
@@ -388,7 +388,7 @@ def notify_ticket_received(ticket_id: int):
         if client_blocked(u.email):
             return  # pre-production guard
         link = _portal_url()
-        subject = f"[{t.reference}] Ticket received · {t.title}"
+        subject = f"[{t.reference}] Ticket received · {_biz(t)} · {t.title}"
         text = (NO_REPLY_NOTICE_TEXT + link + "\n\n"
                 + f"Hi {u.full_name or 'there'},\n\n{TICKET_RECEIVED_MSG}\n\n"
                 f"Ticket {t.reference} — {t.title}\n"

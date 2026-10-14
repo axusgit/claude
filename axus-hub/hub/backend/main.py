@@ -32,7 +32,7 @@ APP_CATALOG = [
     {"key": "support", "name": "Service Desk", "desc": "Tickets, service desk & customer portal", "group": "app-support", "icon": "🎫", "internal": False, "host": "service.axustechnologies.com", "staff_path": "/staff"},
     {"key": "insights", "name": "Insights", "desc": "Meraki monitoring, IPAM & reliability", "group": "app-insights", "icon": "📊", "internal": False, "url": "https://ain.axustechnologies.com/auth?sso=1", "health": "https://ain.axustechnologies.com/"},
     {"key": "rmm", "name": "RMM", "desc": "Remote monitoring & management", "group": "app-rmm", "icon": "🖥️", "internal": True},
-    {"key": "accounting", "name": "Accounting", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False},
+    {"key": "accounting", "name": "Accounting & Tax System", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False, "url": "https://aats.axustechnologies.com"},
     {"key": "esign", "name": "eSign", "desc": "E-signatures, agreements & quotes", "group": "app-aesign", "icon": "✍️", "internal": False, "url": "https://aesign.axustechnologies.com"},
     {"key": "subcontractors", "name": "Subcontractors", "desc": "Vendor onboarding & compliance", "group": "app-subcontractors", "icon": "🤝", "internal": False, "host": "subcontractors.hub.axustechnologies.com", "staff_path": "/staff"},
     {"key": "order", "name": "Readiness Order", "desc": "HCN IT hardware ordering & budgetary quotes", "group": "app-order", "icon": "🛒", "internal": False, "url": "https://rorder.axustechnologies.com/admin", "health": "https://rorder.axustechnologies.com/api/health"},
