@@ -319,6 +319,13 @@ export interface QuoteData {
   notes?: string;
 }
 
+// AI-extracted draft quote (from uploaded docs/notes) — QuoteData minus the
+// system-assigned number/date; everything optional since the model fills what
+// the documents support.
+export type AiQuoteDraft = Omit<QuoteData, "quote_number" | "quote_date"> & {
+  customer: { company: string; contact?: string; address?: string; phone?: string };
+};
+
 export const quotesApi = {
   templateUrl: () => "/api/quotes/template",
   create: (title: string, quote: QuoteData, recipient?: { name: string; email: string }) =>
@@ -331,6 +338,18 @@ export const quotesApi = {
       method: "PUT",
       body: JSON.stringify({ title, quote, recipient }),
     }).then((r) => r.envelope),
+  // Analyze up to 5 documents + pasted text into a draft quote (AI). Returns the
+  // extracted data (not persisted) + any per-file warnings.
+  analyze: (files: File[], text: string) => {
+    const fd = new FormData();
+    for (const f of files.slice(0, 5)) fd.append("files", f);
+    if (text.trim()) fd.append("text", text);
+    return fetch("/api/quotes/analyze", { method: "POST", body: fd }).then(async (res) => {
+      const body = (await res.json().catch(() => ({}))) as { quote?: AiQuoteDraft; warnings?: string[]; error?: string };
+      if (!res.ok) throw new Error(body.error || `Analysis failed (${res.status})`);
+      return { quote: body.quote as AiQuoteDraft, warnings: body.warnings ?? [] };
+    });
+  },
 };
 
 export const companiesApi = {

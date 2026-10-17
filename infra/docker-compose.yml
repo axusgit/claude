@@ -289,6 +289,11 @@ services:
       # Where to POST when an On Call quote is signed/completed (uses the same
       # shared secret as the bearer). Empty disables the completion callback.
       ON_CALL_CALLBACK_URL: ${AESIGN_ON_CALL_CALLBACK_URL:-}
+      # OpenAI (ChatGPT) powers "Draft a quote with AI" — reuses the platform's
+      # existing key. gpt-4o reads PDFs/images natively via the Responses API.
+      # Empty disables the AI quote-draft route (returns 503).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      QUOTE_AI_MODEL: ${QUOTE_AI_MODEL:-gpt-4o}
     volumes:
       - aesign_data:/data/aesign
     depends_on:

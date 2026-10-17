@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 import { config } from "../config.js";
 import { requireStaff } from "../identity.js";
 import { generateQuotePdf, generateQuoteTemplatePdf, type QuoteData, type SignSlot } from "../quotepdf.js";
+import { analyzeDocumentsToQuote, type AnalyzeInput } from "../quoteai.js";
 import { logActivity, renameActivity } from "./activity.js";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -62,6 +63,52 @@ export async function quoteRoutes(app: FastifyInstance) {
     reply.header("Content-Type", "application/pdf");
     reply.header("Content-Disposition", 'attachment; filename="Axus-Quote-Template.pdf"');
     return reply.send(Buffer.from(bytes));
+  });
+
+  // Draft a quote with AI — accepts up to 5 documents (emails, notes, vendor
+  // quotes, spec sheets, screenshots) + optional pasted text, extracts a
+  // structured draft the salesperson then reviews/edits in the builder. Nothing
+  // is persisted here; it returns the extracted quote data only.
+  app.post("/analyze", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    if (!req.isMultipart()) {
+      return reply.code(400).send({ error: "Upload documents as multipart/form-data." });
+    }
+    const files: AnalyzeInput[] = [];
+    let text = "";
+    const MAX_FILES = 5;
+    const MAX_BYTES = 25 * 1024 * 1024; // per file
+    try {
+      for await (const part of req.parts()) {
+        if (part.type === "file") {
+          if (files.length >= MAX_FILES) {
+            part.file.resume(); // drain + ignore extras beyond the cap
+            continue;
+          }
+          const buf = await part.toBuffer();
+          if (buf.length > MAX_BYTES) {
+            return reply.code(413).send({ error: `"${part.filename}" is too large (max 25 MB each).` });
+          }
+          files.push({ filename: part.filename || "document", buf, mimetype: part.mimetype || "" });
+        } else if (part.fieldname === "text" && typeof part.value === "string") {
+          text = part.value;
+        }
+      }
+    } catch (e) {
+      return reply.code(400).send({ error: "Could not read the uploaded files." });
+    }
+
+    try {
+      const { quote, warnings } = await analyzeDocumentsToQuote({ files, text });
+      logActivity(id.email, "AI quote draft", `${files.length} file(s)` + (text ? " + notes" : ""));
+      return reply.send({ quote, warnings });
+    } catch (e) {
+      const status = (e as any)?.status ?? 500;
+      const message = e instanceof Error ? e.message : "AI analysis failed.";
+      req.log.error({ err: e }, "quote analyze failed");
+      return reply.code(status).send({ error: message });
+    }
   });
 
   // Create a Quote — generates the branded PDF and a Quote envelope.

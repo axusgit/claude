@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Download, FileUp, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, FileUp, Plus, Sparkles, Trash2, X } from "lucide-react";
 import {
   api,
   companiesApi,
   contactsApi,
   quotesApi,
+  type AiQuoteDraft,
   type Company,
   type Contact,
   type QuoteItem,
@@ -50,6 +51,15 @@ export function QuoteBuilder() {
   // Edit an existing DRAFT quote in place (regenerate, no new envelope).
   const edit = params.get("edit");
   const [quoteNumber, setQuoteNumber] = useState("");
+
+  // "Draft with AI" intake: upload up to 5 docs (emails/notes/quotes) + paste
+  // text → AI extracts a draft that prefills the form below for review.
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiFiles, setAiFiles] = useState<File[]>([]);
+  const [aiText, setAiText] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiWarnings, setAiWarnings] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     companiesApi.list().then(setCompanies).catch(() => {});
@@ -224,6 +234,82 @@ export function QuoteBuilder() {
     }
   }
 
+  // Map an AI-extracted draft into the builder fields. Company is fuzzy-matched
+  // to an existing record so address/phone prefill from the known client; the
+  // user reviews and edits everything before generating.
+  function applyDraft(d: AiQuoteDraft) {
+    // Non-destructive: only overwrite a field when the AI actually extracted a
+    // value, so a draft that names no customer (e.g. a raw Dell quote) never wipes
+    // the company/contact the user already selected.
+    const rawCompany = (d.customer?.company ?? "").trim();
+    const match = rawCompany
+      ? companies.find((c) => c.name.trim().toLowerCase() === rawCompany.toLowerCase())
+      : undefined;
+    if (rawCompany) setCompany(match ? match.name : rawCompany);
+
+    const aiAddr = (d.customer?.address ?? "").trim();
+    if (aiAddr) setAddress(aiAddr);
+    else if (match?.address) setAddress(match.address);
+
+    const aiPhone = (d.customer?.phone ?? "").trim();
+    if (aiPhone) setPhone(aiPhone);
+    else if (match?.phone) setPhone(match.phone);
+
+    const aiContact = (d.customer?.contact ?? "").trim();
+    if (aiContact) setContact(aiContact);
+
+    if (d.salesperson) setSalesperson(d.salesperson);
+    if (d.job) setJob(d.job);
+    if (d.shipping_method) setShipping(d.shipping_method);
+    if (d.delivery_date) setDeliveryDate(d.delivery_date);
+    if (d.payment_terms) setPaymentTerms(d.payment_terms);
+    if (d.due_date) setDueDate(d.due_date);
+    if (d.valid_until) setValidUntil(d.valid_until);
+    if (d.tax) setTax(d.tax);
+    if (d.notes) setNotes(d.notes.slice(0, 500));
+
+    // Replace line items only when the AI actually found some (keep the full
+    // multi-line description verbatim — e.g. a server's whole configuration).
+    const its = (d.items ?? []).filter((it) => (it.item ?? "").trim() || (it.description ?? "").trim());
+    if (its.length) {
+      setItems(
+        its.map((it) => ({
+          qty: Number(it.qty) || 1,
+          item: it.item ?? "",
+          description: it.description ?? "",
+          unit_price: Number(it.unit_price) || 0,
+          discount: Number(it.discount) || 0,
+        })),
+      );
+    }
+  }
+
+  function addFiles(list: FileList | null) {
+    if (!list) return;
+    setAiFiles((prev) => [...prev, ...Array.from(list)].slice(0, 5));
+  }
+
+  async function runAnalyze() {
+    if (!aiFiles.length && !aiText.trim()) {
+      setError("Add at least one document or paste some text for the AI to analyze.");
+      return;
+    }
+    setAnalyzing(true);
+    setError(null);
+    setAiWarnings([]);
+    try {
+      const { quote, warnings } = await quotesApi.analyze(aiFiles, aiText);
+      applyDraft(quote);
+      setAiWarnings(warnings);
+      setAiOpen(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AI analysis failed.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   const field = "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand";
   const lbl = "text-xs font-medium text-muted";
 
@@ -246,6 +332,9 @@ export function QuoteBuilder() {
             <Button variant="outline" onClick={() => void createForUpload()} disabled={creatingUpload}>
               <FileUp className="h-4 w-4" /> {creatingUpload ? "Opening…" : "Upload a ready quote"}
             </Button>
+            <Button onClick={() => setAiOpen((v) => !v)}>
+              <Sparkles className="h-4 w-4" /> Draft with AI
+            </Button>
           </div>
         )}
       </div>
@@ -254,6 +343,83 @@ export function QuoteBuilder() {
         <span className="font-medium"> Upload a ready quote</span> to attach their finished .pdf / .doc.
       </p>
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {aiOpen && !edit && (
+        <Card className="space-y-3 border-brand/40 bg-brand/5 p-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-brand" />
+            <div className="text-sm font-semibold">Draft a quote with AI</div>
+            <button onClick={() => setAiOpen(false)} className="ml-auto text-muted hover:text-ink" title="Close">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="text-xs text-muted">
+            Add up to 5 documents (forwarded emails, notes, vendor quotes, spec sheets, screenshots — PDF, Word, .eml,
+            images, .txt) and/or paste text below. The AI extracts the customer, line items, quantities, and pricing
+            into the form for you to review and edit. Nothing is saved until you click <span className="font-medium">Generate quote</span>.
+          </p>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.rtf,.odt,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,.eml,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,image/*,application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              addFiles(e.target.files);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={aiFiles.length >= 5}>
+              <FileUp className="h-4 w-4" /> Add files {aiFiles.length > 0 && `(${aiFiles.length}/5)`}
+            </Button>
+            {aiFiles.map((f, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-xs"
+              >
+                <span className="max-w-[16rem] truncate">{f.name}</span>
+                <button
+                  onClick={() => setAiFiles((arr) => arr.filter((_, idx) => idx !== i))}
+                  className="text-muted hover:text-red-600"
+                  title="Remove"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+
+          <textarea
+            value={aiText}
+            onChange={(e) => setAiText(e.target.value)}
+            rows={4}
+            className={field}
+            placeholder="Optional: paste email threads, meeting notes, or a list of items and prices here…"
+          />
+
+          <div className="flex items-center gap-2">
+            <Button onClick={() => void runAnalyze()} disabled={analyzing || (!aiFiles.length && !aiText.trim())}>
+              <Sparkles className="h-4 w-4" /> {analyzing ? "Analyzing…" : "Analyze & draft"}
+            </Button>
+            <span className="text-xs text-muted">
+              {analyzing ? "Reading your documents — this can take up to a minute." : "The draft fills the form below."}
+            </span>
+          </div>
+        </Card>
+      )}
+
+      {aiWarnings.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          <div className="mb-1 font-medium">Review these notes from the AI draft:</div>
+          <ul className="list-inside list-disc space-y-0.5">
+            {aiWarnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="space-y-3 p-4">
@@ -378,7 +544,13 @@ export function QuoteBuilder() {
                     <Input value={it.item} onChange={(e) => setItem(i, { item: e.target.value })} className="w-36" />
                   </td>
                   <td className="px-1 py-1">
-                    <Input value={it.description} onChange={(e) => setItem(i, { description: e.target.value })} />
+                    <textarea
+                      value={it.description}
+                      onChange={(e) => setItem(i, { description: e.target.value })}
+                      rows={Math.min(10, Math.max(1, (it.description.match(/\n/g)?.length ?? 0) + 1))}
+                      className={`${field} min-w-[18rem] resize-y`}
+                      placeholder="Description (configuration details kept line by line)"
+                    />
                   </td>
                   <td className="px-1 py-1">
                     <input

@@ -193,10 +193,14 @@ def _fmt_field(db, field, value):
 
 
 def _fmt_sched(dt):
-    """Human-friendly scheduled date (date only) for client emails/activity."""
+    """Human-friendly scheduled date for client emails/activity. Includes the time
+    of day when one was set; a date-only schedule is stored at midnight and shows
+    the date alone."""
     if dt is None:
         return ""
     try:
+        if dt.hour or dt.minute:
+            return dt.strftime("%A, %B %-d, %Y at %-I:%M %p")
         return dt.strftime("%A, %B %-d, %Y")
     except (ValueError, AttributeError, TypeError):
         return str(dt)

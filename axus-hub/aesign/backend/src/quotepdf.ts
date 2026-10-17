@@ -84,17 +84,25 @@ export async function generateQuotePdf(
 
   const T = (topY: number) => H - topY;
   const wrap = (raw: string, font: PDFFont, size: number, maxW: number): string[] => {
-    const words = String(raw ?? "").split(/\s+/);
     const lines: string[] = [];
-    let cur = "";
-    for (const w of words) {
-      const t = cur ? `${cur} ${w}` : w;
-      if (font.widthOfTextAtSize(t, size) > maxW && cur) {
-        lines.push(cur);
-        cur = w;
-      } else cur = t;
+    // Honor explicit line breaks first (e.g. a server's multi-line configuration),
+    // then word-wrap each line to the column width.
+    for (const seg of String(raw ?? "").replace(/\r\n?/g, "\n").split("\n")) {
+      const words = seg.split(/\s+/).filter(Boolean);
+      if (!words.length) {
+        lines.push("");
+        continue;
+      }
+      let cur = "";
+      for (const w of words) {
+        const t = cur ? `${cur} ${w}` : w;
+        if (font.widthOfTextAtSize(t, size) > maxW && cur) {
+          lines.push(cur);
+          cur = w;
+        } else cur = t;
+      }
+      if (cur) lines.push(cur);
     }
-    if (cur) lines.push(cur);
     return lines.length ? lines : [""];
   };
   const put = (
@@ -178,6 +186,14 @@ export async function generateQuotePdf(
 
   let subtotal = 0;
   let totalDisc = 0;
+  const lineH = 10.5;
+  // Start a fresh page for items and redraw the table header; updates `ty`.
+  const newItemsPage = (): PDFPage => {
+    const p = pdf.addPage([W, H]);
+    drawBg(p);
+    ty = drawItemsHeader(p, TOP_SAFE + 10);
+    return p;
+  };
   for (const it of d.items) {
     const qty = Number(it.qty) || 0;
     const unit = Number(it.unit_price) || 0;
@@ -187,20 +203,25 @@ export async function generateQuotePdf(
     subtotal += lineTotal;
     totalDisc += qty * disc;
     const descLines = wrap(it.description, helv, 8.5, cx.unit - cx.desc - 8);
-    const rowH = Math.max(15, descLines.length * 10.5 + 5);
-    // Break to a new page (redraw the table header) when the row won't fit.
-    if (ty + rowH > MAX_ROW_Y) {
-      page = pdf.addPage([W, H]);
-      drawBg(page);
-      ty = drawItemsHeader(page, TOP_SAFE + 10);
+    // Flow the description line-by-line so a very long item (e.g. a fully-
+    // configured server) FLOWS across pages instead of overrunning the footer.
+    // The qty/price cells print once, aligned to the item's first visible line;
+    // the items header repeats atop each continuation page.
+    let cellsDrawn = false;
+    for (const dl of descLines) {
+      if (ty + 11 + lineH > MAX_ROW_Y) page = newItemsPage();
+      if (!cellsDrawn) {
+        put(page, tmpl ? "" : String(qty), cx.qty, ty + 11, { size: 8.5 });
+        put(page, it.item, cx.item, ty + 11, { size: 8.5 });
+        put(page, tmpl ? "" : money(unit), cx.unit, ty + 11, { size: 8.5 });
+        put(page, tmpl ? "" : disc ? money(disc) : "", cx.disc, ty + 11, { size: 8.5 });
+        put(page, tmpl ? "" : money(lineTotal), cx.total, ty + 11, { size: 8.5 });
+        cellsDrawn = true;
+      }
+      put(page, dl, cx.desc, ty + 11, { size: 8.5 });
+      ty += lineH;
     }
-    put(page, tmpl ? "" : String(qty), cx.qty, ty + 11, { size: 8.5 });
-    put(page, it.item, cx.item, ty + 11, { size: 8.5 });
-    descLines.forEach((dl, i) => put(page, dl, cx.desc, ty + 11 + i * 10.5, { size: 8.5 }));
-    put(page, tmpl ? "" : money(unit), cx.unit, ty + 11, { size: 8.5 });
-    put(page, tmpl ? "" : disc ? money(disc) : "", cx.disc, ty + 11, { size: 8.5 });
-    put(page, tmpl ? "" : money(lineTotal), cx.total, ty + 11, { size: 8.5 });
-    ty += rowH;
+    ty += 5; // bottom padding for the row
     page.drawLine({ start: { x: M, y: T(ty) }, end: { x: W - M, y: T(ty) }, color: LINE, thickness: 0.4 });
   }
 
@@ -257,6 +278,10 @@ export async function generateQuotePdf(
 
   // ================= TERMS + SIGNATURE (own page) =================
   const p2 = pdf.addPage([W, H]);
+  // Actual 1-based page number of this (last-added) page — NOT always 2, since a
+  // long line-item description can push it to page 3+. The signer field layout
+  // below must target this page or the fields land mid-description.
+  const sigPageNum = pdf.getPageCount();
   drawBg(p2);
   put(p2, "Terms and Conditions", M, TOP_SAFE, { size: 15, bold: true });
   const terms = [
@@ -303,11 +328,12 @@ export async function generateQuotePdf(
   const nameY = py;
   put(p2, NAME_LINE, M, py, { size: 10 });
 
-  // Signature-field layout (1 signer, page 2 — 1-based). Widths from exact text.
+  // Signature-field layout (1 signer, on the T&C/signature page — 1-based,
+  // computed above). Widths from exact text.
   const wAt = (s: string) => helv.widthOfTextAtSize(s, 10);
   const rect = (type: SignField["type"], x0: number, x1: number, baseY: number): SignField => ({
     type,
-    page: 2,
+    page: sigPageNum,
     x: +(x0 / W).toFixed(4),
     y: +((baseY - 15) / H).toFixed(4),
     w: +((x1 - x0) / W).toFixed(4),

@@ -188,7 +188,7 @@ const Staff = (() => {
     if (notEditing($("d-priority"))) $("d-priority").value = fresh.priority;
     if (notEditing($("d-assignee"))) $("d-assignee").value = fresh.assigned_to_id || "";
     if (notEditing($("d-board")))    $("d-board").value = fresh.board_id || "";
-    if (notEditing($("d-scheduled-date"))) $("d-scheduled-date").value = schedInputVal(fresh.scheduled_date);
+    if (notEditing($("d-scheduled-date")) && notEditing($("d-scheduled-time"))) fillSchedInputs(fresh.scheduled_date);
     toggleScheduled(fresh.status);
     $("p-hours").textContent = (fresh.total_hours || 0) + " h";
     $("p-po").textContent = fresh.po_number || "—";
@@ -261,19 +261,54 @@ const Staff = (() => {
     low: "Low — a minor or non-urgent request scheduled after higher-priority work.",
   };
   const statusLabel = s => cap(s);
-  // Format a date-only string ("YYYY-MM-DD") without a timezone shift.
+  // Format a scheduled value ("YYYY-MM-DD" or "...THH:MM") without a timezone shift.
+  // Shows the date, and appends the time when one was set (a non-midnight time;
+  // date-only schedules are stored at 00:00 and show the date alone).
   function schedDate(s) {
     if (!s) return "";
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s));
+    const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(String(s));
     if (!m) return s;
-    const d = new Date(+m[1], +m[2] - 1, +m[3]);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    const d = new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0));
+    const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    if (!schedTimeVal(s)) return dateStr;
+    return dateStr + " · " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
   // Stored scheduled value (ISO date or date+time) -> an <input type=date> value (date part).
   function schedInputVal(s) {
     if (!s) return "";
     const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(s));
     return m ? m[1] : "";
+  }
+  // Stored value -> an <input type=time> value ("HH:MM"), or "" if none/midnight
+  // (midnight is how a date-only schedule is stored, so it reads back as no time).
+  function schedTimeVal(s) {
+    if (!s) return "";
+    const m = /[T ](\d{2}):(\d{2})/.exec(String(s));
+    if (!m || (m[1] === "00" && m[2] === "00")) return "";
+    return m[1] + ":" + m[2];
+  }
+  // Stored value -> the string the inputs would produce (for change detection).
+  function schedNorm(s) {
+    const d = schedInputVal(s); if (!d) return "";
+    const t = schedTimeVal(s);
+    return t ? d + "T" + t : d;
+  }
+  // Populate the detail Scheduled inputs (date, "Add a time" checkbox, time) from a
+  // stored value, revealing the time field only when a time was set.
+  function fillSchedInputs(s) {
+    $("d-scheduled-date").value = schedInputVal(s);
+    const t = schedTimeVal(s);
+    $("d-scheduled-time").value = t;
+    $("d-scheduled-addtime").checked = !!t;
+    $("d-scheduled-time").hidden = !t;
+  }
+  // Read the inputs back into a value to send: "YYYY-MM-DD", or "YYYY-MM-DDTHH:MM"
+  // when "Add a time" is checked with a time entered; "" when no date is set.
+  function readSchedValue() {
+    const date = $("d-scheduled-date").value;
+    if (!date) return "";
+    const t = $("d-scheduled-time").value;
+    return ($("d-scheduled-addtime").checked && t) ? date + "T" + t : date;
   }
   // Show/hide + populate the detail "Scheduled date" field based on status.
   function toggleScheduled(status) {
@@ -972,7 +1007,7 @@ const Staff = (() => {
     $("d-title").textContent = current.title;
     $("d-desc").textContent = current.description || "No description provided.";
     $("d-status").value = current.status;
-    $("d-scheduled-date").value = schedInputVal(current.scheduled_date);
+    fillSchedInputs(current.scheduled_date);
     toggleScheduled(current.status);
     $("d-priority").value = current.priority;
     $("d-assignee").value = current.assigned_to_id || "";
@@ -1259,7 +1294,7 @@ const Staff = (() => {
       $("d-status-badge").className = "badge " + current.status;
       $("d-status-badge").textContent = statusLabel(current.status);
       $("reopen-btn").hidden = current.status !== "closed";
-      $("d-scheduled-date").value = schedInputVal(current.scheduled_date);
+      fillSchedInputs(current.scheduled_date);
       toggleScheduled(current.status);
     }
     if (field === "priority") {
@@ -1288,7 +1323,7 @@ const Staff = (() => {
       $("d-status-badge").textContent = statusLabel(current.status);
       $("reopen-btn").hidden = current.status !== "closed";
     }
-    $("d-scheduled-date").value = schedInputVal(current.scheduled_date);
+    fillSchedInputs(current.scheduled_date);
     toggleScheduled(current.status);
     await Promise.all([loadActivity(current.id), loadTickets()]);
     toast("Updated");
@@ -2283,19 +2318,20 @@ const Staff = (() => {
     wireNavDD("users-dd-btn", "users-dd-menu", () => { showUsers(); renderUsers(); });
 
     // detail controls
-    // Moving a ticket to "Scheduled" requires a date+time FIRST: we reveal the picker
-    // and defer committing the status until a time is chosen (sent together). Other
+    // Moving a ticket to "Scheduled" requires a date FIRST: we reveal the picker and
+    // defer committing the status until a date is chosen (sent together). A time is
+    // optional — staff tick "Add a time" to schedule a specific time of day. Other
     // statuses commit immediately.
     $("d-status").onchange = e => {
       const v = e.target.value;
       if (v === "scheduled") {
         toggleScheduled("scheduled");
         const el = $("d-scheduled-date");
-        if (!el.value) el.value = schedInputVal(current.scheduled_date);
+        if (!el.value) fillSchedInputs(current.scheduled_date);
         el.focus();
         if (el.showPicker) { try { el.showPicker(); } catch (_) {} }
-        toast("Enter the scheduled date & time to confirm");
-        // intentionally NOT patched yet — commit happens when the time is set
+        toast("Enter the scheduled date to confirm (optionally add a time)");
+        // intentionally NOT patched yet — commit happens when the date is set
       } else {
         toggleScheduled(v);
         patch("status", v).catch(err => toast(err.message));
@@ -2303,21 +2339,21 @@ const Staff = (() => {
     };
     function revertSchedule() {
       $("d-status").value = current.status;
-      $("d-scheduled-date").value = schedInputVal(current.scheduled_date);
+      fillSchedInputs(current.scheduled_date);
       toggleScheduled(current.status);
     }
-    // Commit a Scheduled change only once the user has FINISHED entering the date+time —
-    // not on every intermediate keystroke (datetime-local fires 'change' as soon as a
-    // complete value exists, e.g. after the first minute digit). We debounce typing and
-    // also commit immediately on blur or Enter. schedBusy guards against a double dialog.
+    // Commit a Scheduled change only once the user has FINISHED entering the date (and,
+    // when "Add a time" is ticked, the time too) — not on every intermediate keystroke.
+    // We debounce typing and also commit on blur or Enter. schedBusy guards a double dialog.
     let schedTimer = null, schedBusy = false;
     async function commitSchedule() {
       if (schedBusy) return;                              // a confirm dialog is already open
       if ($("d-status").value !== "scheduled") return;
-      const val = $("d-scheduled-date").value || null;
-      if (!val) return;                                   // date+time not fully entered yet
+      if ($("d-scheduled-addtime").checked && !$("d-scheduled-time").value) return;  // waiting for the time
+      const val = readSchedValue() || null;
+      if (!val) return;                                   // no date entered yet
       const rescheduling = current.status === "scheduled";
-      if (rescheduling && schedInputVal(current.scheduled_date) === val) return;  // unchanged
+      if (rescheduling && schedNorm(current.scheduled_date) === val) return;  // unchanged
       schedBusy = true;
       try {
         const when = schedDate(val);
@@ -2329,7 +2365,7 @@ const Staff = (() => {
             confirmText: rescheduling ? "Reschedule & notify client" : "Schedule & notify client" }
         );
         if (!ok) { revertSchedule(); return; }            // cancelled — nothing saved, no email
-        if (rescheduling) await patch("scheduled_date", val);      // reschedule: update the time
+        if (rescheduling) await patch("scheduled_date", val);      // reschedule: update the date/time
         else await patchFields({ status: "scheduled", scheduled_date: val });  // commit together
       } catch (err) {
         toast(err.message);
@@ -2338,16 +2374,33 @@ const Staff = (() => {
         schedBusy = false;
       }
     }
-    // Typing: wait a moment after the last change (so the full date is entered) before asking.
-    $("d-scheduled-date").oninput = () => {
-      clearTimeout(schedTimer);
-      schedTimer = setTimeout(commitSchedule, 600);
+    // Typing: wait a moment after the last change (so the full value is entered) before asking.
+    const schedDebounce = () => { clearTimeout(schedTimer); schedTimer = setTimeout(commitSchedule, 600); };
+    const schedEnter = e => { if (e.key === "Enter") { clearTimeout(schedTimer); commitSchedule(); } };  // finished now
+    $("d-scheduled-date").oninput = schedDebounce;
+    $("d-scheduled-time").oninput = schedDebounce;
+    $("d-scheduled-date").onkeydown = schedEnter;
+    $("d-scheduled-time").onkeydown = schedEnter;
+    // "Add a time" opt-in: reveal the time field (seed a sensible default), or, when
+    // unticked, drop the time and commit the date-only schedule.
+    $("d-scheduled-addtime").onchange = () => {
+      const on = $("d-scheduled-addtime").checked;
+      const tel = $("d-scheduled-time");
+      tel.hidden = !on;
+      if (on) {
+        if (!tel.value) tel.value = "09:00";
+        tel.focus();
+        if (tel.showPicker) { try { tel.showPicker(); } catch (_) {} }
+      } else {
+        tel.value = "";
+        clearTimeout(schedTimer);
+        commitSchedule();                               // date-only is now a complete schedule
+      }
     };
-    $("d-scheduled-date").onkeydown = e => {
-      if (e.key === "Enter") { clearTimeout(schedTimer); commitSchedule(); }  // finished now
-    };
-    // Leaving the field: commit if a time was entered, else revert the "Scheduled" pick.
-    $("d-scheduled-date").onblur = () => {
+    // Leaving a field: commit, unless focus is just moving within the scheduled control
+    // (e.g. date -> "Add a time" checkbox), or revert the "Scheduled" pick if no date.
+    const schedBlur = e => {
+      if (e.relatedTarget && $("d-scheduled-wrap").contains(e.relatedTarget)) return;
       clearTimeout(schedTimer);
       if ($("d-scheduled-date").value) {
         commitSchedule();
@@ -2356,6 +2409,8 @@ const Staff = (() => {
         toggleScheduled(current.status);
       }
     };
+    $("d-scheduled-date").onblur = schedBlur;
+    $("d-scheduled-time").onblur = schedBlur;
     $("d-priority").onchange = e => patch("priority", e.target.value);
     $("d-assignee").onchange = e => { if (e.target.value) patch("assigned_to_id", parseInt(e.target.value)); };
     $("d-board").onchange = e => patch("board_id", e.target.value ? parseInt(e.target.value) : null);

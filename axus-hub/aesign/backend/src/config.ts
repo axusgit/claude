@@ -19,6 +19,13 @@ export const config = {
   // Where to POST when an On Call-originated quote is completed (signed). Empty =
   // callback off. Reuses EXTERNAL_API_TOKEN as the bearer (same shared secret).
   onCallCallbackUrl: process.env.ON_CALL_CALLBACK_URL ?? "",
+  // OpenAI (ChatGPT) — powers "Draft a quote with AI" (extracts a quote from
+  // uploaded emails/notes/docs). Same platform key the Service Desk uses; empty =
+  // the AI quote-draft feature is off (route returns 503).
+  openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+  // Model for quote extraction. gpt-4o reads PDFs + images natively via the
+  // Responses API; override with QUOTE_AI_MODEL.
+  quoteAiModel: process.env.QUOTE_AI_MODEL ?? "gpt-4o",
   mail: {
     host: process.env.SMTP_HOST ?? "",
     port: Number(process.env.SMTP_PORT ?? 587),
