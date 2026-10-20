@@ -66,6 +66,44 @@ def _biz(t) -> str:
     return (t.client.company_name if t.client else "") or "—"
 
 
+def _contact_fields(db, t):
+    """Resolve the 'Opened By', phone and address for a ticket. Prefers what the
+    reporter actually typed when opening the case (portal contact_phone/contact_address),
+    then falls back to the reporter's user record, the legacy email-intake contact, and
+    finally the business record. Returns (opened_by, phone, address) — any may be ''."""
+    from app.models.contact import Contact
+    reporter = t.reporter if t.reporter_user_id else None
+    contact = None
+    if t.contact_id:
+        contact = db.query(Contact).filter(Contact.id == t.contact_id).first()
+
+    # Opened By: whoever reported it (name + email), else the legacy contact, else creator.
+    opened_by = ""
+    person = reporter or contact or (t.created_by if t.created_by_id else None)
+    if person:
+        name = (getattr(person, "full_name", "") or "").strip()
+        email = (getattr(person, "email", "") or "").strip()
+        opened_by = f"{name} <{email}>".strip() if name and email else (name or email)
+
+    # Phone: portal-provided first, then reporter, contact, then the business (+ext).
+    phone = (t.contact_phone or "").strip()
+    if not phone and reporter:
+        phone = (reporter.phone or "").strip()
+    if not phone and contact:
+        phone = (contact.phone or "").strip()
+    if not phone and t.client:
+        phone = (t.client.phone or "").strip()
+        if phone and getattr(t.client, "ext", None):
+            phone = f"{phone} x{t.client.ext}"
+
+    # Address: portal-provided first, then the business location.
+    address = (t.contact_address or "").strip()
+    if not address and t.client:
+        address = (t.client.address or "").strip()
+
+    return opened_by, phone, address
+
+
 def _staff_emails(db, exclude_id=None):
     # Accounts parked in the hidden "Dummy Business" (e.g. the Authentik default
     # admin) never receive staff notifications.
@@ -80,16 +118,29 @@ def _staff_emails(db, exclude_id=None):
     return sorted(out)
 
 
-def _body(t, lead: str, include_desc: bool = False) -> str:
+def _body(t, lead: str, include_desc: bool = False, include_contact: bool = False,
+          db=None) -> str:
     client = t.client.company_name if t.client else "—"
     url = _ticket_url()
     desc = (t.description or "").strip()
+    contact_lines = ""
+    if include_contact and db is not None:
+        opened_by, phone, address = _contact_fields(db, t)
+        if opened_by:
+            contact_lines += f"Opened By: {opened_by}\n"
+        if phone:
+            contact_lines += f"Phone:     {phone}\n"
+        if address:
+            # Keep multi-line addresses aligned under the label.
+            addr = address.replace("\n", "\n           ")
+            contact_lines += f"Address:   {addr}\n"
     return (f"{lead}\n\n"
             f"Ref:      {t.reference}\n"
             f"Subject:  {t.title}\n"
             f"Business: {client}\n"
             f"Priority: {_v(t.priority)}\n"
             f"Status:   {_v(t.status)}\n"
+            + contact_lines
             + (f"\nDescription:\n{desc}\n" if include_desc and desc else "")
             + (f"\nOpen it: {url}\n" if url else ""))
 
@@ -105,7 +156,8 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
         # New tickets go ONLY to the intake inbox (info@); staff monitor that inbox.
         if NEW_TICKET_INBOX:
             mailer.send_email(_to([NEW_TICKET_INBOX]), f"[New] {_biz(t)} · {t.reference} · {t.title}",
-                              _body(t, "A new ticket was created.", include_desc=True))
+                              _body(t, "A new ticket was created.", include_desc=True,
+                                    include_contact=True, db=db))
     except Exception as e:
         print(f"[notify] new_ticket failed: {e}", flush=True)
     finally:
