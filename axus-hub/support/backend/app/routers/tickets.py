@@ -819,7 +819,18 @@ def upload_attachment(
         stored_name=stored_name,
     )
     db.add(attachment)
-    _log_activity(db, ticket_id, current_user.id, "attachment_added", f"Attached {original}")
+    # Flag in the activity feed when a file rode in on an internal (staff-only) note,
+    # so it reads the same as the 🔒 Internal badge on the file itself.
+    internal_note = False
+    if comment_id:
+        linked = (
+            db.query(TicketComment)
+            .filter(TicketComment.id == comment_id, TicketComment.ticket_id == ticket_id)
+            .first()
+        )
+        internal_note = bool(linked and linked.is_internal)
+    detail = f"🔒 Attached {original} (internal note)" if internal_note else f"Attached {original}"
+    _log_activity(db, ticket_id, current_user.id, "attachment_added", detail)
     db.commit()
     db.refresh(attachment)
     return attachment

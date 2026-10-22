@@ -7,7 +7,11 @@ export interface NamedEnvelope {
   title?: string | null;
   company?: string | null;
   quote_data?: { quote_number?: string } | null;
+  // 'completed' once every party has signed and the envelope is sealed.
+  status?: string | null;
 }
+
+const SIGNED_SUFFIX = " - Signed";
 
 // Strip characters that are illegal in file names / Content-Disposition. The
 // Content-Disposition header must be ASCII, so normalize dashes and drop any
@@ -23,7 +27,12 @@ function clean(s: string): string {
     .slice(0, 90);
 }
 
-export function envelopeDocName(env: NamedEnvelope): string {
+// Once a document is signed by ALL parties (envelope sealed/completed) we append
+// " - Signed" to its name, so downloaded and emailed copies are clearly the final
+// executed version, e.g. "Quote - HCN 9-11-2026 - Signed". Pass { signed: true }
+// when the caller already knows completion locally (the DB status may still be the
+// pre-update value), otherwise an env.status of "completed" drives it.
+export function envelopeDocName(env: NamedEnvelope, opts?: { signed?: boolean }): string {
   const type = (env.doc_type ?? "").trim();
   // Best "title" part: the envelope title, else the company, else (quotes) the quote number.
   const rawTitle = (env.title ?? "").trim();
@@ -31,9 +40,16 @@ export function envelopeDocName(env: NamedEnvelope): string {
   if (!title) title = (env.company ?? "").trim();
   if (!title && type === "Quote") title = (env.quote_data?.quote_number ?? "").trim();
 
-  if (!type) return clean(title) || "Document";
-  if (!title) return clean(type);
+  let name: string;
+  if (!type) name = clean(title) || "Document";
+  else if (!title) name = clean(type);
   // "Type - Title", but don't double the type if the title already leads with it.
-  if (title.toLowerCase().startsWith(type.toLowerCase())) return clean(title);
-  return clean(`${type} - ${title}`);
+  else if (title.toLowerCase().startsWith(type.toLowerCase())) name = clean(title);
+  else name = clean(`${type} - ${title}`);
+
+  const signed = opts?.signed ?? env.status === "completed";
+  if (signed && !name.toLowerCase().endsWith(SIGNED_SUFFIX.toLowerCase())) {
+    name += SIGNED_SUFFIX;
+  }
+  return name;
 }

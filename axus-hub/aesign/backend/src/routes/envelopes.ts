@@ -492,7 +492,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
     logActivity(id.email, "Completed document (offline-signed copy)", e.title, envId);
 
     // Email every participant (signers + copy-only viewers) the finished PDF.
-    const attachment = { filename: `${envelopeDocName(e)}.pdf`, content: attachmentBytes };
+    const attachment = { filename: `${envelopeDocName(e, { signed: true })}.pdf`, content: attachmentBytes };
     for (const r of recsQ.rows) {
       await sendCompleted({
         to: r.email,

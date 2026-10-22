@@ -65,7 +65,7 @@ async function sealAndNotify(envId: string, signerName: string, signerSignOrder?
     { title: e.title, envelopeId: e.id, manualSignerEmails },
     allSigned,
   );
-  const attachment = { filename: `${envelopeDocName(e)}.pdf`, content: Buffer.from(bytes) };
+  const attachment = { filename: `${envelopeDocName(e, { signed: allSigned })}.pdf`, content: Buffer.from(bytes) };
 
   if (allSigned) {
     const sealedName = `${envId}-sealed.pdf`;

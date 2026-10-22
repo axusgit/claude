@@ -1243,22 +1243,44 @@ const Staff = (() => {
   }
 
   async function loadAttachments(id) {
-    const files = await api(`/api/tickets/${id}/attachments`);
+    // Pull the comments alongside the files so we can flag any attachment that came
+    // in on an internal (staff-only) note — an internal file must never be mistaken
+    // for one the customer can see.
+    const [files, comments] = await Promise.all([
+      api(`/api/tickets/${id}/attachments`),
+      api(`/api/tickets/${id}/comments`).catch(() => []),
+    ]);
+    const internalByComment = {};
+    (comments || []).forEach(c => { if (c.is_internal) internalByComment[c.id] = true; });
     const box = $("attach-list");
     box.innerHTML = "";
     if (!files.length) { box.innerHTML = `<div class="muted">No files.</div>`; return; }
     files.forEach(f => {
+      const internal = f.comment_id != null && !!internalByComment[f.comment_id];
       const row = document.createElement("div");
-      row.className = "attach-item";
-      row.innerHTML = `<span>📄</span><a href="#">${esc(f.filename)}</a><span class="attach-size">${fileSize(f.size)}</span>`;
+      row.className = "attach-item" + (internal ? " internal" : "");
+      const badge = internal
+        ? `<span class="attach-internal" title="Uploaded on an internal note — not visible to the customer">🔒 Internal</span>`
+        : "";
+      row.innerHTML = `<span>📄</span><a href="#">${esc(f.filename)}</a>${badge}<span class="attach-size">${fileSize(f.size)}</span><button class="attach-del" title="Delete file" aria-label="Delete ${esc(f.filename)}">🗑</button>`;
       row.querySelector("a").onclick = ev => { ev.preventDefault(); download(f.id, f.filename); };
+      row.querySelector(".attach-del").onclick = () => deleteAttachment(f.id, f.filename);
       box.appendChild(row);
     });
   }
 
+  async function deleteAttachment(attId, filename) {
+    if (!await axusConfirm(`Delete ${filename}?\n\nThis permanently removes the file from this ticket and cannot be undone.`)) return;
+    try {
+      await api(`/api/tickets/${current.id}/attachments/${attId}`, { method: "DELETE" });
+      await Promise.all([loadAttachments(current.id), loadActivity(current.id)]);
+      toast("File deleted");
+    } catch (e) { toast(e.message); }
+  }
+
   function actDotClass(a) {
     const d = (a.detail || "").toLowerCase();
-    if (d.startsWith("internal note")) return "internal";       // blue
+    if (d.includes("internal note")) return "internal";         // blue (note added, or file on an internal note)
     if (d.includes("to closed")) return "closed";               // red
     if (a.action === "assigned_to_id_changed" || d.startsWith("assignee changed")) return "assigned";  // green
     return "";
@@ -1393,11 +1415,15 @@ const Staff = (() => {
     }
     // A single request posts the reply AND closes the case, so the close notice and
     // the final reply go out as one combined email.
-    await api(`/api/tickets/${current.id}/comments`, {
+    const created = await api(`/api/tickets/${current.id}/comments`, {
       method: "POST", body: { body: body || null, is_internal: internal, close: !!close },
     });
+    // Link each uploaded file to the note/reply it rode in with, so the UI can flag
+    // files that came in on an internal (staff-only) note.
+    const commentId = created && created.id;
     for (const f of (files || [])) {
       const fd = new FormData(); fd.append("file", f);
+      if (commentId) fd.append("comment_id", commentId);
       try { await api(`/api/tickets/${current.id}/attachments`, { method: "POST", form: fd }); }
       catch (e) { toast(`Couldn't attach ${f.name}: ${e.message}`); }
     }
