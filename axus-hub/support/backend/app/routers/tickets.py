@@ -12,6 +12,7 @@ from app.models.ticket import (
     TICKET_ORIGINS,
 )
 from app.models.ticket_watcher import TicketWatcher
+from app.models.reminder import TicketReminder
 from app.models.attachment import Attachment
 from app.auth import get_current_user, require_staff, require_admin
 from app.models.user import User, UserRole
@@ -167,6 +168,39 @@ class AttachmentOut(BaseModel):
     content_type: Optional[str]
     size: int
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ReminderIn(BaseModel):
+    note: str
+    # Wall-clock Eastern (naive): "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM".
+    due_at: datetime
+    owner_id: Optional[int] = None   # defaults to the ticket's assignee, else the creator
+
+
+class ReminderUpdate(BaseModel):
+    note: Optional[str] = None
+    due_at: Optional[datetime] = None
+    owner_id: Optional[int] = None
+    done: Optional[bool] = None
+
+
+class ReminderOut(BaseModel):
+    id: int
+    ticket_id: int
+    owner_id: int
+    created_by_id: int
+    note: str
+    due_at: datetime
+    done: bool
+    done_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    # Denormalized for the dashboard "My reminders" list (set on the mine endpoint).
+    ticket_reference: Optional[str] = None
+    ticket_title: Optional[str] = None
+    client_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -359,6 +393,29 @@ def create_ticket(data: TicketIn, background: BackgroundTasks, db: Session = Dep
     background.add_task(notify.notify_new_ticket, ticket.id, current_user.id)
     background.add_task(notify.notify_ticket_received, ticket.id)  # client ack (if reporter is a client)
     return ticket
+
+
+@router.get("/my-reminders", response_model=List[ReminderOut])
+def my_reminders(
+    include_done: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Open reminders owned by the signed-in staff member, across all tickets, soonest
+    first. Declared before /{ticket_id} so the literal path wins route matching."""
+    q = db.query(TicketReminder).filter(TicketReminder.owner_id == current_user.id)
+    if not include_done:
+        q = q.filter(TicketReminder.done == False)  # noqa: E712
+    out = []
+    for r in q.order_by(TicketReminder.due_at).all():
+        t = db.query(Ticket).filter(Ticket.id == r.ticket_id).first()
+        item = ReminderOut.model_validate(r)
+        if t:
+            item.ticket_reference = t.reference
+            item.ticket_title = t.title
+            item.client_name = t.client.company_name if t.client else None
+        out.append(item)
+    return out
 
 
 @router.get("/{ticket_id}", response_model=TicketOut)
@@ -780,6 +837,97 @@ def get_activity(ticket_id: int, db: Session = Depends(get_db), _=Depends(get_cu
         .order_by(TicketActivity.created_at)
         .all()
     )
+
+
+def _reminder_owner(db: Session, ticket: Ticket, requested_id: Optional[int], current_user: User) -> User:
+    """Resolve a reminder's owner: an explicitly chosen staff user, else the ticket's
+    assignee, else whoever is creating it. The owner must be a staff member."""
+    owner = None
+    if requested_id:
+        owner = db.query(User).filter(User.id == requested_id).first()
+        if not owner:
+            raise HTTPException(status_code=404, detail="Owner not found")
+    elif ticket.assigned_to_id:
+        owner = db.query(User).filter(User.id == ticket.assigned_to_id).first()
+    if not owner:
+        owner = current_user
+    if owner.role not in (UserRole.admin, UserRole.technician):
+        raise HTTPException(status_code=400, detail="A reminder owner must be an Axus staff member")
+    return owner
+
+
+@router.get("/{ticket_id}/reminders", response_model=List[ReminderOut])
+def list_reminders(ticket_id: int, include_done: bool = True, db: Session = Depends(get_db),
+                   _=Depends(get_current_user)):
+    q = db.query(TicketReminder).filter(TicketReminder.ticket_id == ticket_id)
+    if not include_done:
+        q = q.filter(TicketReminder.done == False)  # noqa: E712
+    # Open reminders first (soonest due), then completed ones.
+    return sorted(q.all(), key=lambda r: (r.done, r.due_at))
+
+
+@router.post("/{ticket_id}/reminders", response_model=ReminderOut)
+def add_reminder(ticket_id: int, data: ReminderIn, db: Session = Depends(get_db),
+                 current_user: User = Depends(require_staff)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    note = (data.note or "").strip()
+    if not note:
+        raise HTTPException(status_code=400, detail="Enter what the reminder is for.")
+    owner = _reminder_owner(db, ticket, data.owner_id, current_user)
+    r = TicketReminder(
+        ticket_id=ticket_id, owner_id=owner.id, created_by_id=current_user.id,
+        note=note, due_at=data.due_at,
+    )
+    db.add(r)
+    _log_activity(db, ticket_id, current_user.id, "reminder_added",
+                  f"Reminder for {owner.full_name}: {note}")
+    db.commit()
+    db.refresh(r)
+    return r
+
+
+@router.put("/{ticket_id}/reminders/{reminder_id}", response_model=ReminderOut)
+def update_reminder(ticket_id: int, reminder_id: int, data: ReminderUpdate,
+                    db: Session = Depends(get_db), current_user: User = Depends(require_staff)):
+    r = db.query(TicketReminder).filter(
+        TicketReminder.id == reminder_id, TicketReminder.ticket_id == ticket_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if data.note is not None:
+        note = data.note.strip()
+        if not note:
+            raise HTTPException(status_code=400, detail="Enter what the reminder is for.")
+        r.note = note
+    if data.owner_id is not None and ticket:
+        r.owner_id = _reminder_owner(db, ticket, data.owner_id, current_user).id
+    if data.due_at is not None:
+        r.due_at = data.due_at
+        r.notified = False   # a re-dated reminder can fire its due email again
+    if data.done is not None and data.done != r.done:
+        r.done = data.done
+        r.done_at = datetime.now(timezone.utc) if data.done else None
+        _log_activity(db, ticket_id, current_user.id,
+                      "reminder_done" if data.done else "reminder_reopened",
+                      f"{'Completed' if data.done else 'Reopened'} reminder: {r.note}")
+    db.commit()
+    db.refresh(r)
+    return r
+
+
+@router.delete("/{ticket_id}/reminders/{reminder_id}")
+def delete_reminder(ticket_id: int, reminder_id: int, db: Session = Depends(get_db),
+                    current_user: User = Depends(require_staff)):
+    r = db.query(TicketReminder).filter(
+        TicketReminder.id == reminder_id, TicketReminder.ticket_id == ticket_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    db.delete(r)
+    _log_activity(db, ticket_id, current_user.id, "reminder_deleted", f"Removed reminder: {r.note}")
+    db.commit()
+    return {"status": "deleted", "id": reminder_id}
 
 
 @router.post("/{ticket_id}/attachments", response_model=AttachmentOut)

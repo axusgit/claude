@@ -112,6 +112,32 @@ def start_xcitium_health_monitor():
 
 
 @app.on_event("startup")
+def start_reminder_checker():
+    """Email ticket-reminder owners when their reminders come due.
+
+    Polls the ticket_reminders table on an interval and sends a one-time email per
+    reminder via app.notify. On by default; disable with REMINDERS_EMAIL_ENABLED=0.
+    Respects the same NOTIFY_ENABLED / mailer-configured guards as other emails."""
+    import os, time, threading
+    from app import notify
+    if os.getenv("REMINDERS_EMAIL_ENABLED", "1") != "1":
+        print("[reminders] due-reminder email disabled (REMINDERS_EMAIL_ENABLED=0)", flush=True)
+        return
+    interval = max(60, int(os.getenv("REMINDER_CHECK_SECONDS", "300")))
+
+    def loop():
+        while True:
+            try:
+                notify.send_due_reminders()
+            except Exception:
+                pass
+            time.sleep(interval)
+
+    threading.Thread(target=loop, daemon=True, name="reminder-checker").start()
+    print(f"[reminders] due-reminder checker started (every {interval}s)", flush=True)
+
+
+@app.on_event("startup")
 def seed_default_boards():
     """Create the default service boards once, if none exist."""
     from app.database import SessionLocal
