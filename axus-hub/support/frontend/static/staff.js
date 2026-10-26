@@ -722,8 +722,6 @@ const Staff = (() => {
 
     $("dash-sub").textContent = `${active.length} open · ${unassigned.length} unassigned`
       + (imported ? ` · ${imported} imported (read-only)` : "");
-
-    loadMyReminders();   // owner's follow-ups across all tickets (async, best-effort)
   }
 
   /* ---------- Queue ---------- */
@@ -1051,7 +1049,7 @@ const Staff = (() => {
     $("reply-files").value = ""; renderReplyFiles();   // clear files staged on the previous ticket
     $("reply-body").style.height = "";   // back to the default height on every ticket open (undo any drag-resize)
     showDetail();
-    await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id), loadWatchers(id), loadReminders(id), loadProjectLinks(current)]);
+    await Promise.all([loadThread(id), loadTime(id), loadAttachments(id), loadActivity(id), loadWatchers(id), loadProjectLinks(current)]);
   }
 
   /* ---------- Projects (parent ticket ↔ associated tickets) ---------- */
@@ -1160,106 +1158,6 @@ const Staff = (() => {
       if (link) link.onclick = () => openCustomer(current.client_id);
     }
   }
-  /* ---------- Reminders (follow-up tasks for the ticket owner) ---------- */
-  // "Now" as a naive Eastern "YYYY-MM-DDTHH:MM" string, so it compares directly
-  // against stored due_at values (also wall-clock ET). Lexical compare = chronological.
-  function nowEtStr() {
-    const p = {};
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", hour12: false,
-    }).formatToParts(new Date()).forEach(x => p[x.type] = x.value);
-    const hr = p.hour === "24" ? "00" : p.hour;   // some engines render midnight as 24
-    return `${p.year}-${p.month}-${p.day}T${hr}:${p.minute}`;
-  }
-  function remDueNorm(s) {
-    const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(String(s || ""));
-    return m ? `${m[1]}T${m[2] || "00"}:${m[3] || "00"}` : "";
-  }
-  function remOverdue(s) { const d = remDueNorm(s); return !!d && d <= nowEtStr(); }
-  // Read the detail reminder inputs into a value: "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM".
-  function readRemDue() {
-    const date = $("rem-date").value;
-    if (!date) return "";
-    const t = $("rem-time").value;
-    return ($("rem-addtime").checked && t) ? date + "T" + t : date;
-  }
-
-  async function loadReminders(ticketId) {
-    const rems = await api(`/api/tickets/${ticketId}/reminders`);
-    const open = rems.filter(r => !r.done);
-    $("rem-count").textContent = open.length ? `(${open.length} open)` : "";
-    if (!rems.length) {
-      $("rem-list").innerHTML = `<div class="muted" style="font-size:12px">No reminders yet.</div>`;
-    } else {
-      $("rem-list").innerHTML = rems.map(r => {
-        const od = !r.done && remOverdue(r.due_at);
-        const owner = (staffUsers.find(u => u.id === r.owner_id) || {}).full_name || "";
-        return `<div class="rem-item ${r.done ? "done" : ""} ${od ? "overdue" : ""}">
-            <input type="checkbox" class="rem-check" data-id="${r.id}" ${r.done ? "checked" : ""} title="Mark done" />
-            <div class="rem-body">
-              <div class="rem-note">${esc(r.note)}</div>
-              <div class="rem-meta">${esc(schedDate(r.due_at))}${od ? ` · <span class="rem-od">overdue</span>` : ""} · ${esc(owner)}</div>
-            </div>
-            <button class="btn btn-ghost btn-xs rem-del" data-id="${r.id}" title="Delete">✕</button>
-          </div>`;
-      }).join("");
-    }
-    // Owner dropdown defaults to the ticket's assignee, falling back to the current user.
-    const def = current.assigned_to_id || (me && me.id);
-    $("rem-owner").innerHTML = staffUsers.map(u =>
-      `<option value="${u.id}" ${u.id === def ? "selected" : ""}>${esc(u.full_name)}</option>`).join("");
-    $("rem-list").querySelectorAll(".rem-check").forEach(c => c.onclick = async () => {
-      try {
-        await api(`/api/tickets/${ticketId}/reminders/${c.dataset.id}`, { method: "PUT", body: { done: c.checked } });
-        await loadReminders(ticketId); loadMyReminders();
-      } catch (e) { toast(e.message); await loadReminders(ticketId); }
-    });
-    $("rem-list").querySelectorAll(".rem-del").forEach(b => b.onclick = async () => {
-      if (!await axusConfirm("Delete this reminder?")) return;
-      try {
-        await api(`/api/tickets/${ticketId}/reminders/${b.dataset.id}`, { method: "DELETE" });
-        await loadReminders(ticketId); loadMyReminders(); toast("Reminder deleted");
-      } catch (e) { toast(e.message); }
-    });
-  }
-
-  async function addReminder(e) {
-    e.preventDefault();
-    const note = $("rem-note").value.trim();
-    const due = readRemDue();
-    if (!note || !due) { toast("Add a note and a due date."); return; }
-    try {
-      await api(`/api/tickets/${current.id}/reminders`, {
-        method: "POST",
-        body: { note, due_at: due, owner_id: parseInt($("rem-owner").value) || null },
-      });
-      $("rem-note").value = ""; $("rem-date").value = "";
-      $("rem-time").value = ""; $("rem-time").hidden = true; $("rem-addtime").checked = false;
-      await loadReminders(current.id); loadMyReminders(); toast("Reminder added");
-    } catch (err) { toast(err.message); }
-  }
-
-  async function loadMyReminders() {
-    const card = $("dash-rem-card"); if (!card) return;
-    let rems;
-    try { rems = await api("/api/tickets/my-reminders"); } catch (e) { return; }
-    if (!rems.length) { card.classList.add("hidden"); return; }
-    const overdue = rems.filter(r => remOverdue(r.due_at)).length;
-    card.classList.remove("hidden");
-    $("dash-rem-count").textContent = `(${rems.length}${overdue ? ` · ${overdue} overdue` : ""})`;
-    $("dash-rem").innerHTML = rems.slice(0, 12).map(r => {
-      const od = remOverdue(r.due_at);
-      return `<div class="dash-row rem-dash ${od ? "overdue" : ""}" data-id="${r.ticket_id}">
-          <span class="dash-ref">${esc(r.ticket_reference || "")}</span>
-          <span class="dash-title">${esc(r.note)}</span>
-          <span class="dash-status rem-due">${esc(schedDate(r.due_at))}${od ? ` <span class="rem-od">overdue</span>` : ""}</span>
-          <span class="dash-co cell-muted">${esc(r.client_name || "")}</span>
-        </div>`;
-    }).join("");
-    $("dash-rem").querySelectorAll(".dash-row").forEach(r => r.onclick = () => openTicket(parseInt(r.dataset.id)));
-  }
-
   async function convertToProject() {
     if (!current || current.ticket_type === "sow") return;
     if (!await axusConfirm("Convert this ticket into a Project? It will move to the Projects board and be assigned.")) return;
@@ -2639,14 +2537,6 @@ const Staff = (() => {
       const f = e.target.files[0]; if (!f) return;
       try { await uploadFile(f); } catch (err) { toast(err.message); }
       e.target.value = "";
-    };
-    $("rem-form").onsubmit = addReminder;
-    $("rem-addtime").onchange = () => {
-      const on = $("rem-addtime").checked;
-      const tel = $("rem-time");
-      tel.hidden = !on;
-      if (on) { if (!tel.value) tel.value = "09:00"; tel.focus(); }
-      else tel.value = "";
     };
     $("new-form").onsubmit = async e => {
       e.preventDefault(); $("nt-error").textContent = "";

@@ -6,7 +6,6 @@ from app.models.ticket import (
     TicketStatus, TicketPriority, TicketType,
 )
 from app.models.attachment import Attachment
-from app.models.reminder import TicketReminder
 from app.models.contact import Contact
 from app.models.board import Board
 from app.models.xcitium import (
