@@ -93,6 +93,8 @@ export function EnvelopeList() {
   const [docType, setDocType] = useState("SOW");
   const [company, setCompany] = useState("");
   const [docNumber, setDocNumber] = useState("");
+  // BAA can use the Axus-generated template (default) or an uploaded document.
+  const [baaMode, setBaaMode] = useState<"template" | "upload">("template");
   const isCoc = docType === "Certificate of Completion";
   const [companies, setCompanies] = useState<Company[]>([]);
   const [editDoc, setEditDoc] = useState<Envelope | null>(null);
@@ -148,6 +150,17 @@ export function EnvelopeList() {
     if (isCoc && !docNumber.trim()) return; // Document Number is required for a COC
     if (docType === "Quote") {
       nav(`/quotes/new?company=${encodeURIComponent(company.trim())}`);
+      return;
+    }
+    // BAA → "Upload my own": create the envelope now and hand off to the editor's
+    // upload step (same as a SOW), instead of opening the Axus BAA template.
+    if (docType === "BAA" && baaMode === "upload") {
+      const env = await api.createEnvelope({
+        title: `${company.trim()} BAA`,
+        doc_type: "BAA",
+        company: company.trim(),
+      });
+      nav(`/envelopes/${env.id}`);
       return;
     }
     // Template-backed types (BAA, Certificate of Completion) are DEFERRED — open
@@ -243,9 +256,13 @@ export function EnvelopeList() {
               <p className="pt-2 text-sm text-muted">
                 {docType === "Quote"
                   ? "You'll build the quote on the next step."
-                  : TEMPLATE_TYPES.includes(docType)
-                    ? `The ${docType} template opens pre-filled with the company & date — nothing is saved until you click Save.`
-                    : "You'll upload the document next — its file name becomes the title."}
+                  : docType === "BAA"
+                    ? baaMode === "upload"
+                      ? "You'll upload your own BAA document next — its file name becomes the title."
+                      : "The Axus BAA template opens pre-filled with the company & date — nothing is saved until you click Save."
+                    : TEMPLATE_TYPES.includes(docType)
+                      ? `The ${docType} template opens pre-filled with the company & date — nothing is saved until you click Save.`
+                      : "You'll upload the document next — its file name becomes the title."}
               </p>
             </div>
             <div className="space-y-1.5">
@@ -263,6 +280,33 @@ export function EnvelopeList() {
               </select>
             </div>
           </div>
+          {docType === "BAA" && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">BAA source</label>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["template", "Axus BAA template"],
+                    ["upload", "Upload my own"],
+                  ] as ["template" | "upload", string][]
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setBaaMode(mode)}
+                    className={
+                      "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors " +
+                      (baaMode === mode
+                        ? "border-brand bg-brand/10 text-brand"
+                        : "border-line hover:bg-canvas")
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid items-end gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Company</label>

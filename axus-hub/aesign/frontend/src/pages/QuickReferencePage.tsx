@@ -33,11 +33,11 @@ const FLOWS: Flow[] = [
   {
     icon: ShieldCheck,
     name: "BAA",
-    tag: "Template · deferred",
+    tag: "Template or upload",
     steps: [
-      "New document → BAA → pick the Company → Continue.",
-      "The HIPAA BAA opens PRE-FILLED on the Axus letterhead: Effective Date = today, Covered Entity = the company, Governing Law = Florida.",
-      "Nothing is saved until you click Save (or Send) — back out and no draft is left behind.",
+      "New document → BAA → pick the Company. Choose a BAA source: Axus BAA template (default) or Upload my own.",
+      "Axus BAA template: opens PRE-FILLED on the Axus letterhead (Effective Date = today, Covered Entity = the company, Governing Law = Florida); nothing is saved until you click Save or Send.",
+      "Upload my own: attach the client's/your own BAA (PDF or .docx) — its file name becomes the title; signature blocks are auto-detected.",
       "Add the signer(s); the signature fields auto-place on the final page. Then Save or Send.",
     ],
   },

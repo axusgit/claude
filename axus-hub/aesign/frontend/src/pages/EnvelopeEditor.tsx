@@ -363,8 +363,13 @@ export function EnvelopeEditor() {
   function autoLayoutSlot(index: number): SignSlot["fields"] | undefined {
     // BAA = known template; Quote = layout stored on the envelope; uploads
     // (SOW/MSA/…) = signature blocks auto-detected from the PDF.
+    // A BAA can ALSO be a user-uploaded document: use the hardcoded page-8
+    // template layout only for the generated Axus template (new mode, or a saved
+    // template that carries its field_layout). An uploaded BAA has no field_layout,
+    // so it falls through to detected slots like any other upload.
+    const isBaaTemplate = docType === "BAA" && (isNew || !!detail?.envelope.field_layout);
     const layout =
-      docType === "BAA"
+      isBaaTemplate
         ? BAA_LAYOUT
         : docType === "Certificate of Completion"
           ? COC_LAYOUT
