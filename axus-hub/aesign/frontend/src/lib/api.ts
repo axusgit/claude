@@ -191,6 +191,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  // Counter-sign as Axus in-app after send: returns the /sign URL to open.
+  axusSign: (id: string) =>
+    req<{ ok: boolean; url: string }>(`/envelopes/${id}/axus-sign`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   deleteEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}`, { method: "DELETE" }),
   // Recycle Bin: list soft-deleted docs, restore to Documents, or purge forever.

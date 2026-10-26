@@ -1049,6 +1049,104 @@ export async function envelopeRoutes(app: FastifyInstance) {
     return { ok: true, results };
   });
 
+  // Counter-sign AS AXUS, in-app, AFTER a document has been sent. The Axus-side
+  // signatory (acarr / jkahajas / info, or any staff) signs the "Axus Technologies"
+  // block from inside the console instead of waiting for an emailed link. This
+  // ensures that block exists — creating it from the template's stored field_layout
+  // if the sender didn't pre-add an Axus signer — attributes it to the logged-in
+  // staff member, and returns their per-recipient /sign URL to open. The signature
+  // itself is captured by the normal /sign/:token flow (consent + seal reused).
+  const AXUS_SIGNER_EMAILS = new Set([
+    "acarr@axustechnologies.com",
+    "jkahajas@axustechnologies.com",
+    "info@axustechnologies.com",
+  ]);
+  app.post("/:id/axus-sign", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const env = await pool.query(
+      `select id, title, status, doc_type, field_layout, pdf_file from envelope where id = $1`,
+      [envId],
+    );
+    if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
+    const e = env.rows[0];
+    if (e.status !== "sent" && e.status !== "partially_completed") {
+      return reply
+        .code(409)
+        .send({ error: "Only a document that's out for signature can be counter-signed in app." });
+    }
+    if (!e.pdf_file) return reply.code(400).send({ error: "This document has no PDF to sign." });
+
+    const recs = await pool.query(
+      `select id, name, email, role, status, sign_order, sign_token from recipient
+       where envelope_id = $1 and role <> 'viewer' order by sign_order`,
+      [envId],
+    );
+    const isAxus = (r: { email?: string; name?: string }) =>
+      AXUS_SIGNER_EMAILS.has((r.email ?? "").toLowerCase()) || /axus/i.test(r.name ?? "");
+    let axus = recs.rows.find(isAxus) as
+      | { id: string; status: string; sign_token: string | null }
+      | undefined;
+
+    if (axus && axus.status === "signed") {
+      return reply.code(409).send({ error: "The Axus signature is already on this document." });
+    }
+
+    if (!axus) {
+      // No Axus signer slot yet — create one from the template's Axus field layout
+      // (BAA / SLA / Certificate of Completion carry a two-signer layout; slot with
+      // role matching "Axus"). Uploaded docs with no such layout can't be handled.
+      let layout: { role?: string; fields?: { type: string; page: number; x: number; y: number; w: number; h: number }[] }[] = [];
+      try {
+        layout = Array.isArray(e.field_layout) ? e.field_layout : JSON.parse(e.field_layout ?? "[]");
+      } catch {
+        layout = [];
+      }
+      const slot = layout.find((s) => /axus/i.test(s?.role ?? ""));
+      if (!slot?.fields?.length) {
+        return reply.code(400).send({
+          error:
+            "This document has no Axus signature block. Add an Axus signer in the editor before it's sent, then use this.",
+        });
+      }
+      const nextOrder = recs.rows.reduce((m, r) => Math.max(m, Number(r.sign_order) || 0), 0) + 1;
+      const token = randomBytes(24).toString("base64url");
+      const ins = await pool.query(
+        `insert into recipient (envelope_id, name, email, role, sign_order, status, sign_token)
+         values ($1, $2, $3, 'signer', $4, 'sent', $5) returning id`,
+        [envId, id.name, id.email, nextOrder, token],
+      );
+      const rid = ins.rows[0].id as string;
+      for (const f of slot.fields) {
+        await pool.query(
+          `insert into field (envelope_id, recipient_id, type, page, x, y, w, h, required)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, true)`,
+          [envId, rid, f.type, f.page, f.x, f.y, f.w, f.h],
+        );
+      }
+      await pool.query(
+        `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`,
+        [envId, id.email, `Axus counter-signer added in app (${id.name})`],
+      );
+      axus = { id: rid, status: "sent", sign_token: token };
+    } else {
+      // Existing Axus slot: attribute it to the person actually signing now and
+      // ensure it has a signing token (advance a 'pending' sequential slot to 'sent').
+      const token = (axus.sign_token as string | null) ?? randomBytes(24).toString("base64url");
+      await pool.query(
+        `update recipient set name = $1, email = $2, sign_token = $3,
+           status = case when status = 'pending' then 'sent' else status end
+         where id = $4`,
+        [id.name, id.email, token, axus.id],
+      );
+      axus.sign_token = token;
+    }
+
+    logActivity(id.email, "Counter-signing as Axus (in app)", e.title, envId);
+    return { ok: true, url: `${config.publicBaseUrl}/sign/${axus.sign_token}` };
+  });
+
   // Email a plain PDF copy of the document to one or more people who are NOT
   // signers (they just need a copy). Works at any status: sends the sealed copy
   // once completed, otherwise the current working PDF.
