@@ -206,9 +206,9 @@ html[data-theme="dark"] .msg.internal .msg-bubble { background: rgba(64,130,255,
 .rem-item.overdue { border-color: var(--danger, #c0392b); }
 .rem-check { margin-top: 2px; flex-shrink: 0; cursor: pointer; }
 .rem-body { flex: 1; min-width: 0; }
-.rem-note { font-size: 13px; color: var(--text); line-height: 1.35; }
+.rem-note { font-size: 13px; color: var(--text); line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; }
 .rem-item.done .rem-note { text-decoration: line-through; color: var(--muted); }
-.rem-meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.rem-meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
 .rem-od { color: var(--danger, #c0392b); font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
 .rem-del { flex-shrink: 0; color: var(--muted); padding: 2px 7px; }
 .rem-del:hover { color: var(--danger, #c0392b); }

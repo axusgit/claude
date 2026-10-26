@@ -1177,6 +1177,16 @@ const Staff = (() => {
     return m ? `${m[1]}T${m[2] || "00"}:${m[3] || "00"}` : "";
   }
   function remOverdue(s) { const d = remDueNorm(s); return !!d && d <= nowEtStr(); }
+  // Reminder destinations are real Axus admins only — the shared/system accounts
+  // (admin@, sales@, service@, the Authentik default admin) are never owners.
+  const REM_SYSTEM_EMAILS = new Set([
+    "admin@axustechnologies.com", "sales@axustechnologies.com",
+    "service@axustechnologies.com", "root@example.com",
+  ]);
+  function reminderOwners() {
+    return staffUsers.filter(u =>
+      u.role === "admin" && !REM_SYSTEM_EMAILS.has((u.email || "").toLowerCase()));
+  }
   // Read the detail reminder inputs into a value: "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM".
   function readRemDue() {
     const date = $("rem-date").value;
@@ -1205,9 +1215,14 @@ const Staff = (() => {
           </div>`;
       }).join("");
     }
-    // Owner dropdown defaults to the ticket's assignee, falling back to the current user.
-    const def = current.assigned_to_id || (me && me.id);
-    $("rem-owner").innerHTML = staffUsers.map(u =>
+    // Owner dropdown = Axus admins only. Default to the ticket's assignee when they're
+    // an eligible admin, else the current user when eligible, else the first admin.
+    const owners = reminderOwners();
+    const ids = new Set(owners.map(u => u.id));
+    const def = ids.has(current.assigned_to_id) ? current.assigned_to_id
+      : (me && ids.has(me.id)) ? me.id
+      : (owners[0] && owners[0].id);
+    $("rem-owner").innerHTML = owners.map(u =>
       `<option value="${u.id}" ${u.id === def ? "selected" : ""}>${esc(u.full_name)}</option>`).join("");
     $("rem-list").querySelectorAll(".rem-check").forEach(c => c.onclick = async () => {
       try {
