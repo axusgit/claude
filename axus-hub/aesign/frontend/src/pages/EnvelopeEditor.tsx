@@ -112,6 +112,14 @@ const SLA_LAYOUT: SignSlot[] = [
   },
 ];
 
+// Internal Axus signers, offered as one-click quick-picks in the recipient Add
+// panel (the Axus-side counter-signatory on any document).
+const AXUS_SIGNERS: { name: string; email: string }[] = [
+  { name: "Andy Carr", email: "acarr@axustechnologies.com" },
+  { name: "John Kahajas", email: "jkahajas@axustechnologies.com" },
+  { name: "Axus Technologies", email: "info@axustechnologies.com" },
+];
+
 const TOOLS: { type: FieldType; label: string; icon: typeof PenLine }[] = [
   { type: "signature", label: "Signature", icon: PenLine },
   { type: "name", label: "Name", icon: User },
@@ -1475,6 +1483,30 @@ function RecipientsPanel({
       {recipients.length < 2 &&
         (adding ? (
         <div className="mt-2 space-y-2">
+          <div className="space-y-1">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
+              Axus signers
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {AXUS_SIGNERS.map((s) => (
+                <button
+                  key={s.email}
+                  type="button"
+                  onClick={() => {
+                    onAdd(s.name, s.email);
+                    setName("");
+                    setEmail("");
+                    setSaveContact(false);
+                    setAdding(false);
+                  }}
+                  className="rounded-full border border-line px-2.5 py-1 text-xs font-medium hover:border-brand hover:text-brand"
+                  title={`Add ${s.name} <${s.email}> as a signer`}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
           {contacts.length > 0 && (
             <select
               defaultValue=""
