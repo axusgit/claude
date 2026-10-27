@@ -227,6 +227,51 @@ export async function envelopeRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // Bulk purge: permanently delete Recycle Bin documents older than a chosen
+  // age (by document age / created_at, matching the bulk-archive options).
+  // Irreversible — removes files + all rows. Only ever touches deleted docs.
+  const PURGE_DAYS = new Set([7, 30, 90, 180, 270, 365]);
+  const binOlderThan = `deleted = true and created_at < now() - ($1 || ' days')::interval`;
+
+  // How many Recycle Bin docs WOULD be permanently deleted (shown before confirming).
+  app.get("/purge-preview", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const days = Number((req.query as { days?: string }).days);
+    if (!PURGE_DAYS.has(days)) return reply.code(400).send({ error: "Invalid age." });
+    const cnt = await pool.query(`select count(*)::int n from envelope where ${binOlderThan}`, [days]);
+    return { days, count: cnt.rows[0].n };
+  });
+
+  app.post("/purge-bin", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const days = Number((req.body as { days?: number })?.days);
+    if (!PURGE_DAYS.has(days)) return reply.code(400).send({ error: "Invalid age." });
+    const victims = await pool.query(
+      `select source_file, pdf_file, sealed_file from envelope where ${binOlderThan}`,
+      [days],
+    );
+    for (const v of victims.rows) {
+      for (const f of [v.source_file, v.pdf_file, v.sealed_file]) {
+        if (!f) continue;
+        const p = join(config.storageDir, f);
+        try {
+          if (existsSync(p)) await unlink(p);
+        } catch {
+          /* best effort */
+        }
+      }
+    }
+    const del = await pool.query(`delete from envelope where ${binOlderThan}`, [days]); // cascades children
+    logActivity(
+      id.email,
+      "Permanently deleted documents",
+      `${del.rowCount ?? 0} Recycle Bin document(s) older than ${days} day(s)`,
+    );
+    return { ok: true, purged: del.rowCount ?? 0 };
+  });
+
   // Total disk used by stored document files (source / generated / sealed PDFs).
   app.get("/storage", async (req, reply) => {
     const id = requireStaff(req, reply);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Archive, Download, RotateCcw, Search, Trash2 } from "lucide-react";
 import { api, type Envelope } from "@/lib/api";
-import { Card, Input, SortHeader, StatusBadge } from "@/components/ui";
+import { Button, Card, Input, SortHeader, StatusBadge } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
 import { dirCmp, useSort } from "@/lib/sort";
 
@@ -17,9 +17,53 @@ export function RecycleBinPage() {
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const { key: sort, dir, toggle } = useSort<BinSortKey>("deleted", "desc");
+
+  // Bulk purge: permanently delete bin documents older than a chosen age
+  // (by document age — the bin itself only ever holds the last 90 days of
+  // deletions, so older ages still reach docs created long ago).
+  const PURGE_OPTIONS = [
+    { days: 7, label: "7 days" },
+    { days: 30, label: "30 days" },
+    { days: 90, label: "3 months" },
+    { days: 180, label: "6 months" },
+    { days: 270, label: "9 months" },
+    { days: 365, label: "12 months" },
+  ];
+  const [showPurge, setShowPurge] = useState(false);
+  const [purgeDays, setPurgeDays] = useState(365);
+  const [purgeCount, setPurgeCount] = useState<number | null>(null);
+  const [purging, setPurging] = useState(false);
+
+  async function loadPurgeCount(days: number) {
+    setPurgeCount(null);
+    try {
+      setPurgeCount((await api.purgeBinPreview(days)).count);
+    } catch {
+      setPurgeCount(null);
+    }
+  }
+  function openPurge() {
+    setShowPurge(true);
+    void loadPurgeCount(purgeDays);
+  }
+  async function doPurge() {
+    setPurging(true);
+    try {
+      const r = await api.purgeBinOld(purgeDays);
+      setShowPurge(false);
+      await load();
+      setNotice(`Permanently deleted ${r.purged} document(s) from the Recycle Bin.`);
+      setTimeout(() => setNotice(null), 4000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setPurging(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -124,6 +168,9 @@ export function RecycleBinPage() {
       </div>
 
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {notice && (
+        <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700">{notice}</div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1">
@@ -147,6 +194,16 @@ export function RecycleBinPage() {
             </option>
           ))}
         </select>
+        <Button
+          variant="outline"
+          onClick={openPurge}
+          disabled={envelopes.length === 0}
+          className="text-red-600 hover:bg-red-50"
+          title="Permanently delete documents older than a chosen age"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete old…
+        </Button>
       </div>
 
       <Card>
@@ -236,6 +293,53 @@ export function RecycleBinPage() {
           </table>
         )}
       </Card>
+
+      {showPurge && (
+        <div className="fixed inset-0 z-30 grid place-items-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line bg-surface p-5">
+            <h3 className="font-semibold">Permanently delete old documents</h3>
+            <p className="mt-1 text-sm text-muted">
+              Permanently delete every document in the Recycle Bin older than the selected age (by
+              the date the document was created). This <span className="font-medium">cannot be undone</span> —
+              it removes the documents, their files, and their audit trails.
+            </p>
+            <label className="mt-3 block text-sm font-medium">Older than</label>
+            <select
+              value={purgeDays}
+              onChange={(e) => {
+                const d = Number(e.target.value);
+                setPurgeDays(d);
+                void loadPurgeCount(d);
+              }}
+              className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+            >
+              {PURGE_OPTIONS.map((o) => (
+                <option key={o.days} value={o.days}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <div className="mt-3 rounded-lg bg-canvas p-3 text-sm">
+              {purgeCount === null ? (
+                "Counting…"
+              ) : (
+                <span>
+                  <span className="font-semibold text-red-600">{purgeCount}</span> document
+                  {purgeCount === 1 ? "" : "s"} will be permanently deleted.
+                </span>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowPurge(false)} disabled={purging}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => void doPurge()} disabled={purging || !purgeCount}>
+                {purging ? "Deleting…" : `Delete ${purgeCount ?? 0} forever`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

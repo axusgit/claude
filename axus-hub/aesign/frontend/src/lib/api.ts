@@ -208,6 +208,13 @@ export const api = {
     req<{ ok: boolean }>(`/envelopes/${id}/archive`, { method: "POST", body: JSON.stringify({}) }),
   purgeEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}/purge`, { method: "DELETE" }),
+  purgeBinPreview: (days: number) =>
+    req<{ days: number; count: number }>(`/envelopes/purge-preview?days=${days}`),
+  purgeBinOld: (days: number) =>
+    req<{ ok: boolean; purged: number }>(`/envelopes/purge-bin`, {
+      method: "POST",
+      body: JSON.stringify({ days }),
+    }),
   archivePreview: (days: number) =>
     req<{ days: number; count: number }>(`/envelopes/archive-preview?days=${days}`),
   archiveOld: (days: number) =>
