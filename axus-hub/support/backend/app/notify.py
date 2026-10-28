@@ -19,8 +19,22 @@ from app import mailer
 # System/automation accounts that should never receive notifications.
 SYS_EMAILS = {"email-intake@axustechnologies.com"}
 STAFF_ROLES = (UserRole.admin, UserRole.technician)
-# Every new ticket is also emailed here (the ticket intake inbox).
-NEW_TICKET_INBOX = os.getenv("NEW_TICKET_INBOX", "info@axustechnologies.com")
+# Internal intake inbox(es): every new ticket and every internal ticket event
+# (staff-side notifications) is emailed here. info@ stays as the monitored intake
+# inbox; acarr@ and jkahajas@ are copied on every internal notification. This is
+# an INTERNAL change only — client-facing (participant) emails are unaffected.
+# Override with NEW_TICKET_INBOX (comma-separated list).
+_DEFAULT_INBOXES = (
+    "info@axustechnologies.com,"
+    "acarr@axustechnologies.com,"
+    "jkahajas@axustechnologies.com"
+)
+NEW_TICKET_INBOXES = [
+    e.strip() for e in (os.getenv("NEW_TICKET_INBOX") or _DEFAULT_INBOXES).split(",")
+    if e.strip()
+]
+# Primary inbox kept for subject lines / legacy single-address references.
+NEW_TICKET_INBOX = NEW_TICKET_INBOXES[0] if NEW_TICKET_INBOXES else ""
 
 
 def _client_allowlist():
@@ -153,9 +167,9 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not t:
             return
-        # New tickets go ONLY to the intake inbox (info@); staff monitor that inbox.
-        if NEW_TICKET_INBOX:
-            mailer.send_email(_to([NEW_TICKET_INBOX]), f"[New] {_biz(t)} · {t.reference} · {t.title}",
+        # New tickets go to the intake inboxes (info@ + acarr@ + jkahajas@); staff monitor these.
+        if NEW_TICKET_INBOXES:
+            mailer.send_email(_to(list(NEW_TICKET_INBOXES)), f"[New] {_biz(t)} · {t.reference} · {t.title}",
                               _body(t, "A new ticket was created.", include_desc=True,
                                     include_contact=True, db=db))
     except Exception as e:
@@ -369,12 +383,14 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             c = db.query(Contact).filter(Contact.id == t.contact_id).first()
             if c and c.email and c.email.lower() not in seen and c.email.lower() not in SYS_EMAILS:
                 recips.append((getattr(c, "full_name", None), c.email, False, False))
-        # Staff side: on a closure, always notify the intake inbox (info@) and never
-        # the assignee. Otherwise the assigned tech (added above) gets it, and only an
-        # UNASSIGNED ticket falls back to info@.
-        if NEW_TICKET_INBOX and NEW_TICKET_INBOX.lower() not in seen and (
-                staff_to_inbox or not t.assigned_to_id):
-            recips.append((None, NEW_TICKET_INBOX, True, True))
+        # Staff side: on a closure, always notify the intake inboxes (info@ + acarr@ +
+        # jkahajas@) and never the assignee. Otherwise the assigned tech (added above)
+        # gets it, and only an UNASSIGNED ticket falls back to the intake inboxes.
+        if staff_to_inbox or not t.assigned_to_id:
+            for inbox in NEW_TICKET_INBOXES:
+                if inbox.lower() not in seen:
+                    seen.add(inbox.lower())
+                    recips.append((None, inbox, True, True))
         subject = f"[{t.reference}] {subject_word} · {_biz(t)} · {t.title}"
         for name, email, is_staff, can_view in recips:
             if not is_staff and client_blocked(email):
