@@ -21,6 +21,22 @@ SYS_EMAILS = {"email-intake@axustechnologies.com"}
 STAFF_ROLES = (UserRole.admin, UserRole.technician)
 # Every new ticket is also emailed here (the ticket intake inbox).
 NEW_TICKET_INBOX = os.getenv("NEW_TICKET_INBOX", "info@axustechnologies.com")
+# Internal staff owners CC'd on EVERY ticket event (new, assignment, reply, update,
+# closure) for ALL tickets — including ones assigned to a specific tech — so they get
+# full visibility straight from the app, independent of the info@ mailbox forward.
+# Override with STAFF_CC (comma-separated); set empty to disable.
+STAFF_CC = [e.strip() for e in (os.getenv(
+    "STAFF_CC", "acarr@axustechnologies.com,jkahajas@axustechnologies.com"
+).split(",")) if e.strip()]
+
+
+def _author_email(db, author_id) -> str:
+    """Lower-cased email of the user who performed an action, or '' — used to avoid
+    CC'ing someone about their own action."""
+    if not author_id:
+        return ""
+    u = db.query(User).filter(User.id == author_id).first()
+    return (u.email or "").lower() if u and u.email else ""
 
 
 def _client_allowlist():
@@ -153,9 +169,16 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not t:
             return
-        # New tickets go ONLY to the intake inbox (info@); staff monitor that inbox.
-        if NEW_TICKET_INBOX:
-            mailer.send_email(_to([NEW_TICKET_INBOX]), f"[New] {_biz(t)} · {t.reference} · {t.title}",
+        # New tickets go to the intake inbox (info@, monitored) plus the internal
+        # owners (acarr@/jkahajas@) so they're copied directly.
+        recips = ([NEW_TICKET_INBOX] if NEW_TICKET_INBOX else [])
+        seen = {r.lower() for r in recips}
+        for cc in STAFF_CC:
+            if cc.lower() not in seen and cc.lower() not in SYS_EMAILS:
+                seen.add(cc.lower())
+                recips.append(cc)
+        if recips:
+            mailer.send_email(_to(recips), f"[New] {_biz(t)} · {t.reference} · {t.title}",
                               _body(t, "A new ticket was created.", include_desc=True,
                                     include_contact=True, db=db))
     except Exception as e:
@@ -171,10 +194,18 @@ def notify_assignment(ticket_id: int, assignee_id: int, by_user_id=None):
     try:
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         a = db.query(User).filter(User.id == assignee_id).first()
-        # Assignment notifies ONLY the assigned staff member (not the intake inbox).
+        # Assignment notifies the assigned staff member, plus the internal owners
+        # (acarr@/jkahajas@) for visibility — minus whoever did the assigning.
         if t and a and a.email and a.email.lower() not in SYS_EMAILS:
-            mailer.send_email(_to([a.email]), f"[Assigned] {_biz(t)} · {t.reference} · {t.title}",
-                              _body(t, "You've been assigned this ticket."))
+            recips = [a.email]
+            seen = {a.email.lower()}
+            assigner = _author_email(db, by_user_id)
+            for cc in STAFF_CC:
+                if cc.lower() not in seen and cc.lower() not in SYS_EMAILS and cc.lower() != assigner:
+                    seen.add(cc.lower())
+                    recips.append(cc)
+            mailer.send_email(_to(recips), f"[Assigned] {_biz(t)} · {t.reference} · {t.title}",
+                              _body(t, f"Ticket assigned to {a.full_name or a.email}."))
     except Exception as e:
         print(f"[notify] assignment failed: {e}", flush=True)
     finally:
@@ -375,6 +406,15 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
         if NEW_TICKET_INBOX and NEW_TICKET_INBOX.lower() not in seen and (
                 staff_to_inbox or not t.assigned_to_id):
             recips.append((None, NEW_TICKET_INBOX, True, True))
+        # Always CC the internal owners (acarr@/jkahajas@) on every event — including
+        # updates on tickets assigned to a specific tech, and closures — except for the
+        # person who performed this action. Added as staff (clean email + staff link).
+        cc_author = _author_email(db, author_id)
+        for cc in STAFF_CC:
+            if cc.lower() in seen or cc.lower() in SYS_EMAILS or cc.lower() == cc_author:
+                continue
+            seen.add(cc.lower())
+            recips.append((None, cc, True, True))
         subject = f"[{t.reference}] {subject_word} · {_biz(t)} · {t.title}"
         for name, email, is_staff, can_view in recips:
             if not is_staff and client_blocked(email):
