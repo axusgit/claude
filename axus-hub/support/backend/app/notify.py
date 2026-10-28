@@ -21,13 +21,12 @@ SYS_EMAILS = {"email-intake@axustechnologies.com"}
 STAFF_ROLES = (UserRole.admin, UserRole.technician)
 # Internal intake inbox(es): every new ticket and every internal ticket event
 # (staff-side notifications) is emailed here. info@ stays as the monitored intake
-# inbox; acarr@ and jkahajas@ are copied on every internal notification. This is
-# an INTERNAL change only — client-facing (participant) emails are unaffected.
+# inbox; acarr@ is copied on every internal notification. This is an INTERNAL
+# change only — client-facing (participant) emails are unaffected.
 # Override with NEW_TICKET_INBOX (comma-separated list).
 _DEFAULT_INBOXES = (
     "info@axustechnologies.com,"
-    "acarr@axustechnologies.com,"
-    "jkahajas@axustechnologies.com"
+    "acarr@axustechnologies.com"
 )
 NEW_TICKET_INBOXES = [
     e.strip() for e in (os.getenv("NEW_TICKET_INBOX") or _DEFAULT_INBOXES).split(",")
@@ -167,7 +166,7 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
         t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
         if not t:
             return
-        # New tickets go to the intake inboxes (info@ + acarr@ + jkahajas@); staff monitor these.
+        # New tickets go to the intake inboxes (info@ + acarr@); staff monitor these.
         if NEW_TICKET_INBOXES:
             mailer.send_email(_to(list(NEW_TICKET_INBOXES)), f"[New] {_biz(t)} · {t.reference} · {t.title}",
                               _body(t, "A new ticket was created.", include_desc=True,
@@ -383,9 +382,9 @@ def _notify_participants(ticket_id, author_id, author_name, subject_word, verb, 
             c = db.query(Contact).filter(Contact.id == t.contact_id).first()
             if c and c.email and c.email.lower() not in seen and c.email.lower() not in SYS_EMAILS:
                 recips.append((getattr(c, "full_name", None), c.email, False, False))
-        # Staff side: on a closure, always notify the intake inboxes (info@ + acarr@ +
-        # jkahajas@) and never the assignee. Otherwise the assigned tech (added above)
-        # gets it, and only an UNASSIGNED ticket falls back to the intake inboxes.
+        # Staff side: on a closure, always notify the intake inboxes (info@ + acarr@)
+        # and never the assignee. Otherwise the assigned tech (added above) gets it,
+        # and only an UNASSIGNED ticket falls back to the intake inboxes.
         if staff_to_inbox or not t.assigned_to_id:
             for inbox in NEW_TICKET_INBOXES:
                 if inbox.lower() not in seen:
