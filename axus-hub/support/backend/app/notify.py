@@ -178,7 +178,7 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
                 seen.add(cc.lower())
                 recips.append(cc)
         if recips:
-            mailer.send_email(_to(recips), f"[New] {_biz(t)} · {t.reference} · {t.title}",
+            mailer.send_email(_to(recips), f"[New] {t.reference} · {_biz(t)} · {t.title}",
                               _body(t, "A new ticket was created.", include_desc=True,
                                     include_contact=True, db=db))
     except Exception as e:
@@ -204,7 +204,7 @@ def notify_assignment(ticket_id: int, assignee_id: int, by_user_id=None):
                 if cc.lower() not in seen and cc.lower() not in SYS_EMAILS and cc.lower() != assigner:
                     seen.add(cc.lower())
                     recips.append(cc)
-            mailer.send_email(_to(recips), f"[Assigned] {_biz(t)} · {t.reference} · {t.title}",
+            mailer.send_email(_to(recips), f"[Assigned] {t.reference} · {_biz(t)} · {t.title}",
                               _body(t, f"Ticket assigned to {a.full_name or a.email}."))
     except Exception as e:
         print(f"[notify] assignment failed: {e}", flush=True)
@@ -228,7 +228,7 @@ def notify_customer_reply(ticket_id: int):
         if not recips:  # unassigned — let the whole team know a customer is waiting
             recips = _staff_emails(db)
         if recips:
-            mailer.send_email(_to(recips), f"[Reply] {_biz(t)} · {t.reference} · {t.title}",
+            mailer.send_email(_to(recips), f"[Reply] {t.reference} · {_biz(t)} · {t.title}",
                               _body(t, "A customer replied on this ticket."))
     except Exception as e:
         print(f"[notify] customer_reply failed: {e}", flush=True)

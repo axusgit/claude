@@ -45,7 +45,12 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .nav-count { font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text-soft);
   min-width: 22px; text-align: center; padding: 1px 7px; border-radius: 999px; }
 
-.content { padding: 26px 34px 60px; max-width: none; width: 100%; }
+/* min-width:0 is critical: .content is the 1fr cell of .layout, and a grid cell
+   defaults to min-width:auto, so a wide table would expand the cell past 100% and
+   make the whole PAGE scroll sideways — dragging the sticky topbar/sidebar/stats
+   with it. Pinning min-width to 0 keeps the horizontal scroll inside .table-wrap
+   (overflow:auto) so the app frame stays anchored. */
+.content { padding: 26px 34px 60px; max-width: none; width: 100%; min-width: 0; }
 
 /* ---------- Stats ---------- */
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
