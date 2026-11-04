@@ -1,17 +1,32 @@
-import { useState } from "react";
-import { Calendar, Check, PenLine, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { ArrowLeft, Check, PenLine, X } from "lucide-react";
 import { api, type Field, type FieldType, type Recipient } from "@/lib/api";
 import { Button } from "@/components/ui";
 import { PdfCanvas } from "@/features/PdfCanvas";
-import { SignaturePad } from "@/features/SignaturePad";
+import { FieldFiller, applyFieldValue } from "@/features/FieldFiller";
 
-// In-app "Sign as Axus" on ANY document (including one already completed, or a
-// customer copy with no Axus signature block). The staff member places their
-// signature (+ optional date) directly on the page, draws it, and signs — the
-// backend composites it onto the working PDF and re-seals. Reuses the proven
-// PdfCanvas (placement) + SignaturePad (capture); never touches the other parties.
+// In-app "Sign as Axus" on ANY uploaded document (including one already
+// completed, or a customer copy with no Axus block). Two steps, all in-app, all
+// Axus, no second party:
+//   1. Add whatever fields the document needs (full toolbar), placed on the page.
+//   2. Fill every one of them (draw signature/initials, type name/title/text,
+//      date, checkboxes) and seal.
+// Reuses the proven PdfCanvas (placement) + FieldFiller (the real signer fill UI).
 const AXUS_ID = "axus";
-const AXUS_COLOR = "#ea580c"; // Axus brand orange
+const AXUS_NAME = "Axus Technologies";
+const AXUS_COLOR = "#ea580c"; // brand orange
+
+// Field types the staff can drop (same as the editor, minus "select" which needs
+// pre-defined options). Signature first — it's the one required to sign.
+const TOOLS: { type: FieldType; label: string }[] = [
+  { type: "signature", label: "Signature" },
+  { type: "initials", label: "Initials" },
+  { type: "date", label: "Date" },
+  { type: "name", label: "Name" },
+  { type: "title", label: "Title" },
+  { type: "text", label: "Text" },
+  { type: "checkbox", label: "Checkbox" },
+];
 
 export function AxusSignModal({
   envelopeId,
@@ -22,53 +37,89 @@ export function AxusSignModal({
   onClose: () => void;
   onDone: (msg: string) => void;
 }) {
+  const [step, setStep] = useState<"place" | "fill">("place");
   const [fields, setFields] = useState<Field[]>([]);
   const [tool, setTool] = useState<FieldType | null>("signature");
-  const [sig, setSig] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const seq = useRef(0);
 
-  // Synthetic recipient — only drives the placement box's color/label; the real
-  // Axus signer is created server-side and attributed to the logged-in staff.
+  // Synthetic recipient — only drives the placement box color/label; the real
+  // Axus signer is created server-side, attributed to the logged-in staff.
   const axusRecipient: Recipient = {
     id: AXUS_ID,
-    name: "Axus Technologies",
+    name: AXUS_NAME,
     email: "",
     role: "signer",
     sign_order: 1,
   };
 
-  const hasSig = fields.some((f) => f.type === "signature");
-  const hasDate = fields.some((f) => f.type === "date");
-
-  // Keep at most one signature and one date; placing a type again replaces it.
+  // Placement (step 1) — allow as many fields of any type as the form needs.
   function addField(f: Field) {
-    setFields((prev) => [
-      ...prev.filter((p) => p.type !== f.type),
-      { ...f, id: `axus-${f.type}-${Date.now()}`, recipient_id: AXUS_ID },
-    ]);
-    setTool(null); // drop the tool so further canvas clicks don't re-place
+    setFields((prev) => [...prev, { ...f, id: `axf-${++seq.current}`, recipient_id: AXUS_ID }]);
   }
   function updateField(index: number, patch: Partial<Field>) {
     setFields((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
   }
   function deleteField(index: number) {
-    setFields((prev) => prev.filter((_, i) => i !== index));
+    setFields((prev) => {
+      const gone = prev[index];
+      if (gone?.id) setValues((v) => { const n = { ...v }; delete n[gone.id!]; return n; });
+      return prev.filter((_, i) => i !== index);
+    });
   }
 
-  const canSign = hasSig && !!sig && consent && !busy;
+  const hasSignature = fields.some((f) => f.type === "signature");
+
+  function goFill() {
+    if (!hasSignature) {
+      setErr("Add at least a Signature field before filling.");
+      return;
+    }
+    setErr(null);
+    // Prefill date fields with today (editable), like the signer page does.
+    setValues((prev) => {
+      const next = { ...prev };
+      for (const f of fields) {
+        if (f.type === "date" && !next[f.id!]) next[f.id!] = new Date().toLocaleDateString();
+      }
+      return next;
+    });
+    setStep("fill");
+  }
+
+  function setValue(id: string, val: string) {
+    setValues((v) => applyFieldValue(fields, v, id, val));
+  }
+
+  // Everything placed must be filled, except checkboxes (optional by nature);
+  // at least one signature image must be present; consent required.
+  const requiredFields = fields.filter((f) => f.type !== "checkbox");
+  const allFilled = requiredFields.every((f) => (values[f.id!] ?? "").length > 0);
+  const hasSignatureValue = fields.some(
+    (f) => f.type === "signature" && (values[f.id!] ?? "").startsWith("data:image"),
+  );
+  const canSign = allFilled && hasSignatureValue && consent && !busy;
 
   async function submit() {
-    if (!hasSig) return setErr("Place your signature on the document first.");
-    if (!sig) return setErr("Draw your signature below.");
+    if (!hasSignatureValue) return setErr("Draw your signature before signing.");
+    if (!allFilled) return setErr("Fill every field before signing.");
     setBusy(true);
     setErr(null);
     try {
       await api.axusSelfSign(envelopeId, {
         consent: true,
-        signature: sig,
-        fields: fields.map((f) => ({ type: f.type, page: f.page, x: f.x, y: f.y, w: f.w, h: f.h })),
+        fields: fields.map((f) => ({
+          type: f.type,
+          page: f.page,
+          x: f.x,
+          y: f.y,
+          w: f.w,
+          h: f.h,
+          value: values[f.id!] ?? "",
+        })),
       });
       onDone(
         "Signed as Axus — the document is sealed and marked Completed. The Axus team and you were emailed the finished copy.",
@@ -88,20 +139,30 @@ export function AxusSignModal({
         className="flex w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-surface shadow-xl md:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Document with click-to-place */}
+        {/* Document */}
         <div className="min-h-0 flex-1 overflow-auto bg-black/5 p-3 sm:p-4">
-          <PdfCanvas
-            url={api.workingDocumentUrl(envelopeId)}
-            fields={fields}
-            recipients={[axusRecipient]}
-            colorFor={() => AXUS_COLOR}
-            labelFor={() => "Axus"}
-            activeTool={tool}
-            activeRecipientId={AXUS_ID}
-            onAddField={addField}
-            onUpdateField={updateField}
-            onDeleteField={deleteField}
-          />
+          {step === "place" ? (
+            <PdfCanvas
+              url={api.workingDocumentUrl(envelopeId)}
+              fields={fields}
+              recipients={[axusRecipient]}
+              colorFor={() => AXUS_COLOR}
+              labelFor={() => "Axus"}
+              activeTool={tool}
+              activeRecipientId={AXUS_ID}
+              onAddField={addField}
+              onUpdateField={updateField}
+              onDeleteField={deleteField}
+            />
+          ) : (
+            <FieldFiller
+              url={api.workingDocumentUrl(envelopeId)}
+              fields={fields}
+              values={values}
+              setValue={setValue}
+              recipientName={AXUS_NAME}
+            />
+          )}
         </div>
 
         {/* Controls */}
@@ -114,66 +175,71 @@ export function AxusSignModal({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <p className="text-sm text-muted">
-            Place your signature where it belongs on the document, draw it below, then sign. It’s
-            sealed onto the document and marked <span className="font-medium">Completed</span>.
-          </p>
 
-          <div>
-            <div className="mb-1.5 text-xs font-medium text-muted">1 · Place on the page</div>
-            <div className="flex gap-2">
-              <Button
-                variant={tool === "signature" ? "primary" : "outline"}
-                onClick={() => setTool("signature")}
-              >
-                <PenLine className="h-4 w-4" /> Signature{hasSig ? " ✓" : ""}
-              </Button>
-              <Button
-                variant={tool === "date" ? "primary" : "outline"}
-                onClick={() => setTool("date")}
-              >
-                <Calendar className="h-4 w-4" /> Date{hasDate ? " ✓" : ""}
-              </Button>
-            </div>
-            <p className="mt-1.5 text-xs text-muted">
-              {tool === "signature"
-                ? "Click the document where your signature goes."
-                : tool === "date"
-                  ? "Click where today’s date should print."
-                  : hasSig
-                    ? "Placed. Drag to adjust, or add a date."
-                    : "Pick Signature, then click the document."}
-            </p>
-          </div>
-
-          <div>
-            <div className="mb-1.5 text-xs font-medium text-muted">2 · Draw your signature</div>
-            <SignaturePad onChange={setSig} />
-          </div>
-
-          <label className="flex items-start gap-2 text-xs text-muted">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              I agree to sign this document electronically on behalf of Axus Technologies (U.S.
-              ESIGN Act / UETA).
-            </span>
-          </label>
-
-          {err && <div className="rounded-lg bg-red-50 p-2 text-xs text-red-700">{err}</div>}
-
-          <div className="mt-auto flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={busy}>
-              Cancel
-            </Button>
-            <Button onClick={() => void submit()} disabled={!canSign} className="flex-1">
-              <Check className="h-4 w-4" /> {busy ? "Signing…" : "Sign & complete"}
-            </Button>
-          </div>
+          {step === "place" ? (
+            <>
+              <p className="text-sm text-muted">
+                <span className="font-medium">Step 1 · Add fields.</span> Pick a field, then click on
+                the document where it goes. Add as many as you need — all are Axus’s.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {TOOLS.map((t) => (
+                  <Button
+                    key={t.type}
+                    variant={tool === t.type ? "primary" : "outline"}
+                    onClick={() => setTool(t.type)}
+                    className="px-2.5 py-1.5 text-xs"
+                  >
+                    {t.label}
+                    {fields.some((f) => f.type === t.type) ? " ✓" : ""}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted">
+                {fields.length} field{fields.length === 1 ? "" : "s"} placed
+                {hasSignature ? "" : " · add a Signature to continue"}. Drag to move, hover to resize
+                or remove.
+              </p>
+              {err && <div className="rounded-lg bg-red-50 p-2 text-xs text-red-700">{err}</div>}
+              <div className="mt-auto flex gap-2">
+                <Button variant="outline" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button onClick={goFill} disabled={!hasSignature} className="flex-1">
+                  Continue to fill
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted">
+                <span className="font-medium">Step 2 · Fill &amp; sign.</span> Complete every field —
+                click a signature box to draw or type it — then sign. It’s sealed onto the document
+                and marked <span className="font-medium">Completed</span>.
+              </p>
+              <label className="flex items-start gap-2 text-xs text-muted">
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  I agree to sign this document electronically on behalf of Axus Technologies (U.S.
+                  ESIGN Act / UETA).
+                </span>
+              </label>
+              {err && <div className="rounded-lg bg-red-50 p-2 text-xs text-red-700">{err}</div>}
+              <div className="mt-auto flex gap-2">
+                <Button variant="outline" onClick={() => setStep("place")} disabled={busy}>
+                  <ArrowLeft className="h-4 w-4" /> Back
+                </Button>
+                <Button onClick={() => void submit()} disabled={!canSign} className="flex-1">
+                  <Check className="h-4 w-4" /> {busy ? "Signing…" : "Sign & complete"}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

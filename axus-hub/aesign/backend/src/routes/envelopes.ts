@@ -1211,21 +1211,17 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const envId = (req.params as { id: string }).id;
     const body = (req.body ?? {}) as {
       consent?: boolean;
-      signature?: string;
       fields?: { type: string; page: number; x: number; y: number; w: number; h: number; value?: string }[];
     };
     if (!body.consent) {
       return reply.code(400).send({ error: "You must consent to sign electronically." });
     }
-    const sig = (body.signature ?? "").trim();
-    if (!sig.startsWith("data:image")) {
-      return reply.code(400).send({ error: "Draw your signature before signing." });
-    }
     const placed = (body.fields ?? []).filter(
       (f) => f && typeof f.page === "number" && f.page >= 1 && f.type,
     );
-    if (!placed.some((f) => f.type === "signature")) {
-      return reply.code(400).send({ error: "Place your signature on the document before signing." });
+    // Must carry at least one actually-drawn/typed signature (a PNG data-URL).
+    if (!placed.some((f) => f.type === "signature" && (f.value ?? "").startsWith("data:image"))) {
+      return reply.code(400).send({ error: "Add and sign a Signature field before completing." });
     }
 
     const env = await pool.query(
@@ -1266,12 +1262,12 @@ export async function envelopeRoutes(app: FastifyInstance) {
       )
     ).rows[0].id as string;
 
-    // Insert the placed field(s): the signature carries the drawn image; a date
-    // field is stamped with today's date (ET); any other placed field keeps its
-    // typed value.
+    // Insert the placed field(s), each with its own filled value (signature/
+    // initials = PNG data-URL, text/name/title = typed string, checkbox = "true").
+    // A date left blank defaults to today (ET).
     for (const f of placed) {
       const value =
-        f.type === "signature" ? sig : f.type === "date" ? today : (f.value ?? null);
+        f.type === "date" ? ((f.value ?? "").trim() || today) : (f.value ?? null);
       await pool.query(
         `insert into field (envelope_id, recipient_id, type, page, x, y, w, h, value, required)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)`,

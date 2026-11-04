@@ -198,13 +198,14 @@ export const api = {
       body: JSON.stringify({}),
     }),
   // Sign AS AXUS directly, in-app, on any document (incl. completed / a customer
-  // copy with no Axus block): place the signature (+ optional date), draw it, and
-  // seal it in. Emails the finished copy to the Axus team + the signer only.
+  // copy with no Axus block): place the needed fields, fill them all (each field
+  // carries its final value — signature/initials as a PNG data-URL, text/date/
+  // checkbox as strings), and seal it in. Emails the finished copy to the Axus
+  // team + the signer only.
   axusSelfSign: (
     id: string,
     data: {
       consent: boolean;
-      signature: string;
       fields: { type: FieldType; page: number; x: number; y: number; w: number; h: number; value?: string }[];
     },
   ) =>
