@@ -265,10 +265,14 @@ const App = (() => {
   async function loadIdentity() {
     const portal = await api("/api/portal/me");     // id, role, full_name, company (JWT-only)
     me = { id: portal.id, full_name: portal.full_name, role: portal.role,
+           is_multi_user: !!portal.is_multi_user,
            must_change_password: portal.must_change_password,
            password_expiry_warning: portal.password_expiry_warning,
            has_password: portal.has_password,
            password_login_active: portal.password_login_active };
+    // Shared "multi-user" logins must say who the work is for on every new ticket.
+    const rbWrap = $("nt-requested-by-wrap");
+    if (rbWrap) rbWrap.classList.toggle("hidden", !me.is_multi_user);
     // "Change password" is only meaningful once the user has a password they can
     // sign in with (staff must enable password login + set an initial one first).
     const chBtn = $("change-pw-btn");
@@ -779,6 +783,12 @@ const App = (() => {
         $("nt-error").textContent = "These files aren't an accepted format: " + bad.map(f => f.name).join(", ");
         return;
       }
+      const requestedBy = $("nt-requested-by").value.trim();
+      if (me && me.is_multi_user && !requestedBy) {
+        $("nt-error").textContent = "Please enter who the work is being requested by.";
+        $("nt-requested-by").focus();
+        return;
+      }
       try {
         await createTicket({
           title: $("nt-title").value.trim(),
@@ -788,6 +798,7 @@ const App = (() => {
           contact_address: $("nt-address").value.trim() || null,
           contact_phone: $("nt-phone").value.trim() || null,
           po_number: $("nt-po").value.trim() || null,
+          work_requested_by: requestedBy || null,
         }, files);
       } catch (err) { $("nt-error").textContent = err.message; }
     };

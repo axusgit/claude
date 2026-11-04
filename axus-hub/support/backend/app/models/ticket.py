@@ -46,6 +46,19 @@ TICKET_ORIGINS = {
 }
 
 
+# Display labels for priority. The stored value "medium" is shown as "Normal"
+# everywhere (UI + emails). "low" is kept so legacy rows still render, but it is no
+# longer offered as a choice when creating or changing a ticket.
+PRIORITY_LABELS = {"low": "Low", "medium": "Normal", "high": "High", "critical": "Critical"}
+
+
+def priority_label(p) -> str:
+    """Human label for a priority value/enum (e.g. medium -> 'Normal')."""
+    v = p.value if hasattr(p, "value") else (p or "")
+    v = str(v).lower()
+    return PRIORITY_LABELS.get(v, v.capitalize())
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
 
@@ -60,6 +73,12 @@ class Ticket(Base):
     contact_address = Column(Text, nullable=True)   # customer-provided when opening via portal
     contact_phone = Column(String, nullable=True)   # customer-provided when opening via portal
     po_number = Column(String, nullable=True)        # customer PO#, optional, captured at portal open
+    # Our invoice number for the work, recorded by staff (typically once the ticket is
+    # closed/billed). Free text; shown as the "Invoice #" column on the Closed queue.
+    invoice_number = Column(String, nullable=True)
+    # Set when the reporter is a shared "multi-user" portal account: names the actual
+    # person the work is being requested for (required at portal open for those users).
+    work_requested_by = Column(String, nullable=True)
     scheduled_date = Column(DateTime, nullable=True)  # date+time (wall-clock ET), set when status == scheduled
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
     priority = Column(Enum(TicketPriority), default=TicketPriority.medium, nullable=False)
@@ -84,6 +103,10 @@ class Ticket(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     closed_at = Column(DateTime(timezone=True), nullable=True)
+    # Soft-delete / recycle bin: when set, the ticket is in the Archive and hidden
+    # from every normal view. It is permanently purged manually or automatically
+    # after the retention window (see app/archive_purge.py). Null = active.
+    archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     client = relationship("Client", foreign_keys=[client_id])
     reporter = relationship("User", foreign_keys=[reporter_user_id])

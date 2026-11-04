@@ -22,6 +22,10 @@ class User(Base):
     signature = Column(Text, nullable=True)        # staff reply signature (text)
     signature_logo = Column(Text, nullable=True)   # signature logo (resized data URL)
     is_active = Column(Boolean, default=True)
+    # A "multi-user" account is a shared portal login used by several people (e.g. a
+    # front-desk or shared-mailbox login). When such a user opens a ticket, the portal
+    # requires a "Work Requested By" field so we know which person is actually asking.
+    is_multi_user = Column(Boolean, server_default="false", nullable=False, default=False)
     # Set for client-portal users: ties the login to the company they belong to,
     # so the portal can scope them to their own tickets only.
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)

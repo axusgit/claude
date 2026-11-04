@@ -16,7 +16,7 @@ import hashlib
 from pydantic import BaseModel, EmailStr
 
 from app.database import get_db
-from app.models.ticket import Ticket, TicketComment, TicketType, TicketStatus, TicketPriority
+from app.models.ticket import Ticket, TicketComment, TicketType, TicketStatus, TicketPriority, priority_label
 from app.models.attachment import Attachment
 from app.models.user import User, UserRole
 from app.models.magic_token import PortalMagicToken
@@ -259,7 +259,7 @@ def _can_see(db: Session, ticket: Ticket, user: User) -> bool:
 def _owned_ticket(db: Session, ticket_id: int, user: User) -> Ticket:
     """Fetch a ticket only if it's visible to this user (see `_can_see`), else 404."""
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not ticket or not _can_see(db, ticket, user):
+    if not ticket or ticket.archived_at is not None or not _can_see(db, ticket, user):
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket
 
@@ -272,6 +272,7 @@ class PortalTicketIn(BaseModel):
     contact_address: Optional[str] = None
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
+    work_requested_by: Optional[str] = None
 
 
 class PortalReplyIn(BaseModel):
@@ -303,6 +304,7 @@ def whoami(user: User = Depends(require_client_user), db: Session = Depends(get_
         "email": user.email,
         "phone": user.phone or None,
         "company": client.company_name if client else None,
+        "is_multi_user": bool(getattr(user, "is_multi_user", False)),
         "password_login_active": password_login_active(db, user),
         "has_password": bool(user.hashed_password),
         "must_change_password": bool(user.must_change_password) or pwpolicy.is_expired(user),
@@ -318,10 +320,12 @@ def my_tickets(
 ):
     # Per-user scoping: only tickets this user opened (reporter/creator).
     # Participants are notified by email but do not see tickets in the portal.
-    q = db.query(Ticket).filter(or_(
-        Ticket.reporter_user_id == user.id,
-        Ticket.created_by_id == user.id,
-    ))
+    q = db.query(Ticket).filter(
+        Ticket.archived_at.is_(None),
+        or_(
+            Ticket.reporter_user_id == user.id,
+            Ticket.created_by_id == user.id,
+        ))
     if status:
         q = q.filter(Ticket.status == status)
     return q.order_by(Ticket.created_at.desc()).all()
@@ -337,6 +341,11 @@ def submit_ticket(
     address = (data.contact_address or "").strip() or None   # optional
     phone = (data.contact_phone or "").strip() or None       # optional
     po = (data.po_number or "").strip() or None               # optional
+    requested_by = (data.work_requested_by or "").strip() or None
+    # Shared "multi-user" logins must say which person the work is for.
+    if getattr(user, "is_multi_user", False) and not requested_by:
+        raise HTTPException(status_code=400,
+                            detail="Please enter who the work is being requested by.")
     ticket = Ticket(
         title=data.title,
         description=data.description,
@@ -345,6 +354,7 @@ def submit_ticket(
         contact_address=address,
         contact_phone=phone,
         po_number=po,
+        work_requested_by=requested_by,
         client_id=user.client_id,        # forced to the user's own company
         created_by_id=user.id,
         reporter_user_id=user.id,         # the client who opened it (for scoping + participants)
@@ -440,11 +450,11 @@ def raise_priority(ticket_id: int, data: PortalPriorityIn, background: Backgroun
         raise HTTPException(status_code=400, detail="You can only raise the priority, not lower it.")
     t.priority = TicketPriority(new)
     _log_activity(db, ticket_id, user.id, "priority_changed",
-                  f"Client raised priority from {cur} to {new}")
+                  f"Client raised priority from {priority_label(cur)} to {priority_label(new)}")
     db.commit()
     # Notify staff + participants of the escalation (assignee, else info@).
     background.add_task(notify.notify_participants_update, ticket_id,
-                        f"Priority raised to {new.capitalize()}.", user.id, user.full_name)
+                        f"Priority raised to {priority_label(new)}.", user.id, user.full_name)
     return {"ok": True, "priority": new}
 
 

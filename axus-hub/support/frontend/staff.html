@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=74" />
-  <link rel="stylesheet" href="/static/staff.css?v=108" />
+  <link rel="stylesheet" href="/static/styles.css?v=75" />
+  <link rel="stylesheet" href="/static/staff.css?v=112" />
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -79,6 +79,7 @@
               <a data-filter="assigned" class="nav-item">Assigned <span class="nav-count" id="c-assigned"></span></a>
               <a data-filter="unassigned" class="nav-item">Unassigned <span class="nav-count" id="c-unassigned"></span></a>
               <a data-filter="closed" class="nav-item">Closed <span class="nav-count" id="c-closed"></span></a>
+              <a data-filter="archive" class="nav-item">Archive <span class="nav-count" id="c-archive"></span></a>
             </div>
           </div>
           <div class="nav-group" data-group="boards">
@@ -171,7 +172,7 @@
           <div class="toolbar">
             <input type="search" id="search" placeholder="Search ref, subject, business…" class="search-box" />
             <select id="f-status"><option value="">All statuses</option><option value="open">Open</option><option value="in_progress">In Progress</option><option value="waiting">Waiting</option><option value="scheduled">Scheduled</option><option value="closed">Closed</option></select>
-            <select id="f-priority"><option value="">All priorities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Normal</option><option value="low">Low</option></select>
+            <select id="f-priority"><option value="">All priorities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Normal</option></select>
             <select id="f-client"><option value="">All companies</option></select>
             <h3 class="queue-title" id="queue-title"></h3>
             <div class="col-picker">
@@ -182,11 +183,29 @@
           <div class="table-wrap">
             <table class="ticket-table" id="ticket-table">
               <thead><tr>
-                <th class="col-ref sortable" data-sort="ref">Ref</th><th class="col-subject sortable" data-sort="subject">Subject</th><th class="col-company sortable" data-sort="company">Business</th><th class="col-board sortable" data-sort="board">Board</th><th class="col-priority sortable" data-sort="priority">Priority</th><th class="col-status sortable" data-sort="status">Status</th><th class="col-assignee sortable" data-sort="assignee">Assignee</th><th class="col-created sortable" data-sort="created">Created</th><th class="col-updated sortable" data-sort="updated">Updated</th>
+                <th class="col-ref sortable" data-sort="ref">Ref</th><th class="col-subject sortable" data-sort="subject">Subject</th><th class="col-company sortable" data-sort="company">Business</th><th class="col-board sortable" data-sort="board">Board</th><th class="col-priority sortable" data-sort="priority">Priority</th><th class="col-status sortable" data-sort="status">Status</th><th class="col-assignee sortable" data-sort="assignee">Assignee</th><th class="col-created sortable" data-sort="created">Created</th><th class="col-updated sortable" data-sort="updated">Updated</th><th class="col-invoice sortable" data-sort="invoice">Invoice #</th>
               </tr></thead>
               <tbody id="ticket-rows"></tbody>
             </table>
             <div id="queue-empty" class="empty hidden"><div class="empty-emoji">✅</div><h3>Nothing here</h3><p class="muted">No tickets match this view.</p></div>
+          </div>
+        </section>
+
+        <!-- ARCHIVE (recycle bin for deleted tickets) -->
+        <section id="archive-view" class="hidden">
+          <div class="toolbar">
+            <input type="search" id="arch-search" placeholder="Search ref, subject, business…" class="search-box" />
+            <h3 class="queue-title" id="archive-title"></h3>
+          </div>
+          <p class="muted" id="archive-note" style="margin:0 0 10px;font-size:13px">Deleted tickets land here. Restore them, delete them permanently, or leave them — anything left is automatically deleted <strong id="arch-retention">30</strong> days after it was archived.</p>
+          <div class="table-wrap">
+            <table class="ticket-table" id="archive-table">
+              <thead><tr>
+                <th class="col-ref sortable" data-sort="ref">Ref</th><th class="col-subject sortable" data-sort="subject">Subject</th><th class="col-company sortable" data-sort="company">Business</th><th class="col-status sortable" data-sort="status">Status</th><th class="col-archived sortable" data-sort="archived">Archived</th><th class="col-autodel sortable" data-sort="autodel">Auto-deletes</th><th class="col-actions">Actions</th>
+              </tr></thead>
+              <tbody id="archive-rows"></tbody>
+            </table>
+            <div id="archive-empty" class="empty hidden"><div class="empty-emoji">🗑️</div><h3>Archive is empty</h3><p class="muted">Tickets you delete will appear here.</p></div>
           </div>
         </section>
 
@@ -205,7 +224,7 @@
                 <button class="btn btn-ghost btn-xs" id="edit-ticket-btn">✎ Edit ticket</button>
                 <button class="btn btn-primary btn-xs" id="promote-btn" hidden>✎ Edit ticket</button>
                 <button class="btn btn-primary btn-xs" id="reopen-btn" hidden>↩ Reopen</button>
-                <button class="btn btn-ghost btn-xs btn-danger" id="delete-ticket-btn" hidden>🗑 Delete</button>
+                <button class="btn btn-ghost btn-xs btn-danger" id="delete-ticket-btn" hidden>🗑 Move to Archive</button>
               </div>
             </div>
             <h2 id="d-title" class="dt-title"></h2>
@@ -227,7 +246,7 @@
               </div>
               <label class="ctl">Priority
                 <select id="d-priority">
-                  <option value="critical">Critical</option><option value="high">High</option><option value="medium">Normal</option><option value="low">Low</option>
+                  <option value="critical">Critical</option><option value="high">High</option><option value="medium">Normal</option>
                 </select>
               </label>
               <label class="ctl">Assignee
@@ -256,8 +275,10 @@
                 <dl class="props props-wide">
                   <dt>Business</dt><dd id="p-company"></dd>
                   <dt>Opened by</dt><dd id="p-contact"></dd>
+                  <dt id="p-requested-by-dt">Work requested by</dt><dd id="p-requested-by"></dd>
                   <dt>Phone</dt><dd id="p-phone"></dd>
                   <dt>PO #</dt><dd id="p-po"></dd>
+                  <dt>Invoice #</dt><dd id="p-invoice"></dd>
                   <dt>Address</dt><dd id="p-address"></dd>
                   <dt>Category</dt><dd id="p-category"></dd>
                   <dt>Type</dt><dd id="p-type"></dd>
@@ -286,8 +307,12 @@
                 <form id="reply-form" class="reply-form">
                   <div class="reply-canned-row">
                     <select id="canned-select" class="canned-select" title="Insert a canned response"><option value="">💬 Canned…</option></select>
-                    <button type="button" class="btn btn-ghost btn-ai" id="ai-rewrite" title="Rewrite your draft with AI (you review before sending)">✨ Rewrite</button>
-                    <button type="button" class="btn btn-ghost btn-ai" id="ai-suggest" title="Draft a reply from the whole ticket with AI">🧠 Suggest reply</button>
+                    <fieldset class="ai-assist-group">
+                      <legend>AI Assistance</legend>
+                      <button type="button" class="btn btn-ghost btn-ai" id="ai-rewrite" title="Rewrite your draft with AI (you review before sending)">✨ Rewrite</button>
+                      <button type="button" class="btn btn-ghost btn-ai" id="ai-suggest" title="Draft a reply from the whole ticket with AI">🧠 Suggest reply</button>
+                      <button type="button" class="btn btn-ghost btn-ai" id="ai-expand" title="Expand your draft into a more technical, organized step-by-step response (you review before sending)">🔧 Expand</button>
+                    </fieldset>
                   </div>
                   <textarea id="reply-body" rows="12" placeholder="Write a reply…"></textarea>
                   <label class="upload-box" id="reply-upload-box" style="margin-top:10px">
@@ -424,7 +449,7 @@
           </div>
           <div class="table-wrap">
             <table class="ticket-table" id="user-table">
-              <thead><tr><th class="col-name sortable" data-sort="name">Name</th><th class="col-email sortable" data-sort="email">Email</th><th class="col-phone sortable" data-sort="phone">Phone</th><th class="col-role sortable" data-sort="role">Role</th><th class="col-business sortable" data-sort="business">Business</th><th class="col-tickets sortable" data-sort="tickets">Tickets</th><th class="col-status sortable" data-sort="status">Status</th><th class="col-actions">Actions</th></tr></thead>
+              <thead><tr><th class="col-name sortable" data-sort="name">Name</th><th class="col-email sortable" data-sort="email">Email</th><th class="col-phone sortable" data-sort="phone">Phone</th><th class="col-role sortable" data-sort="role">Role</th><th class="col-business sortable" data-sort="business">Business</th><th class="col-multi sortable" data-sort="multi">Multi-user</th><th class="col-tickets sortable" data-sort="tickets">Tickets</th><th class="col-status sortable" data-sort="status">Status</th><th class="col-actions">Actions</th></tr></thead>
               <tbody id="user-rows"></tbody>
             </table>
             <div id="users-empty" class="empty hidden"><div class="empty-emoji">👥</div><h3>No users</h3><p class="muted">Add a staff member or portal user.</p></div>
@@ -550,6 +575,10 @@
           <label>Status<select id="uf-active"><option value="true">Active</option><option value="false">Inactive</option></select></label>
         </div>
         <label id="uf-client-wrap">Business <span class="muted">(for portal users)</span><select id="uf-client"><option value="">— None —</option></select></label>
+        <div id="uf-multi-wrap" style="margin:2px 0 2px">
+          <label class="show-hidden-toggle" style="gap:8px"><input type="checkbox" id="uf-multi" /> Multi-user account</label>
+          <p class="muted" style="margin:4px 0 0;font-size:12px;line-height:1.4">Shared login used by several people — requires “Work Requested By” on tickets.</p>
+        </div>
         <div id="uf-error" class="form-error"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="uf-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
       </form>
@@ -582,7 +611,7 @@
         <div id="nt-file-list" class="nt-file-list"></div>
         <div class="form-row">
           <label>Category<select id="nt-category"><option value="">— Select —</option><option>ATA</option><option>Cabling</option><option>Call manager</option><option>Cellular Gateway</option><option>Circuit</option><option>Client VPN</option><option>Email</option><option>Firewall</option><option>ISP</option><option>Laptop</option><option>Mobile</option><option>Office 365</option><option>PBX</option><option>Phone</option><option>Printer</option><option>Router</option><option>SD-WAN</option><option>Server</option><option>Software</option><option>Switch</option><option>UPS</option><option>VPN</option><option>Voice/video gateway</option><option>Wireless access point</option><option>Wireless controller</option><option>Workstation</option><option>Other</option></select></label>
-          <label>Priority<select id="nt-priority"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Normal</option><option value="low">Low</option></select></label>
+          <label>Priority<select id="nt-priority"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Normal</option></select></label>
         </div>
         <div class="form-row">
           <label>Assignee<select id="nt-assignee"><option value="">Unassigned</option></select></label>
@@ -665,6 +694,6 @@
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="/static/confirm.js?v=1"></script>
-  <script src="/static/staff.js?v=124"></script>
+  <script src="/static/staff.js?v=132"></script>
 </body>
 </html>

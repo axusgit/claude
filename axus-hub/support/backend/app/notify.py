@@ -12,7 +12,7 @@ as FastAPI BackgroundTasks or from the email-poller thread. Disable with NOTIFY_
 import os
 
 from app.database import SessionLocal
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, priority_label
 from app.models.user import User, UserRole
 from app import mailer
 
@@ -86,20 +86,25 @@ def _contact_fields(db, t):
     """Resolve the 'Opened By', phone and address for a ticket. Prefers what the
     reporter actually typed when opening the case (portal contact_phone/contact_address),
     then falls back to the reporter's user record, the legacy email-intake contact, and
-    finally the business record. Returns (opened_by, phone, address) — any may be ''."""
+    finally the business record. Returns (opened_by, opened_email, phone, address) — any
+    may be ''. Name and email are kept separate so the body can put them on their own
+    short lines (a long combined line gets re-wrapped by Outlook on plain-text/forwarded
+    copies)."""
     from app.models.contact import Contact
     reporter = t.reporter if t.reporter_user_id else None
     contact = None
     if t.contact_id:
         contact = db.query(Contact).filter(Contact.id == t.contact_id).first()
 
-    # Opened By: whoever reported it (name + email), else the legacy contact, else creator.
+    # Opened By: whoever reported it, else the legacy contact, else creator.
     opened_by = ""
+    opened_email = ""
     person = reporter or contact or (t.created_by if t.created_by_id else None)
     if person:
         name = (getattr(person, "full_name", "") or "").strip()
         email = (getattr(person, "email", "") or "").strip()
-        opened_by = f"{name} <{email}>".strip() if name and email else (name or email)
+        opened_by = name or email            # primary line: the name (or email if no name)
+        opened_email = email if name else "" # separate line only when it isn't the primary
 
     # Phone: portal-provided first, then reporter, contact, then the business (+ext).
     phone = (t.contact_phone or "").strip()
@@ -117,7 +122,7 @@ def _contact_fields(db, t):
     if not address and t.client:
         address = (t.client.address or "").strip()
 
-    return opened_by, phone, address
+    return opened_by, opened_email, phone, address
 
 
 def _staff_emails(db, exclude_id=None):
@@ -141,9 +146,14 @@ def _body(t, lead: str, include_desc: bool = False, include_contact: bool = Fals
     desc = (t.description or "").strip()
     contact_lines = ""
     if include_contact and db is not None:
-        opened_by, phone, address = _contact_fields(db, t)
+        opened_by, opened_email, phone, address = _contact_fields(db, t)
         if opened_by:
             contact_lines += f"Opened By: {opened_by}\n"
+        if opened_email:
+            contact_lines += f"Email:     {opened_email}\n"
+        requested = (getattr(t, "work_requested_by", None) or "").strip()
+        if requested:
+            contact_lines += f"Work Requested By: {requested}\n"
         if phone:
             contact_lines += f"Phone:     {phone}\n"
         if address:
@@ -154,11 +164,28 @@ def _body(t, lead: str, include_desc: bool = False, include_contact: bool = Fals
             f"Ref:      {t.reference}\n"
             f"Subject:  {t.title}\n"
             f"Business: {client}\n"
-            f"Priority: {_v(t.priority)}\n"
+            f"Priority: {priority_label(t.priority)}\n"
             f"Status:   {_v(t.status)}\n"
             + contact_lines
             + (f"\nDescription:\n{desc}\n" if include_desc and desc else "")
             + (f"\nOpen it: {url}\n" if url else ""))
+
+
+def _body_html(text: str) -> str:
+    """HTML alternative for the plain-text staff notifications.
+
+    The breaks are encoded as hard <br> tags and the aligned padding as &nbsp;, not as
+    raw newlines/spaces. That matters because an auto-forward rule (info@) re-renders
+    the HTML and collapses ordinary whitespace — raw newlines inside a <pre> get lost,
+    but <br> and &nbsp; survive. Wrapped in a <pre> with no font set, so the direct
+    copy still shows in the client's default fixed-width font (the look you approved)."""
+    import html as _h
+    import re
+    esc = _h.escape(text)
+    esc = re.sub(r" {2,}", lambda m: "&nbsp;" * len(m.group(0)), esc)  # keep column alignment
+    esc = esc.replace("\n", "<br>")                                    # breaks survive forwarding
+    return (f'<pre style="margin:0;white-space:pre-wrap;word-break:break-word;">'
+            f'{esc}</pre>')
 
 
 def notify_new_ticket(ticket_id: int, exclude_user_id=None):
@@ -178,9 +205,10 @@ def notify_new_ticket(ticket_id: int, exclude_user_id=None):
                 seen.add(cc.lower())
                 recips.append(cc)
         if recips:
+            text = _body(t, "A new ticket was created.", include_desc=True,
+                         include_contact=True, db=db)
             mailer.send_email(_to(recips), f"[New] {t.reference} · {_biz(t)} · {t.title}",
-                              _body(t, "A new ticket was created.", include_desc=True,
-                                    include_contact=True, db=db))
+                              text, _body_html(text))
     except Exception as e:
         print(f"[notify] new_ticket failed: {e}", flush=True)
     finally:
@@ -204,8 +232,9 @@ def notify_assignment(ticket_id: int, assignee_id: int, by_user_id=None):
                 if cc.lower() not in seen and cc.lower() not in SYS_EMAILS and cc.lower() != assigner:
                     seen.add(cc.lower())
                     recips.append(cc)
+            text = _body(t, f"Ticket assigned to {a.full_name or a.email}.")
             mailer.send_email(_to(recips), f"[Assigned] {t.reference} · {_biz(t)} · {t.title}",
-                              _body(t, f"Ticket assigned to {a.full_name or a.email}."))
+                              text, _body_html(text))
     except Exception as e:
         print(f"[notify] assignment failed: {e}", flush=True)
     finally:
@@ -228,8 +257,9 @@ def notify_customer_reply(ticket_id: int):
         if not recips:  # unassigned — let the whole team know a customer is waiting
             recips = _staff_emails(db)
         if recips:
+            text = _body(t, "A customer replied on this ticket.")
             mailer.send_email(_to(recips), f"[Reply] {t.reference} · {_biz(t)} · {t.title}",
-                              _body(t, "A customer replied on this ticket."))
+                              text, _body_html(text))
     except Exception as e:
         print(f"[notify] customer_reply failed: {e}", flush=True)
     finally:

@@ -51,6 +51,7 @@ class UserOut(BaseModel):
     phone: Optional[str]
     role: str
     is_active: bool
+    is_multi_user: bool = False  # shared login; requires "Work Requested By" on tickets
     client_id: Optional[int]
     assigned_tickets: int = 0   # native tickets currently assigned to this user
     hidden: bool = False        # parked in the hidden holding business
@@ -66,6 +67,7 @@ class UserCreateIn(BaseModel):
     role: str = "technician"
     phone: Optional[str] = None
     client_id: Optional[int] = None
+    is_multi_user: bool = False
 
 
 class UserUpdateIn(BaseModel):
@@ -75,6 +77,7 @@ class UserUpdateIn(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
     client_id: Optional[int] = None
+    is_multi_user: Optional[bool] = None
 
 
 @router.get("/", response_model=List[UserOut])
@@ -124,6 +127,7 @@ def create_user(data: UserCreateIn, db: Session = Depends(get_db), _=Depends(req
         role=data.role,
         phone=data.phone,
         client_id=data.client_id,
+        is_multi_user=data.is_multi_user,
     )
     db.add(user)
     db.commit()

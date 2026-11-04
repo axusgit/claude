@@ -114,6 +114,15 @@ button.nav-item { width: 100%; background: none; border: none; font-family: inhe
 .sched-date { font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
 .cell-subject { font-weight: 600; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell-muted { color: var(--muted); white-space: nowrap; }
+/* Inline-editable Invoice # cell on the Closed queue. */
+.col-invoice { white-space: nowrap; }
+.inv-input { width: 120px; max-width: 100%; padding: 5px 8px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface);
+  color: inherit; font-family: inherit; }
+.inv-input:hover { border-color: var(--muted); }
+.inv-input:focus { outline: none; border-color: var(--orange, #f26722);
+  box-shadow: 0 0 0 2px rgba(242,103,34,.18); }
+.inv-input::placeholder { color: var(--muted); }
 .prio-dot { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; text-transform: capitalize; }
 .prio-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .assignee-pill { display: inline-flex; align-items: center; gap: 7px; }
@@ -365,6 +374,25 @@ html[data-theme="dark"] #customer-table thead th, html[data-theme="dark"] #user-
   box-shadow: inset 0 -1px 0 var(--border), 0 4px 8px -4px rgba(0,0,0,.20);
 }
 html[data-theme="dark"] #ticket-table thead th { background: #222b40; }
+
+/* Fit the queue table to the full width (no horizontal scroll): fixed layout divides
+   the available width across the columns by the percentages below. Text columns
+   truncate with an ellipsis; the date columns wrap to two lines so they stay readable
+   in a narrow column. Scoped to #ticket-table so the Business/Users tables keep their
+   own (resizable, auto) layout. */
+#ticket-table { table-layout: fixed; width: 100%; }
+#ticket-table th, #ticket-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ticket-table .col-ref      { width: 7%; }
+#ticket-table .col-subject  { width: 19%; max-width: none; }
+#ticket-table .col-company  { width: 13%; max-width: none; }
+#ticket-table .col-board    { width: 8%; }
+#ticket-table .col-priority { width: 8%; }
+#ticket-table .col-status   { width: 9%; }
+#ticket-table .col-assignee { width: 12%; }
+#ticket-table .col-created  { width: 12%; }
+#ticket-table .col-updated  { width: 12%; }
+/* Dates keep their full text by wrapping rather than truncating. */
+#ticket-table td.col-created, #ticket-table td.col-updated { white-space: normal; }
 .pwr-row { display: flex; gap: 8px; align-items: stretch; }
 .pwr-row input { margin-top: 6px; }
 .pwr-row .btn { margin-top: 6px; white-space: nowrap; }
@@ -444,7 +472,11 @@ html[data-theme="dark"] #ticket-table thead th { background: #222b40; }
 
 /* Canned picker sits above the reply textarea */
 .reply-canned-row { margin-bottom: 8px; }
-.reply-canned-row .canned-select { min-width: 200px; }
+/* Canned dropdown is long and flexible: it grows to fill the row (keeping the AI
+   Assistance box pinned to the right edge, side by side) yet shrinks before that box
+   would ever wrap down to a second line. */
+.reply-canned-row .canned-select { flex: 1 1 240px; min-width: 150px; max-width: none; }
+.reply-canned-row .ai-assist-group { flex: 0 0 auto; }
 
 /* Higher-contrast secondary text in dark mode (clearer letters) */
 html[data-theme="dark"] {
@@ -510,6 +542,15 @@ html[data-theme="dark"] .login-logo { filter: none; }
 
 /* AI assist buttons (staff console) */
 .reply-canned-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* Group the AI actions inside a labeled rectangle so they read as one toolset */
+.ai-assist-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  border: 1.5px solid var(--orange); border-radius: 12px; padding: 9px 12px 8px;
+  margin: 0;   /* sit directly beside the Canned dropdown — side by side, one row */
+  min-inline-size: auto;
+  background: color-mix(in srgb, var(--orange) 7%, transparent);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--orange) 16%, transparent); }
+.ai-assist-group > legend { padding: 0 7px; margin-left: 2px; font-size: 11px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--orange); }
 .btn-ai { font-size: 12.5px; padding: 5px 11px; }
 .btn-ai:hover:not(:disabled) { color: var(--orange); border-color: var(--orange); }
 .btn-ai:disabled { opacity: .6; cursor: default; }

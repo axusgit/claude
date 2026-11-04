@@ -5,6 +5,8 @@ const Staff = (() => {
   let token = localStorage.getItem(TOKEN_KEY) || null;
   let me = null;
   let tickets = [];                 // full set
+  let archivedTickets = [];         // soft-deleted tickets (the Archive / recycle bin)
+  const ARCHIVE_RETENTION_DAYS = 30;
   let clientMap = {}, userMap = {}, boardMap = {}; // id -> name
   let clientsData = [];             // full customer records
   let usersData = [];               // full user records
@@ -382,10 +384,11 @@ const Staff = (() => {
     $("login-sso").classList.toggle("hidden", local);
   };
   const showApp = () => { $("login-view").classList.add("hidden"); $("app-view").classList.remove("hidden"); requestAnimationFrame(setTopH); };
-  const VIEWS = ["dashboard-view", "queue-view", "detail-view", "customers-view", "customer-detail-view", "users-view", "glossary-view", "reports-view"];
+  const VIEWS = ["dashboard-view", "queue-view", "archive-view", "detail-view", "customers-view", "customer-detail-view", "users-view", "glossary-view", "reports-view"];
   const hideViews = () => VIEWS.forEach(id => $(id).classList.add("hidden"));
   const showDashboard = () => { hideViews(); $("dashboard-view").classList.remove("hidden"); renderDashboard(); };
-  const showQueue = () => { hideViews(); $("queue-view").classList.remove("hidden"); };
+  const showQueue = () => { hideViews(); $("queue-view").classList.remove("hidden"); requestAnimationFrame(() => fitScroller("#queue-view")); };
+  const showArchive = () => { hideViews(); $("archive-view").classList.remove("hidden"); requestAnimationFrame(() => fitScroller("#archive-view")); };
   const showDetail = () => { hideViews(); $("detail-view").classList.remove("hidden"); };
   const showCustomers = () => { hideViews(); $("customers-view").classList.remove("hidden"); requestAnimationFrame(() => { fitScroller("#customers-view"); makeResizable("#customer-table", "axus-biz-widths"); }); };
   const showCustomerDetail = () => { hideViews(); $("customer-detail-view").classList.remove("hidden"); };
@@ -399,14 +402,28 @@ const Staff = (() => {
     const wrap = view.querySelector(".table-wrap");
     if (!wrap) return;
     const top = wrap.getBoundingClientRect().top;
-    wrap.style.maxHeight = Math.max(200, window.innerHeight - top - 24) + "px";
+    let h = Math.max(200, window.innerHeight - top - 24);
+    wrap.style.maxHeight = h + "px";
+    // The stats row / toolbar above and the .content bottom padding below can still
+    // leave the PAGE a few dozen px taller than the viewport — which makes the page
+    // (not the table-wrap) the scroller, so the sticky column headers drift up and a
+    // redundant page scrollbar shows. Measure that leftover overflow and remove it so
+    // the table-wrap is the SOLE scroll container and the header stays pinned.
+    const de = document.documentElement;
+    const over = de.scrollHeight - de.clientHeight;
+    if (over > 0) wrap.style.maxHeight = Math.max(200, h - over) + "px";
   }
-  function fitVisibleScroller() { ["#customers-view", "#users-view"].forEach(fitScroller); }
+  function fitVisibleScroller() { ["#queue-view", "#archive-view", "#customers-view", "#users-view"].forEach(fitScroller); }
   // Publish the real topbar height so the sidebar sticks right below it (the 88px
   // logo makes the topbar taller than the old hard-coded 63px offset).
   function setTopH() {
     const tb = document.querySelector(".topbar");
-    if (tb && tb.offsetHeight) document.documentElement.style.setProperty("--top-h", tb.offsetHeight + "px");
+    const strip = document.querySelector(".accent-strip");
+    // --top-h must cover EVERYTHING above .layout (the sticky topbar AND the 4px accent
+    // strip). The layout reserves calc(100vh - top-h); if top-h omitted the strip, the
+    // page was always 4px taller than the viewport → a permanent, unneeded scrollbar.
+    const h = (tb ? tb.offsetHeight : 0) + (strip ? strip.offsetHeight : 0);
+    if (h) document.documentElement.style.setProperty("--top-h", h + "px");
   }
   function syncChrome() { setTopH(); fitVisibleScroller(); }
   window.addEventListener("resize", syncChrome);
@@ -661,7 +678,75 @@ const Staff = (() => {
       pairs.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("");
   }
 
-  async function loadTickets() { tickets = await api("/api/tickets/"); _queueSig = queueSig(tickets); renderCounts(); renderStats(); renderQueue(); renderDashboard(); }
+  async function loadTickets() { tickets = await api("/api/tickets/"); _queueSig = queueSig(tickets); renderCounts(); renderStats(); renderQueue(); renderDashboard(); loadArchive(); }
+
+  /* ---------- Archive (recycle bin) ---------- */
+  let archiveSort = { key: "archived", dir: -1 };   // most recently archived first
+  async function loadArchive() {
+    try { archivedTickets = await api("/api/tickets/?archived=true"); }
+    catch (e) { archivedTickets = []; }
+    $("c-archive").textContent = archivedTickets.length;
+    if (!$("archive-view").classList.contains("hidden")) renderArchive();
+  }
+  function archVal(t, key) {
+    switch (key) {
+      case "ref": return t.reference || "";
+      case "subject": return t.title || "";
+      case "company": return t.client_name || clientMap[t.client_id] || "";
+      case "status": return _STATUS_RANK[t.status] || 0;
+      case "archived": return new Date(t.archived_at || 0).getTime();
+      case "autodel": return new Date(t.archived_at || 0).getTime();   // same order as archived
+      default: return "";
+    }
+  }
+  // Whole days remaining before auto-purge (can go negative right before a sweep).
+  function daysLeft(archivedAt) {
+    const purge = new Date(archivedAt).getTime() + ARCHIVE_RETENTION_DAYS * 86400000;
+    return Math.ceil((purge - Date.now()) / 86400000);
+  }
+  function renderArchive() {
+    $("arch-retention").textContent = ARCHIVE_RETENTION_DAYS;
+    const q = ($("arch-search").value || "").toLowerCase();
+    const rows = archivedTickets.filter(t => {
+      if (!q) return true;
+      return `${t.reference} ${t.title} ${t.client_name || clientMap[t.client_id] || ""}`.toLowerCase().includes(q);
+    }).sort((a, b) => archiveSort.dir * cmpVals(archVal(a, archiveSort.key), archVal(b, archiveSort.key)));
+    $("archive-title").textContent = `${rows.length} archived ticket${rows.length === 1 ? "" : "s"}`;
+    const tbody = $("archive-rows"); tbody.innerHTML = "";
+    $("archive-empty").classList.toggle("hidden", rows.length > 0);
+    const canManage = me && me.role === "admin";
+    for (const t of rows) {
+      const d = daysLeft(t.archived_at);
+      const soon = d <= 3;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="cell-ref col-ref">${esc(t.reference || "")}</td>
+        <td class="cell-subject col-subject">${esc(t.title)}</td>
+        <td class="cell-muted col-company">${esc(t.client_name || clientMap[t.client_id] || "—")}</td>
+        <td class="col-status"><span class="badge ${t.status}">${cap(t.status)}</span></td>
+        <td class="cell-muted col-archived">${fmtDate(t.archived_at)}</td>
+        <td class="col-autodel"><span class="${soon ? "prio-dot prio critical" : "cell-muted"}">${d <= 0 ? "due now" : "in " + d + " day" + (d === 1 ? "" : "s")}</span></td>
+        <td class="user-actions col-actions">${canManage
+          ? `<button class="btn btn-ghost btn-xs" data-restore="${t.id}">Restore</button>` +
+            `<button class="btn btn-ghost btn-xs btn-danger" data-purge="${t.id}" data-ref="${esc(t.reference || "this ticket")}">Delete</button>`
+          : `<span class="cell-muted">—</span>`}</td>`;
+      const rb = tr.querySelector("[data-restore]");
+      if (rb) rb.onclick = async () => {
+        try { await api(`/api/tickets/${rb.dataset.restore}/restore`, { method: "POST" });
+          toast("Ticket restored"); await loadTickets(); renderArchive(); }
+        catch (err) { toast(err.message); }
+      };
+      const pb = tr.querySelector("[data-purge]");
+      if (pb) pb.onclick = async () => {
+        if (!await axusConfirm(`Permanently delete ${pb.dataset.ref}?\n\nThis removes the ticket and all of its replies, notes, time entries, and attachments. This cannot be undone.`)) return;
+        try { await api(`/api/tickets/${pb.dataset.purge}/permanent`, { method: "DELETE" });
+          toast(`Deleted ${pb.dataset.ref}`); await loadTickets(); renderArchive(); }
+        catch (err) { toast(err.message); }
+      };
+      tbody.appendChild(tr);
+    }
+    if (!$("archive-view").classList.contains("hidden")) requestAnimationFrame(() => fitScroller("#archive-view"));
+  }
 
   /* ---------- Dashboard ---------- */
   function renderDashboard() {
@@ -764,12 +849,12 @@ const Staff = (() => {
   function renderStats() {
     const open = tickets.filter(t => ACTIVE.includes(t.status)).length;
     const unassigned = tickets.filter(t => ACTIVE.includes(t.status) && !t.assigned_to_id).length;
-    const inprog = tickets.filter(t => t.status === "in_progress").length;
+    const scheduled = tickets.filter(t => t.status === "scheduled").length;
     const closed = tickets.filter(t => t.status === "closed").length;
     $("stats-row").innerHTML = `
       ${statCard(open, "Open tickets", "accent")}
       ${statCard(unassigned, "Unassigned", unassigned ? "danger" : "")}
-      ${statCard(inprog, "In progress", "")}
+      ${statCard(scheduled, "Scheduled", "")}
       ${statCard(closed, "Closed", "good")}`;
   }
   const statCard = (n, label, cls) => `<div class="stat-card ${cls}"><div class="stat-num">${n}</div><div class="stat-label">${label}</div></div>`;
@@ -787,9 +872,26 @@ const Staff = (() => {
       case "assignee": return t.assigned_to_id ? (userMap[t.assigned_to_id] || "") : "";
       case "created": return new Date(t.created_at).getTime();
       case "updated": return new Date(t.updated_at || t.created_at).getTime();
+      case "invoice": return (t.invoice_number || "").toLowerCase();
       default: return "";
     }
   }
+  // Save an inline-edited Invoice # from the Closed queue. Optimistically updates the
+  // in-memory ticket; reverts the field on failure.
+  async function saveInvoice(t, input) {
+    const val = input.value.trim();
+    if (val === (t.invoice_number || "")) return;   // nothing changed
+    try {
+      await api(`/api/tickets/${t.id}`, { method: "PUT", body: { invoice_number: val } });
+      t.invoice_number = val;
+      if (current && current.id === t.id) current.invoice_number = val;
+      toast(val ? "Invoice # saved" : "Invoice # cleared");
+    } catch (e) {
+      input.value = t.invoice_number || "";
+      toast("Couldn't save invoice #");
+    }
+  }
+
   function renderQueue() {
     const q = ($("search").value || "").toLowerCase();
     const fp = $("f-priority").value, fc = $("f-client").value, fs = $("f-status").value;
@@ -830,10 +932,24 @@ const Staff = (() => {
           ? `<span class="assignee-pill"><span class="mini-avatar" style="${avatarStyle(avatarColor(aName))}">${initials(aName)}</span>${esc(aName)}</span>`
           : `<span class="assignee-pill"><span class="mini-avatar none">?</span><span class="cell-muted">Unassigned</span></span>`}</td>
         <td class="cell-muted col-created">${fmtDate(t.created_at)}</td>
-        <td class="cell-muted col-updated">${fmtDate(t.updated_at || t.created_at)}</td>`;
+        <td class="cell-muted col-updated">${fmtDate(t.updated_at || t.created_at)}</td>
+        <td class="col-invoice">${t.source === "xcitium"
+          ? `<span class="cell-muted">${esc(t.invoice_number || "—")}</span>`
+          : `<input class="inv-input" type="text" value="${esc(t.invoice_number || "")}" placeholder="—" aria-label="Invoice number" />`}</td>`;
       tbody.appendChild(tr);
+      // The Invoice # cell is editable inline (shown only on the Closed queue). Keep a
+      // click inside it from opening the ticket, and save on blur / Enter.
+      const inv = tr.querySelector(".inv-input");
+      if (inv) {
+        inv.onclick = e => e.stopPropagation();
+        inv.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); inv.blur(); } };
+        inv.onchange = () => saveInvoice(t, inv);
+      }
     }
     applyColumns();
+    // Re-fit after rows (and the async stats row above) are in place so the table-wrap
+    // stays the sole scroll container and the sticky header never drifts.
+    if (!$("queue-view").classList.contains("hidden")) requestAnimationFrame(() => fitScroller("#queue-view"));
   }
 
   /* ---------- Column chooser ---------- */
@@ -852,6 +968,10 @@ const Staff = (() => {
       const hide = hiddenCols.has(c.key);
       document.querySelectorAll(`#ticket-table .col-${c.key}`).forEach(el => el.style.display = hide ? "none" : "");
     });
+    // "Invoice #" is a Closed-queue-only column (not part of the column chooser): it
+    // shows only while viewing Closed tickets and is hidden on every other view.
+    const showInv = filter === "closed";
+    document.querySelectorAll("#ticket-table .col-invoice").forEach(el => el.style.display = showInv ? "" : "none");
   }
   function renderColsMenu() {
     $("cols-menu").innerHTML = COLUMNS.map(c =>
@@ -1024,7 +1144,13 @@ const Staff = (() => {
     $("p-hours").textContent = (current.total_hours || 0) + " h";
     $("p-phone").textContent = current.contact_phone || "—";
     $("p-po").textContent = current.po_number || "—";
+    $("p-invoice").textContent = current.invoice_number || "—";
     $("p-address").textContent = current.contact_address || "—";
+    // "Work requested by" only applies to shared multi-user logins; hide the row otherwise.
+    const reqBy = current.work_requested_by;
+    $("p-requested-by").textContent = reqBy || "—";
+    $("p-requested-by-dt").style.display = reqBy ? "" : "none";
+    $("p-requested-by").style.display = reqBy ? "" : "none";
     $("p-created").textContent = fmtDate(current.created_at);
     // "Opened by": the client contact the case is for and, when a staff member
     // opened it on the client's behalf, that staff member too ("Client / Staff").
@@ -1668,10 +1794,10 @@ const Staff = (() => {
   }
   async function deleteTicket() {
     const ref = current.reference || "this ticket";
-    if (!await axusConfirm(`Permanently delete ${ref}?\n\nThis removes the ticket and all of its replies, notes, time entries, and attachments. This cannot be undone.`)) return;
+    if (!await axusConfirm(`Move ${ref} to the Archive?\n\nIt will be hidden from all views and can be restored from the Archive. Anything left in the Archive is permanently deleted after ${ARCHIVE_RETENTION_DAYS} days.`)) return;
     try {
       await api(`/api/tickets/${current.id}`, { method: "DELETE" });
-      toast(`Deleted ${ref}`);
+      toast(`${ref} moved to Archive`);
       showQueue(); await loadTickets();
     } catch (err) { toast(err.message); }
   }
@@ -1928,6 +2054,7 @@ const Staff = (() => {
       case "phone": return u.phone || "";
       case "role": return u.role || "";
       case "business": return u.client_id ? (clientMap[u.client_id] || "") : "";
+      case "multi": return u.is_multi_user ? 1 : 0;
       case "tickets": return u.assigned_tickets || 0;
       case "status": return u.is_active ? 1 : 0;
       default: return "";
@@ -1964,6 +2091,7 @@ const Staff = (() => {
         <td class="cell-muted col-phone">${esc(u.phone || "—")}</td>
         <td class="col-role"><span class="badge ${roleBadge[u.role] || "closed"}">${cap(u.role)}</span></td>
         <td class="cell-muted col-business">${u.client_id ? esc(clientMap[u.client_id] || "—") : "—"}</td>
+        <td class="col-multi">${u.is_multi_user ? '<span class="badge in_progress">Multi-user</span>' : '<span class="cell-muted">—</span>'}</td>
         <td class="cell-muted col-tickets">${u.assigned_tickets || 0}</td>
         <td class="col-status"><span class="badge ${u.is_active ? "resolved" : "closed"}">${u.is_active ? "Active" : "Inactive"}</span></td>
         <td class="user-actions col-actions">${actions}</td>`;
@@ -2018,6 +2146,7 @@ const Staff = (() => {
       $("uf-name").value = u.full_name; $("uf-email").value = u.email;
       $("uf-phone").value = u.phone || ""; $("uf-roleSel").value = u.role;
       $("uf-active").value = String(u.is_active); $("uf-client").value = u.client_id || "";
+      $("uf-multi").checked = !!u.is_multi_user;
       userEditId = u.id;
     } else {
       $("user-modal-title").textContent = "New User";
@@ -2035,6 +2164,7 @@ const Staff = (() => {
       phone: $("uf-phone").value.trim() || null,
       role: $("uf-roleSel").value,
       client_id: clientVal ? parseInt(clientVal) : null,
+      is_multi_user: $("uf-multi").checked,
     };
     if (userEditId) {
       await api(`/api/users/${userEditId}`, { method: "PUT", body: { ...base, is_active: $("uf-active").value === "true" } });
@@ -2297,12 +2427,15 @@ const Staff = (() => {
         item.classList.add("active");
         if (item.dataset.section === "customers") { showCustomers(); renderCustomers(); }
         else if (item.dataset.section === "users") { showUsers(); renderUsers(); }
+        else if (item.dataset.filter === "archive") { filter = "archive"; showArchive(); renderArchive(); }
         else { filter = item.dataset.filter; showQueue(); renderQueue(); }
       };
     });
     // toolbar
     $("search").oninput = renderQueue;
     bindSort("ticket-table", queueSort, renderQueue);
+    bindSort("archive-table", archiveSort, renderArchive);
+    $("arch-search").oninput = renderArchive;
     $("f-status").onchange = renderQueue;
     $("f-priority").onchange = renderQueue;
     $("f-client").onchange = renderQueue;
@@ -2323,7 +2456,8 @@ const Staff = (() => {
       btnId: "usr-cols-btn", menuId: "usr-cols-menu",
       columns: [{ key: "name", label: "Name" }, { key: "email", label: "Email" },
                 { key: "phone", label: "Phone" }, { key: "role", label: "Role" },
-                { key: "business", label: "Business" }, { key: "tickets", label: "Tickets" },
+                { key: "business", label: "Business" }, { key: "multi", label: "Multi-user" },
+                { key: "tickets", label: "Tickets" },
                 { key: "status", label: "Status" }, { key: "actions", label: "Actions" }],
     });
 
@@ -2471,6 +2605,11 @@ const Staff = (() => {
     $("ai-suggest").onclick = () => {
       if (!current || !current.id) { toast("Open a ticket first."); return; }
       aiAssist($("ai-suggest"), "suggest", { ticket_id: current.id }, $("reply-body"));
+    };
+    $("ai-expand").onclick = () => {
+      const txt = $("reply-body").value.trim();
+      if (!txt) { toast("Type the directions first, then Expand."); return; }
+      aiAssist($("ai-expand"), "expand", { text: txt, context: (current && current.title) || null }, $("reply-body"));
     };
     $("ai-rewrite-desc").onclick = async () => {
       const txt = $("nt-desc").value.trim();

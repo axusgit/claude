@@ -112,6 +112,18 @@ def start_xcitium_health_monitor():
 
 
 @app.on_event("startup")
+def start_archive_purge():
+    """Permanently delete tickets left in the Archive past the retention window
+    (ARCHIVE_RETENTION_DAYS, default 30). Sweeps every few hours. Disable with
+    ARCHIVE_PURGE_ENABLED=0."""
+    import os
+    if os.getenv("ARCHIVE_PURGE_ENABLED", "1") != "1":
+        return
+    from app import archive_purge
+    archive_purge.start_scheduler_thread()
+
+
+@app.on_event("startup")
 def seed_default_boards():
     """Create the default service boards once, if none exist."""
     from app.database import SessionLocal

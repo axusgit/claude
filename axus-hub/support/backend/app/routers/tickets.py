@@ -9,7 +9,7 @@ import random
 from app.database import get_db
 from app.models.ticket import (
     Ticket, TimeEntry, TicketComment, TicketActivity, TicketStatus, TicketType,
-    TICKET_ORIGINS,
+    TICKET_ORIGINS, priority_label,
 )
 from app.models.ticket_watcher import TicketWatcher
 from app.models.attachment import Attachment
@@ -91,6 +91,8 @@ class TicketIn(BaseModel):
     contact_address: Optional[str] = None   # optional customer contact info
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
+    invoice_number: Optional[str] = None     # our invoice #, recorded by staff
+    work_requested_by: Optional[str] = None  # who the work is for (multi-user accounts)
     scheduled_date: Optional[datetime] = None
 
 
@@ -109,6 +111,8 @@ class TicketUpdate(BaseModel):
     contact_address: Optional[str] = None
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
+    invoice_number: Optional[str] = None
+    work_requested_by: Optional[str] = None
     scheduled_date: Optional[datetime] = None
 
 
@@ -189,6 +193,8 @@ def _fmt_field(db, field, value):
             return "Unassigned" if field == "assigned_to_id" else "None"
         u = db.query(User).filter(User.id == value).first()
         return (u.full_name or u.email) if u else f"#{value}"
+    if field == "priority":
+        return priority_label(value)
     return _fmt(value)
 
 
@@ -238,6 +244,7 @@ class TicketOut(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime]
     closed_at: Optional[datetime]
+    archived_at: Optional[datetime] = None   # set while in the Archive (recycle bin)
     # Provenance. Native tickets are "native"; rows mirrored from the legacy
     # Xcitium Service Desk are "xcitium" (read-only). For xcitium rows the client
     # and reporter come as names (no native FK), so the UI shows them inline.
@@ -248,6 +255,8 @@ class TicketOut(BaseModel):
     contact_address: Optional[str] = None
     contact_phone: Optional[str] = None
     po_number: Optional[str] = None
+    invoice_number: Optional[str] = None
+    work_requested_by: Optional[str] = None
     scheduled_date: Optional[datetime] = None
 
     class Config:
@@ -295,6 +304,7 @@ def list_tickets(
     status: Optional[str] = None,
     client_id: Optional[int] = None,
     include_xcitium: bool = True,
+    archived: bool = False,
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
@@ -303,6 +313,13 @@ def list_tickets(
         q = q.filter(Ticket.status == status)
     if client_id:
         q = q.filter(Ticket.client_id == client_id)
+    if archived:
+        # The Archive (recycle bin): only soft-deleted native tickets, newest-archived
+        # first. Xcitium mirror rows can't be archived, so they're never included here.
+        q = q.filter(Ticket.archived_at.isnot(None))
+        return [TicketOut.model_validate(t) for t in q.order_by(Ticket.archived_at.desc()).all()]
+    # Normal views never show archived tickets.
+    q = q.filter(Ticket.archived_at.is_(None))
     rows = [TicketOut.model_validate(t) for t in q.order_by(Ticket.created_at.desc()).all()]
 
     # Merge in the read-only Xcitium mirror (skipped when filtering by a native
@@ -888,22 +905,51 @@ def delete_attachment(ticket_id: int, attachment_id: int, db: Session = Depends(
 
 
 @router.delete("/{ticket_id}")
-def delete_ticket(ticket_id: int, db: Session = Depends(get_db),
-                  current_user: User = Depends(require_admin)):
-    """Permanently delete a ticket and everything under it. Admin-only.
+def archive_ticket(ticket_id: int, db: Session = Depends(get_db),
+                   current_user: User = Depends(require_admin)):
+    """Soft-delete a ticket: move it to the Archive (recycle bin). Admin-only.
+
+    The ticket disappears from every normal view but is fully recoverable with
+    `restore`, until it is permanently deleted — manually or automatically after the
+    retention window (see app/archive_purge.py)."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.archived_at is None:
+        ticket.archived_at = datetime.now(timezone.utc)
+        _log_activity(db, ticket_id, current_user.id, "archived", "Moved to Archive")
+        db.commit()
+    return {"status": "archived", "id": ticket_id, "reference": ticket.reference}
+
+
+@router.post("/{ticket_id}/restore", response_model=TicketOut)
+def restore_ticket(ticket_id: int, db: Session = Depends(get_db),
+                   current_user: User = Depends(require_admin)):
+    """Restore an archived ticket back to its normal (active) state. Admin-only."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.archived_at is not None:
+        ticket.archived_at = None
+        _log_activity(db, ticket_id, current_user.id, "restored", "Restored from Archive")
+        db.commit()
+        db.refresh(ticket)
+    return ticket
+
+
+def _purge_ticket(db: Session, ticket: Ticket) -> Optional[str]:
+    """Permanently remove a ticket and everything under it. Caller commits.
 
     Comments, activities, and attachment rows cascade via the ORM; time entries,
     watchers, and the attachment files on disk are removed explicitly. Any
     sub-tickets are detached (their project link is cleared) rather than deleted."""
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
     ref = ticket.reference
+    tid = ticket.id
     # detach sub-tickets so a project delete doesn't orphan them
-    db.query(Ticket).filter(Ticket.project_id == ticket_id).update(
+    db.query(Ticket).filter(Ticket.project_id == tid).update(
         {Ticket.project_id: None}, synchronize_session=False)
     # attachment files on disk
-    for a in db.query(Attachment).filter(Attachment.ticket_id == ticket_id).all():
+    for a in db.query(Attachment).filter(Attachment.ticket_id == tid).all():
         p = os.path.join(UPLOAD_DIR, a.stored_name)
         if os.path.exists(p):
             try:
@@ -911,8 +957,19 @@ def delete_ticket(ticket_id: int, db: Session = Depends(get_db),
             except OSError:
                 pass
     # rows that don't cascade
-    db.query(TimeEntry).filter(TimeEntry.ticket_id == ticket_id).delete(synchronize_session=False)
-    db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket_id).delete(synchronize_session=False)
+    db.query(TimeEntry).filter(TimeEntry.ticket_id == tid).delete(synchronize_session=False)
+    db.query(TicketWatcher).filter(TicketWatcher.ticket_id == tid).delete(synchronize_session=False)
     db.delete(ticket)   # cascades comments / activities / attachment rows
+    return ref
+
+
+@router.delete("/{ticket_id}/permanent")
+def delete_ticket_permanent(ticket_id: int, db: Session = Depends(get_db),
+                            current_user: User = Depends(require_admin)):
+    """Permanently delete a ticket and everything under it. Admin-only. Irreversible."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    ref = _purge_ticket(db, ticket)
     db.commit()
     return {"status": "deleted", "id": ticket_id, "reference": ref}

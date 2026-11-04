@@ -53,6 +53,22 @@ _SUGGEST_SYSTEM = (
     "Only use information present in the ticket — never invent facts, names, or commitments. If key "
     "information is missing, ask for it directly. " + _NO_FLUFF + " Return ONLY the suggested reply."
 )
+_EXPAND_SYSTEM = (
+    "You are a senior IT support engineer at Axus Technologies writing to a customer. "
+    "The draft below gives directions on how to perform a task. Expand it into a MORE TECHNICAL, "
+    "well-organized, step-by-step walkthrough the customer can follow without guesswork. "
+    "Organize it clearly: a brief one-line intro, then explicit numbered steps in order, with the "
+    "exact menu paths, button/field names, settings, and commands to use at each step, and a short "
+    "note on what the customer should see when a step succeeds. Keep the tone professional and "
+    "approachable; write out each action in full rather than assuming prior knowledge. "
+    "Preserve every technical fact, number, name, path, and instruction in the draft exactly, and keep "
+    "the same overall approach — you are elaborating and organizing the given directions, not changing "
+    "the method. You may add standard, widely-applicable technical detail that is implied by the steps "
+    "(e.g. the usual menu path to reach a setting), but never invent environment-specific specifics "
+    "(hostnames, IP addresses, account names, credentials, license keys, URLs) that are not in the "
+    "draft; where such a value is needed, use a clear placeholder like <your server name>. "
+    + _NO_FLUFF + " Return ONLY the expanded response."
+)
 
 
 def _chat_raw(messages: list, max_tokens: int = 700, temperature: float = 0.4) -> str:
@@ -139,6 +155,26 @@ def rewrite(data: RewriteIn, _: User = Depends(require_staff)):
                     f"(Do NOT include the subject in your output; rewrite only the message below.)\n\n"
                     f"Message to rewrite:\n{text[:6000]}")
     return {"result": _chat(_REWRITE_SYSTEM, user_msg, temperature=0.6)}
+
+
+class ExpandIn(BaseModel):
+    text: str
+    context: Optional[str] = None   # e.g. the ticket subject — reference only, never echoed
+
+
+@router.post("/expand")
+def expand(data: ExpandIn, _: User = Depends(require_staff)):
+    text = (data.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Nothing to expand — type the directions first.")
+    ctx = (data.context or "").strip()
+    user_msg = text[:6000]
+    if ctx:
+        user_msg = (f"For reference only — the ticket subject is: {ctx[:300]}\n"
+                    f"(Do NOT include the subject in your output; expand only the directions below.)\n\n"
+                    f"Directions to expand:\n{text[:6000]}")
+    # A fuller, step-by-step answer needs more room than a plain rewrite.
+    return {"result": _chat(_EXPAND_SYSTEM, user_msg, max_tokens=1100, temperature=0.4)}
 
 
 class SuggestIn(BaseModel):

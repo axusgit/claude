@@ -157,6 +157,7 @@ textarea { resize: vertical; }
 
 /* ---------- New-ticket attachments ---------- */
 .nt-optional { color: var(--muted); font-weight: 400; font-size: 12px; }
+.nt-required { color: var(--orange, #f26722); font-weight: 600; font-size: 12px; }
 .nt-attach-hint { margin: 4px 0 12px; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
 .nt-file-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 0; }
 .nt-file { font-size: 12.5px; color: var(--text-soft); display: flex; gap: 6px; align-items: center; }
