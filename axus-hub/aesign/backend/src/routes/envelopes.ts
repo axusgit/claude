@@ -877,12 +877,15 @@ export async function envelopeRoutes(app: FastifyInstance) {
     );
     if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
     const row = env.rows[0];
-    // `?working=1` forces the un-sealed working PDF (no appended certificate page),
-    // which is the exact base the seal composites onto — used by the in-app Axus
-    // signing overlay so placed-field coordinates map correctly even once completed.
-    const working = (req.query as { working?: string }).working;
+    // The in-app Axus signing overlay (`?working=1`) places fields on, and the
+    // seal then composites onto, the document AS IT CURRENTLY STANDS — so for a
+    // completed envelope that is its SEALED copy (e.g. an uploaded client-signed
+    // scan), never the stale original `pdf_file`. Basing on pdf_file here would
+    // discard whatever is already on the signed copy. Same bytes for both ⇒
+    // placed-field coordinates map correctly. (`working` is accepted for
+    // backwards-compat but no longer changes the selection.)
     const fileName: string | null =
-      !working && row.status === "completed" && row.sealed_file
+      row.status === "completed" && row.sealed_file
         ? row.sealed_file
         : (row.pdf_file ?? row.source_file);
     if (!fileName) return reply.code(404).send({ error: "No document uploaded" });
@@ -1225,7 +1228,7 @@ export async function envelopeRoutes(app: FastifyInstance) {
     }
 
     const env = await pool.query(
-      `select id, title, status, pdf_file, source_file, doc_type, company, quote_data, callback_url
+      `select id, title, status, pdf_file, source_file, sealed_file, doc_type, company, quote_data, callback_url
        from envelope where id = $1`,
       [envId],
     );
@@ -1234,7 +1237,14 @@ export async function envelopeRoutes(app: FastifyInstance) {
     if (e.status === "cancelled" || e.status === "declined") {
       return reply.code(409).send({ error: `This document has been ${e.status} and can't be signed.` });
     }
-    const base = (e.pdf_file ?? e.source_file) as string | null;
+    // Composite Axus's signature onto the document AS IT CURRENTLY STANDS: for a
+    // completed envelope that is its SEALED copy (e.g. the uploaded client-signed
+    // scan), NOT the stale original `pdf_file` — basing on pdf_file would discard
+    // whatever is already on the signed copy. This matches the base the placement
+    // overlay renders (GET /:id/document), so placed coordinates line up.
+    const base = ((e.status === "completed" && e.sealed_file)
+      ? e.sealed_file
+      : (e.pdf_file ?? e.source_file)) as string | null;
     if (!base) return reply.code(400).send({ error: "This document has no PDF to sign." });
     if (!existsSync(join(config.storageDir, base))) {
       return reply.code(404).send({ error: "Document file is missing on disk." });
