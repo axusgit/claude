@@ -37,6 +37,7 @@ import { Button, Card, Input, StatusBadge } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
 import { recipientColor } from "@/lib/utils";
 import { PdfCanvas } from "@/features/PdfCanvas";
+import { AxusSignModal } from "@/features/AxusSignModal";
 
 // BAA is generated on the fly (backend/src/baapdf.ts, Hardened Form v1.2) on the Axus
 // letterhead with two signers (Customer, then Axus Technologies) STACKED on a dedicated
@@ -488,26 +489,10 @@ export function EnvelopeEditor() {
   }
 
   const [sending, setSending] = useState(false);
-  const [axusSigning, setAxusSigning] = useState(false);
-  // Counter-sign as Axus in-app after send: ensure the Axus block exists, then
-  // open its signing page (the normal /sign flow) so the logged-in Axus person
-  // signs right away without an emailed link.
-  async function axusSign() {
-    setError(null);
-    setNotice(null);
-    setAxusSigning(true);
-    try {
-      const { url } = await api.axusSign(id);
-      window.open(url, "_blank", "noopener");
-      setNotice(
-        "Opened the Axus signing page in a new tab — sign there, then refresh this page to see the update.",
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start the Axus signature.");
-    } finally {
-      setAxusSigning(false);
-    }
-  }
+  // In-app "Sign as Axus" on any document (including one already completed, or a
+  // customer copy with no Axus block): opens the place-signature-and-draw modal;
+  // the backend composites it onto the working PDF and re-seals.
+  const [showAxusSign, setShowAxusSign] = useState(false);
   async function send() {
     if (
       !(await confirmDialog({
@@ -686,18 +671,18 @@ export function EnvelopeEditor() {
                 </Button>
               </>
             )}
-          {(detail.envelope.status === "sent" ||
-            detail.envelope.status === "partially_completed") && (
-            <Button
-              variant="outline"
-              onClick={() => void axusSign()}
-              disabled={axusSigning}
-              title="Sign the Axus block yourself, in-app, without waiting for an emailed link"
-            >
-              <PenLine className="h-4 w-4" />
-              {axusSigning ? "Opening…" : "Sign as Axus"}
-            </Button>
-          )}
+          {!!detail.envelope.pdf_file &&
+            detail.envelope.status !== "cancelled" &&
+            detail.envelope.status !== "declined" && (
+              <Button
+                variant="outline"
+                onClick={() => setShowAxusSign(true)}
+                title="Sign this document as Axus yourself, in-app — works even on a completed or customer copy with no Axus block"
+              >
+                <PenLine className="h-4 w-4" />
+                Sign as Axus
+              </Button>
+            )}
           {(detail.envelope.status === "sent" ||
             detail.envelope.status === "partially_completed") && (
             <Button
@@ -869,6 +854,18 @@ export function EnvelopeEditor() {
           onDone={(msg) => {
             setNotice(msg);
             setShowCopy(false);
+            void load();
+          }}
+        />
+      )}
+
+      {showAxusSign && (
+        <AxusSignModal
+          envelopeId={id}
+          onClose={() => setShowAxusSign(false)}
+          onDone={(msg) => {
+            setNotice(msg);
+            setShowAxusSign(false);
             void load();
           }}
         />

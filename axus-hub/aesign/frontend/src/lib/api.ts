@@ -197,6 +197,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  // Sign AS AXUS directly, in-app, on any document (incl. completed / a customer
+  // copy with no Axus block): place the signature (+ optional date), draw it, and
+  // seal it in. Emails the finished copy to the Axus team + the signer only.
+  axusSelfSign: (
+    id: string,
+    data: {
+      consent: boolean;
+      signature: string;
+      fields: { type: FieldType; page: number; x: number; y: number; w: number; h: number; value?: string }[];
+    },
+  ) =>
+    req<{ ok: boolean; completed: boolean; sha256: string }>(`/envelopes/${id}/axus-selfsign`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  // The un-sealed working PDF (no appended certificate) — the base the Axus
+  // in-app signing overlay renders so placed coordinates map onto the seal.
+  workingDocumentUrl: (id: string) => `/api/envelopes/${id}/document?working=1`,
   deleteEnvelope: (id: string) =>
     req<{ ok: boolean }>(`/envelopes/${id}`, { method: "DELETE" }),
   // Recycle Bin: list soft-deleted docs, restore to Documents, or purge forever.

@@ -877,8 +877,12 @@ export async function envelopeRoutes(app: FastifyInstance) {
     );
     if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
     const row = env.rows[0];
+    // `?working=1` forces the un-sealed working PDF (no appended certificate page),
+    // which is the exact base the seal composites onto — used by the in-app Axus
+    // signing overlay so placed-field coordinates map correctly even once completed.
+    const working = (req.query as { working?: string }).working;
     const fileName: string | null =
-      row.status === "completed" && row.sealed_file
+      !working && row.status === "completed" && row.sealed_file
         ? row.sealed_file
         : (row.pdf_file ?? row.source_file);
     if (!fileName) return reply.code(404).send({ error: "No document uploaded" });
@@ -1190,6 +1194,162 @@ export async function envelopeRoutes(app: FastifyInstance) {
 
     logActivity(id.email, "Counter-signing as Axus (in app)", e.title, envId);
     return { ok: true, url: `${config.publicBaseUrl}/sign/${axus.sign_token}` };
+  });
+
+  // Sign AS AXUS, in-app, on ANY document — including one already completed or a
+  // customer copy uploaded without an Axus signature block. The logged-in staff
+  // member places their signature (and optional date) directly on the page and
+  // draws it here; we attribute it to them, composite it onto the working PDF,
+  // re-seal (certificate marks it "signed in app by Axus staff"), mark the
+  // document completed, and email the finished copy to the Axus team + the signer
+  // only (the other parties are NOT auto-emailed — use "Send a copy" for that).
+  // Unlike /axus-sign this needs no pre-existing Axus field layout and works at
+  // any status except a cancelled/declined (voided) document.
+  app.post("/:id/axus-selfsign", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const envId = (req.params as { id: string }).id;
+    const body = (req.body ?? {}) as {
+      consent?: boolean;
+      signature?: string;
+      fields?: { type: string; page: number; x: number; y: number; w: number; h: number; value?: string }[];
+    };
+    if (!body.consent) {
+      return reply.code(400).send({ error: "You must consent to sign electronically." });
+    }
+    const sig = (body.signature ?? "").trim();
+    if (!sig.startsWith("data:image")) {
+      return reply.code(400).send({ error: "Draw your signature before signing." });
+    }
+    const placed = (body.fields ?? []).filter(
+      (f) => f && typeof f.page === "number" && f.page >= 1 && f.type,
+    );
+    if (!placed.some((f) => f.type === "signature")) {
+      return reply.code(400).send({ error: "Place your signature on the document before signing." });
+    }
+
+    const env = await pool.query(
+      `select id, title, status, pdf_file, source_file, doc_type, company, quote_data, callback_url
+       from envelope where id = $1`,
+      [envId],
+    );
+    if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
+    const e = env.rows[0];
+    if (e.status === "cancelled" || e.status === "declined") {
+      return reply.code(409).send({ error: `This document has been ${e.status} and can't be signed.` });
+    }
+    const base = (e.pdf_file ?? e.source_file) as string | null;
+    if (!base) return reply.code(400).send({ error: "This document has no PDF to sign." });
+    if (!existsSync(join(config.storageDir, base))) {
+      return reply.code(404).send({ error: "Document file is missing on disk." });
+    }
+
+    const ip = req.ip;
+    const ua = (req.headers["user-agent"] as string) ?? "";
+    const today = etTodayLong();
+
+    // Create an Axus signer attributed to the logged-in staff member, marked
+    // signed now (consented in-app). A fresh slot each time keeps a clean record
+    // of exactly who applied this signature and when.
+    const nextOrder =
+      (
+        await pool.query(
+          `select coalesce(max(sign_order), 0) + 1 as n from recipient where envelope_id = $1`,
+          [envId],
+        )
+      ).rows[0].n;
+    const rid = (
+      await pool.query(
+        `insert into recipient (envelope_id, name, email, role, sign_order, status, consent_at, signed_at, ip, user_agent)
+         values ($1, $2, $3, 'signer', $4, 'signed', now(), now(), $5, $6) returning id`,
+        [envId, id.name, id.email, nextOrder, ip, ua],
+      )
+    ).rows[0].id as string;
+
+    // Insert the placed field(s): the signature carries the drawn image; a date
+    // field is stamped with today's date (ET); any other placed field keeps its
+    // typed value.
+    for (const f of placed) {
+      const value =
+        f.type === "signature" ? sig : f.type === "date" ? today : (f.value ?? null);
+      await pool.query(
+        `insert into field (envelope_id, recipient_id, type, page, x, y, w, h, value, required)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)`,
+        [envId, rid, f.type, f.page, f.x, f.y, f.w, f.h, value],
+      );
+    }
+
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail, ip) values ($1, $2, 'consented', $3, $4)`,
+      [envId, id.email, "Consented to sign electronically (in app)", ip],
+    );
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail, ip) values ($1, $2, 'signed', $3, $4)`,
+      [envId, id.email, `${id.name} — signed as Axus in app`, ip],
+    );
+
+    // Re-seal from the working PDF with the FULL current field set (existing
+    // signatures + the new Axus block). Signers who are signed but never
+    // consented electronically signed offline; the new staff slot signed in app.
+    const fieldsQ = await pool.query(
+      `select type, page, x, y, w, h, value from field where envelope_id = $1`,
+      [envId],
+    );
+    const recsQ = await pool.query(
+      `select id, name, email, role, status, ip, consent_at,
+              to_char(signed_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') as signed_at
+       from recipient where envelope_id = $1 order by sign_order`,
+      [envId],
+    );
+    // Certificate lists only parties who actually signed (a pending external
+    // signer who never signed is not attributed one). Offline = signed on paper
+    // (status 'signed' with no electronic consent); the new staff slot is in-app.
+    const signed = recsQ.rows.filter((r) => r.role !== "viewer" && r.status === "signed");
+    const manualSignerEmails = new Set(
+      signed
+        .filter((r) => !r.consent_at && (r.email as string).toLowerCase() !== id.email.toLowerCase())
+        .map((r) => (r.email as string).toLowerCase()),
+    );
+    const inAppSignerEmails = new Set([id.email.toLowerCase()]);
+
+    const { bytes, sha256 } = await sealPdf(
+      join(config.storageDir, base),
+      fieldsQ.rows as SealField[],
+      signed as SealRecipient[],
+      { title: e.title, envelopeId: envId, manualSignerEmails, inAppSignerEmails },
+      true,
+    );
+    const sealedName = `${envId}-sealed.pdf`;
+    await writeFile(join(config.storageDir, sealedName), bytes);
+    await pool.query(
+      `update envelope set status = 'completed', completed_at = now(), sealed_file = $1, sha256 = $2 where id = $3`,
+      [sealedName, sha256, envId],
+    );
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'completed', $3)`,
+      [envId, id.email, `Axus-signed in app by ${id.name}. SHA-256 ${sha256}`],
+    );
+    logActivity(id.email, "Signed as Axus (in app)", e.title, envId);
+
+    // Notify the Axus team inbox (info@) + the staff member who signed — only.
+    // The other parties are intentionally NOT emailed; staff send the countersigned
+    // copy deliberately via "Send a copy".
+    const attachment = { filename: `${envelopeDocName(e, { signed: true })}.pdf`, content: Buffer.from(bytes) };
+    const notified = new Set<string>();
+    for (const to of [config.mail.notifyTo, id.email]) {
+      const key = (to ?? "").toLowerCase();
+      if (!key || notified.has(key)) continue;
+      notified.add(key);
+      await sendCompleted({
+        to,
+        recipientName: key === id.email.toLowerCase() ? id.name : "Axus Team",
+        title: e.title,
+        attachment,
+        envelopeId: envId,
+      });
+    }
+
+    return { ok: true, completed: true, sha256 };
   });
 
   // Email a plain PDF copy of the document to one or more people who are NOT

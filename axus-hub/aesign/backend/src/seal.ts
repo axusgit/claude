@@ -25,7 +25,7 @@ export async function sealPdf(
   sourcePath: string,
   fields: SealField[],
   recipients: SealRecipient[],
-  meta: { title: string; envelopeId: string; manualSignerEmails?: Set<string> },
+  meta: { title: string; envelopeId: string; manualSignerEmails?: Set<string>; inAppSignerEmails?: Set<string> },
   includeCert = true,
 ): Promise<{ bytes: Uint8Array; sha256: string }> {
   const src = await readFile(sourcePath);
@@ -99,13 +99,20 @@ export async function sealPdf(
   y -= 8;
   line("Signers", { bold: true, size: 12, color: rgb(0.07, 0.09, 0.15) });
   const manual = meta.manualSignerEmails;
+  const inApp = meta.inAppSignerEmails;
   let anyOffline = false;
+  let anyInApp = false;
   for (const r of recipients) {
-    const offline = manual?.has(r.email.toLowerCase()) ?? false;
+    const email = r.email.toLowerCase();
+    const offline = manual?.has(email) ?? false;
+    const inAppStaff = !offline && (inApp?.has(email) ?? false);
     if (offline) anyOffline = true;
+    if (inAppStaff) anyInApp = true;
     line(`• ${r.name} <${r.email}>`, { bold: true });
     if (offline) {
       line(`    Signed on paper (offline), uploaded: ${r.signed_at ?? "—"}`);
+    } else if (inAppStaff) {
+      line(`    Signed in app by Axus staff: ${r.signed_at ?? "—"}     IP: ${r.ip ?? "—"}`);
     } else {
       line(`    Signed electronically: ${r.signed_at ?? "—"}     IP: ${r.ip ?? "—"}`);
     }
@@ -127,6 +134,16 @@ export async function sealPdf(
       color: rgb(0.45, 0.45, 0.45),
     });
     line("this record by Axus staff.", { size: 9, color: rgb(0.45, 0.45, 0.45) });
+  }
+  if (anyInApp) {
+    line('Signatures marked "signed in app by Axus staff" were applied directly in Axus eSign by', {
+      size: 9,
+      color: rgb(0.45, 0.45, 0.45),
+    });
+    line("an authenticated Axus staff member (SSO), with timestamp and IP recorded in the audit trail.", {
+      size: 9,
+      color: rgb(0.45, 0.45, 0.45),
+    });
   }
   }
 
