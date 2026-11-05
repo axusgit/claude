@@ -377,6 +377,38 @@ services:
       traefik.http.routers.subcontractors-portal.priority: "100"
     networks: [axus]
 
+  # Axus Time Reporting System (ATRS) — 1099 contractor timesheets with
+  # approval. Fully SSO-gated (contractors AND approvers log in via Authentik);
+  # no public routes. DB-only, no file storage, so no volume.
+  atrs:
+    build:
+      context: ..
+      dockerfile: axus-hub/atrs/backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/atrs
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
+      PUBLIC_BASE_URL: https://atrs.axustechnologies.com
+      # Email (M365 relay) — reuses the platform's configured mailbox, same as eSign.
+      SMTP_HOST: ${AUTHENTIK_EMAIL__HOST}
+      SMTP_PORT: ${AUTHENTIK_EMAIL__PORT}
+      SMTP_USER: ${AUTHENTIK_EMAIL__USERNAME}
+      SMTP_PASS: ${AUTHENTIK_EMAIL__PASSWORD}
+      MAIL_FROM: Axus Time Reporting <no-reply@axustechnologies.com>
+      MAIL_SENDER: ${AUTHENTIK_EMAIL__USERNAME}
+      # Who is notified when a contractor submits time for approval.
+      ATRS_APPROVER_EMAIL: ${ATRS_APPROVER_EMAIL:-info@axustechnologies.com}
+    depends_on:
+      postgres: {condition: service_healthy}
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.atrs.rule: Host(`atrs.axustechnologies.com`)
+      traefik.http.routers.atrs.entrypoints: websecure
+      traefik.http.routers.atrs.tls.certresolver: letsencrypt
+      traefik.http.routers.atrs.middlewares: geogate@file,authentik@file
+      traefik.http.services.atrs.loadbalancer.server.port: "8000"
+    networks: [axus]
+
   # Headless LibreOffice for Word->PDF conversion (internal only).
   gotenberg:
     image: gotenberg/gotenberg:8

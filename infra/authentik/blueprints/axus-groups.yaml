@@ -32,6 +32,12 @@ entries:
   - model: authentik_core.group
     identifiers: {name: app-subcontractors}
     attrs: {name: app-subcontractors}
+  # Gates the ATRS (Time Reporting) app: contractors + approvers both sign in
+  # via SSO. Membership (or atrs-role-*) grants access; atrs-role-admin marks an
+  # approver. Tile visibility too.
+  - model: authentik_core.group
+    identifiers: {name: app-atrs}
+    attrs: {name: app-atrs}
   # Controls On-Call TILE visibility in the Hub only. On-Call keeps its own
   # login — this group does NOT gate access inside the app (no forward-auth).
   - model: authentik_core.group
@@ -67,6 +73,15 @@ entries:
   - model: authentik_core.group
     identifiers: {name: aesign-role-member}
     attrs: {name: aesign-role-member}
+  # --- ATRS (Time Reporting) app roles (read by the ATRS app) ---
+  # atrs-role-admin = approver (review/approve/return time, see everyone).
+  # atrs-role-contractor = logs their own time only. app-atrs alone also = contractor.
+  - model: authentik_core.group
+    identifiers: {name: atrs-role-admin}
+    attrs: {name: atrs-role-admin}
+  - model: authentik_core.group
+    identifiers: {name: atrs-role-contractor}
+    attrs: {name: atrs-role-contractor}
   # --- roles (mapped to in-app role by libs/auth) ---
   - model: authentik_core.group
     identifiers: {name: role-admin}

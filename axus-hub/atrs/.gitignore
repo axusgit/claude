@@ -1,0 +1,4 @@
+# Build artifacts — rebuilt in-container by the Dockerfile (npm ci + build).
+node_modules/
+dist/
+*.tsbuildinfo
