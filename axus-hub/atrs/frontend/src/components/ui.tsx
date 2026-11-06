@@ -53,6 +53,18 @@ export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<H
   );
 }
 
+export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={cn(
+        "h-[38px] w-full rounded-lg border border-line bg-surface px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return <label className={cn("text-sm font-medium text-ink", className)} {...props} />;
 }

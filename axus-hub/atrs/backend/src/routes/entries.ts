@@ -10,9 +10,10 @@ const SELECT = `
          to_char(e.work_date, 'YYYY-MM-DD') as work_date,
          to_char(e.start_time, 'HH24:MI') as start_time,
          to_char(e.end_time, 'HH24:MI') as end_time,
-         e.hours::float8 as hours, e.task, e.status,
+         e.hours::float8 as hours, e.task, e.category, e.status,
          e.submitted_at, e.decided_at, e.decided_by, e.decision_note,
          e.created_at, e.updated_at
+         , coalesce(w.rate, 0)::float8 as rate
   from time_entry e
   left join worker w on w.email = e.worker_email
 `;
@@ -20,24 +21,41 @@ const SELECT = `
 // Entries are editable only before/while they're being reworked.
 const EDITABLE = ["draft", "rejected"];
 
-type EntryBody = { work_date?: string; start_time?: string; end_time?: string; task?: string };
+// Time categories. 'work' is billable/worked time; the rest are leave types.
+// All use the same date + start/end → hours model and the same approval flow.
+const CATEGORIES = ["work", "pto", "holiday", "sick", "unpaid"] as const;
+type Category = (typeof CATEGORIES)[number];
+const CATEGORY_LABEL: Record<Category, string> = {
+  work: "Work",
+  pto: "PTO",
+  holiday: "Holiday",
+  sick: "Sick",
+  unpaid: "Unpaid leave",
+};
+
+type EntryBody = { work_date?: string; start_time?: string; end_time?: string; task?: string; category?: string };
 
 // Validate + normalize a create/update body. Returns the cleaned values or an
 // error string.
-function cleanEntry(b: EntryBody): { work_date: string; start_time: string; end_time: string; task: string; hours: number } | string {
+function cleanEntry(b: EntryBody): { work_date: string; start_time: string; end_time: string; task: string; hours: number; category: Category } | string {
+  const category = (b.category ?? "work").trim().toLowerCase() as Category;
+  if (!CATEGORIES.includes(category)) return "Please choose a valid category.";
   const work_date = (b.work_date ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(work_date)) return "A valid date is required.";
   const start_time = normalizeHm(b.start_time ?? "");
   const end_time = normalizeHm(b.end_time ?? "");
   if (!start_time) return "A valid start time is required.";
   if (!end_time) return "A valid end time is required.";
-  const task = (b.task ?? "").trim();
-  if (!task) return "A task description is required.";
+  let task = (b.task ?? "").trim();
+  // A description is required for worked time; for leave it's optional and
+  // defaults to the category label so lists/exports read sensibly.
+  if (category === "work" && !task) return "A task description is required.";
+  if (!task) task = CATEGORY_LABEL[category];
   if (task.length > 2000) return "Task description is too long (2000 characters max).";
   const hours = hoursBetween(start_time, end_time);
   if (hours === null || hours <= 0) return "End time must be after start time.";
   if (hours > 24) return "An entry can't exceed 24 hours.";
-  return { work_date, start_time, end_time, task, hours };
+  return { work_date, start_time, end_time, task, hours, category };
 }
 
 function rangeLabel(dates: string[]): string {
@@ -92,9 +110,9 @@ export async function entryRoutes(app: FastifyInstance) {
     if (typeof clean === "string") return reply.code(400).send({ error: clean });
     const row = (
       await pool.query(
-        `insert into time_entry (worker_email, work_date, start_time, end_time, hours, task)
-         values ($1, $2, $3, $4, $5, $6) returning id`,
-        [id.email.toLowerCase(), clean.work_date, clean.start_time, clean.end_time, clean.hours, clean.task],
+        `insert into time_entry (worker_email, work_date, start_time, end_time, hours, task, category)
+         values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+        [id.email.toLowerCase(), clean.work_date, clean.start_time, clean.end_time, clean.hours, clean.task, clean.category],
       )
     ).rows[0];
     return { ok: true, id: row.id };
@@ -115,8 +133,8 @@ export async function entryRoutes(app: FastifyInstance) {
     if (typeof clean === "string") return reply.code(400).send({ error: clean });
     await pool.query(
       `update time_entry set work_date = $1, start_time = $2, end_time = $3, hours = $4, task = $5,
-         status = 'draft', decision_note = null, updated_at = now() where id = $6`,
-      [clean.work_date, clean.start_time, clean.end_time, clean.hours, clean.task, entryId],
+         category = $6, status = 'draft', decision_note = null, updated_at = now() where id = $7`,
+      [clean.work_date, clean.start_time, clean.end_time, clean.hours, clean.task, clean.category, entryId],
     );
     return { ok: true };
   });

@@ -34,6 +34,42 @@ A worker row is auto-created on first login (`GET /api/me`).
 - `GET  /api/entries/summary` — totals (contractor: by status; admin: per worker).
 - `GET  /api/workers`, `PATCH /api/workers/:email` — admin: roster + activate/deactivate.
 
+## Categories & reports
+
+Every entry has a **category**: `work` (default), `pto`, `holiday`, `sick`, or
+`unpaid`. All categories use the same date + start/end → hours model and the same
+submit → approve flow; a description is required only for `work`.
+
+Each contractor has a **pay rate** ($/hour), set by an admin on the **Team** tab
+(which also activates/deactivates people). **Pay = worked hours × rate** — leave
+categories are tracked as hours only (not auto-valued). Reports show a "Worked pay"
+total, a per-category/per-contractor $ breakdown, and Rate + Amount columns in the CSV.
+
+The **Reports** tab (both roles) totals time over a period — presets **This/Last
+week, This/Last month, This year** (weeks start Sunday) or a custom range — broken
+down by category and status. Contractors see their own; approvers see everyone,
+with a per-contractor table and a contractor filter. **Export CSV** downloads the
+detail for invoicing/payroll. Rollups and CSV are computed client-side from the
+entries list (no separate report endpoint).
+
+## Work week & weekly approver reminder
+
+The work week is **Sunday 00:00 → Saturday 23:59 (America/New_York)**; contractors
+should submit no later than **Saturday 23:59**. At the start of each new week the
+approver is emailed a summary of everything still awaiting approval (grouped by
+contractor, with totals) so nothing lingers.
+
+- Job: `backend/src/jobs/weeklyApproverReminder.ts` → `dist/jobs/weeklyApproverReminder.js`.
+  It computes the just-closed Sun–Sat week in ET, lists all `submitted` (undecided)
+  entries, and emails `ATRS_APPROVER_EMAIL` (default `info@…`). It sends only when
+  something is pending, and is safe to run by hand any time.
+- Schedule: a **host cron on the hub box** (not in the image), pinned to Eastern:
+  ```
+  CRON_TZ=America/New_York
+  0 8 * * 0  docker exec axus-atrs-1 node dist/jobs/weeklyApproverReminder.js >> /home/ubuntu/atrs-weekly-reminder.log 2>&1
+  ```
+  → **Sunday 08:00 ET**. Manual test: `docker exec axus-atrs-1 node dist/jobs/weeklyApproverReminder.js`.
+
 ## Deploy
 
 Same pattern as eSign (see memory `axus-aesign-deploy`): push `main` → on the hub box

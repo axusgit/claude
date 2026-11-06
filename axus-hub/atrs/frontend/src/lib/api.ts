@@ -11,6 +11,19 @@ export interface Me {
 
 export type EntryStatus = "draft" | "submitted" | "approved" | "rejected";
 
+export type Category = "work" | "pto" | "holiday" | "sick" | "unpaid";
+export const CATEGORIES: Category[] = ["work", "pto", "holiday", "sick", "unpaid"];
+export const CATEGORY_LABEL: Record<Category, string> = {
+  work: "Work",
+  pto: "PTO",
+  holiday: "Holiday",
+  sick: "Sick",
+  unpaid: "Unpaid leave",
+};
+export function categoryLabel(c: string): string {
+  return (CATEGORY_LABEL as Record<string, string>)[c] ?? c;
+}
+
 export interface TimeEntry {
   id: string;
   worker_email: string;
@@ -20,6 +33,8 @@ export interface TimeEntry {
   end_time: string; // HH:MM
   hours: number;
   task: string;
+  category: Category;
+  rate: number; // the worker's current pay rate ($/hour), 0 if unset
   status: EntryStatus;
   submitted_at: string | null;
   decided_at: string | null;
@@ -38,6 +53,17 @@ export interface WorkerTotal {
   submitted_hours: number;
   approved_hours: number;
   submitted_n: number;
+}
+
+export interface Worker {
+  email: string;
+  name: string;
+  active: boolean;
+  rate: number;
+  created_at: string;
+  approved_hours: number;
+  submitted_hours: number;
+  pending_n: number;
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -63,6 +89,7 @@ export interface EntryInput {
   start_time: string;
   end_time: string;
   task: string;
+  category: Category;
 }
 
 export const api = {
@@ -82,6 +109,10 @@ export const api = {
   submit: (ids: string[]) => req<{ ok: true; submitted: number }>("/entries/submit", { method: "POST", body: JSON.stringify({ ids }) }),
   decide: (ids: string[], decision: "approved" | "rejected", note?: string) =>
     req<{ ok: true; decided: number }>("/entries/decide", { method: "POST", body: JSON.stringify({ ids, decision, note }) }),
+
+  listWorkers: () => req<{ workers: Worker[] }>("/workers"),
+  updateWorker: (email: string, body: { active?: boolean; rate?: number }) =>
+    req<{ ok: true }>(`/workers/${encodeURIComponent(email)}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   summary: (params: { from?: string; to?: string } = {}) => {
     const qs = new URLSearchParams();

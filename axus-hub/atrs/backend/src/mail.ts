@@ -104,6 +104,59 @@ export async function sendSubmitted(opts: {
   });
 }
 
+// Weekly nudge to the approver: everything currently awaiting approval, grouped
+// by contractor. Sent once a week (cron) after the Sun–Sat work week closes.
+export async function sendWeeklyApproverReminder(opts: {
+  to: string;
+  weekLabel: string; // e.g. "Nov 2 – Nov 8, 2026"
+  totalCount: number;
+  totalHours: number;
+  perWorker: { name: string; count: number; hours: number }[];
+  url: string;
+}): Promise<SendResult> {
+  const row = (label: string, count: string, hours: string, strong = false) => {
+    const top = strong ? "border-top:1px solid #e5e7eb;padding-top:8px;" : "";
+    const w = strong ? "700" : "400";
+    const ink = strong ? "#111827" : "#374151";
+    return (
+      `<tr><td style="padding:6px 0;${top}font-size:14px;font-weight:${w};color:${ink};">${label}</td>` +
+      `<td style="padding:6px 0;${top}font-size:14px;color:${ink};text-align:right;white-space:nowrap;">${count}</td>` +
+      `<td style="padding:6px 0 6px 18px;${top}font-size:14px;font-weight:700;color:#111827;text-align:right;white-space:nowrap;">${hours} h</td></tr>`
+    );
+  };
+  const body = opts.perWorker
+    .map((w) => row(esc(w.name), `${w.count} entr${w.count === 1 ? "y" : "ies"}`, String(w.hours)))
+    .join("");
+  const table =
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:4px 0 18px;">' +
+    body +
+    row("Total", `${opts.totalCount} entr${opts.totalCount === 1 ? "y" : "ies"}`, String(opts.totalHours), true) +
+    "</table>";
+  const html = shell(
+    "Timesheets awaiting your approval",
+    `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#374151;">The work week of ` +
+      `<strong>${esc(opts.weekLabel)}</strong> has closed. <strong>${opts.totalCount}</strong> timesheet ` +
+      `entr${opts.totalCount === 1 ? "y is" : "ies are"} awaiting your approval ` +
+      `(<strong>${opts.totalHours}</strong> hour${opts.totalHours === 1 ? "" : "s"} total).</p>` +
+      table +
+      '<p style="margin:0 0 8px;">' + button(opts.url, "Review & approve") + "</p>",
+  );
+  const text =
+    `The work week of ${opts.weekLabel} has closed. ${opts.totalCount} timesheet ` +
+    `entr${opts.totalCount === 1 ? "y is" : "ies are"} awaiting your approval (${opts.totalHours} h total).\n\n` +
+    opts.perWorker.map((w) => `  • ${w.name}: ${w.count} entr${w.count === 1 ? "y" : "ies"}, ${w.hours} h`).join("\n") +
+    `\n\nReview & approve: ${opts.url}\n\n— Axus Time Reporting`;
+  return runSend(opts.to, {
+    from: config.mail.from,
+    envelope: { from: config.mail.sender, to: opts.to },
+    to: opts.to,
+    subject: `Weekly timesheet approvals — ${opts.weekLabel} (${opts.totalCount} pending)`,
+    text,
+    html,
+    attachments: logoAttachment(),
+  });
+}
+
 // An admin approved or rejected time → notify the contractor.
 export async function sendDecision(opts: {
   to: string;

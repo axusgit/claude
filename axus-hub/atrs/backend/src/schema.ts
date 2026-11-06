@@ -10,6 +10,7 @@ create table if not exists worker (
   email      text unique not null,            -- lower-cased SSO email
   name       text not null,
   active     boolean not null default true,
+  rate       numeric(10,2) not null default 0,-- pay rate $/hour (set by an admin)
   created_at timestamptz not null default now()
 );
 
@@ -20,7 +21,8 @@ create table if not exists time_entry (
   start_time    time not null,                -- wall-clock start, as entered
   end_time      time not null,                -- wall-clock end, as entered
   hours         numeric(6,2) not null,        -- computed from start/end (overnight = +24h)
-  task          text not null,                -- what was done
+  task          text not null,                -- what was done (or leave note)
+  category      text not null default 'work', -- work | pto | holiday | sick | unpaid
   status        text not null default 'draft',-- draft | submitted | approved | rejected
   submitted_at  timestamptz,
   decided_at    timestamptz,
@@ -29,7 +31,11 @@ create table if not exists time_entry (
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
+-- Added after initial release — backfills existing rows to 'work'.
+alter table time_entry add column if not exists category text not null default 'work';
+alter table worker add column if not exists rate numeric(10,2) not null default 0;
 create index if not exists idx_time_entry_worker on time_entry (worker_email);
 create index if not exists idx_time_entry_status on time_entry (status);
 create index if not exists idx_time_entry_date on time_entry (work_date);
+create index if not exists idx_time_entry_category on time_entry (category);
 `;

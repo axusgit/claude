@@ -10,6 +10,11 @@ export function fmtHours(h: number): string {
   return (Math.round(h * 100) / 100).toString();
 }
 
+// Format a dollar amount: 1234.5 → "$1,234.50".
+export function fmtMoney(n: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n || 0);
+}
+
 // "YYYY-MM-DD" → "Mon, Nov 3" (parsed as a local calendar date, no tz shift).
 export function fmtDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);

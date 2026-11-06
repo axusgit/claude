@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Inbox, Undo2, Users } from "lucide-react";
-import { api, type Me, type TimeEntry, type WorkerTotal } from "@/lib/api";
+import { api, type Me, type TimeEntry, type WorkerTotal, CATEGORY_LABEL } from "@/lib/api";
 import { Button, Card, Input, Label, Modal, StatusBadge, Textarea } from "@/components/ui";
 import { fmtDate, fmtHours } from "@/lib/utils";
 
@@ -232,6 +232,11 @@ export function ApprovalsPage({ me: _me }: { me: Me }) {
                           <span className="text-sm font-medium">{fmtDate(e.work_date)}</span>
                           <span className="text-sm text-muted">{e.start_time}–{e.end_time}</span>
                           <span className="text-sm font-semibold">{fmtHours(e.hours)} h</span>
+                          {e.category !== "work" && (
+                            <span className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+                              {CATEGORY_LABEL[e.category]}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1 whitespace-pre-wrap text-sm text-ink/80">{e.task}</div>
                       </div>

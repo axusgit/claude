@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, Check, Clock, Pencil, Plus, Send, Trash2, X } from "lucide-react";
-import { api, type Me, type TimeEntry } from "@/lib/api";
-import { Button, Card, Input, Label, StatusBadge, Textarea } from "@/components/ui";
+import { api, type Me, type TimeEntry, type Category, CATEGORIES, CATEGORY_LABEL } from "@/lib/api";
+import { Button, Card, Input, Label, Select, StatusBadge, Textarea } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
 import { fmtDate, fmtHours, todayIso } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ function previewHours(start: string, end: string): number | null {
   return Math.round((diff / 60) * 100) / 100;
 }
 
-const BLANK = { work_date: todayIso(), start_time: "09:00", end_time: "17:00", task: "" };
+const BLANK = { work_date: todayIso(), start_time: "09:00", end_time: "17:00", task: "", category: "work" as Category };
 
 export function TimesheetPage({ me: _me }: { me: Me }) {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
@@ -51,7 +51,9 @@ export function TimesheetPage({ me: _me }: { me: Me }) {
   }, []);
 
   const preview = previewHours(form.start_time, form.end_time);
-  const canAdd = !!form.work_date && preview !== null && preview > 0 && form.task.trim().length > 0 && !busy;
+  const needsTask = form.category === "work";
+  const canAdd =
+    !!form.work_date && preview !== null && preview > 0 && (!needsTask || form.task.trim().length > 0) && !busy;
 
   const totals = useMemo(() => {
     const t = { draft: 0, submitted: 0, approved: 0, rejected: 0 };
@@ -91,7 +93,7 @@ export function TimesheetPage({ me: _me }: { me: Me }) {
 
   function startEdit(e: TimeEntry) {
     setEditingId(e.id);
-    setForm({ work_date: e.work_date, start_time: e.start_time, end_time: e.end_time, task: e.task });
+    setForm({ work_date: e.work_date, start_time: e.start_time, end_time: e.end_time, task: e.task, category: e.category });
     setNotice(null);
     setError(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -161,17 +163,30 @@ export function TimesheetPage({ me: _me }: { me: Me }) {
           <CalendarClock className="h-4 w-4 text-brand" />
           {editingId ? "Edit time entry" : "Log time"}
         </div>
-        <div className="grid gap-4 sm:grid-cols-[1fr_auto_auto_auto]">
+        <div className="grid gap-4 sm:grid-cols-[minmax(130px,auto)_1fr_auto_auto_auto]">
+          <div className="space-y-1.5">
+            <Label>Category</Label>
+            <Select
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value as Category })}
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABEL[c]}
+                </option>
+              ))}
+            </Select>
+          </div>
           <div className="space-y-1.5">
             <Label>Date</Label>
             <Input type="date" value={form.work_date} onChange={(e) => setForm({ ...form, work_date: e.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label>Start</Label>
+            <Label>{form.category === "work" ? "Start" : "From"}</Label>
             <Input type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label>End</Label>
+            <Label>{form.category === "work" ? "End" : "To"}</Label>
             <Input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} />
           </div>
           <div className="space-y-1.5">
@@ -183,10 +198,10 @@ export function TimesheetPage({ me: _me }: { me: Me }) {
           </div>
         </div>
         <div className="mt-4 space-y-1.5">
-          <Label>Task description</Label>
+          <Label>{form.category === "work" ? "Task description" : "Note (optional)"}</Label>
           <Textarea
             rows={2}
-            placeholder="What did you work on?"
+            placeholder={form.category === "work" ? "What did you work on?" : `Optional note for this ${CATEGORY_LABEL[form.category].toLowerCase()} entry`}
             value={form.task}
             onChange={(e) => setForm({ ...form, task: e.target.value })}
           />
@@ -263,6 +278,11 @@ export function TimesheetPage({ me: _me }: { me: Me }) {
                         {e.start_time}–{e.end_time}
                       </span>
                       <span className="text-sm font-semibold">{fmtHours(e.hours)} h</span>
+                      {e.category !== "work" && (
+                        <span className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+                          {CATEGORY_LABEL[e.category]}
+                        </span>
+                      )}
                       <StatusBadge status={e.status} />
                     </div>
                     <div className="mt-1 whitespace-pre-wrap text-sm text-ink/80">{e.task}</div>

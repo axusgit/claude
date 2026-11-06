@@ -82,6 +82,22 @@ entries:
   - model: authentik_core.group
     identifiers: {name: atrs-role-contractor}
     attrs: {name: atrs-role-contractor}
+  # Gates the APMS (Password Management) app: anyone in app-apms, or either APMS
+  # role, may reach the vault. apms-role-admin marks a vault admin (manages folders,
+  # access, import, recovery). Membership is deliberately tight — technical staff
+  # only. Tile visibility too. Strict like app-aats (NO authentik-Admins fallback).
+  - model: authentik_core.group
+    identifiers: {name: app-apms}
+    attrs: {name: app-apms}
+  # --- APMS (Password Management) app roles (read by the APMS app) ---
+  # apms-role-admin = vault admin (folders, access, import, passphrase + recovery).
+  # apms-role-user = read/write within granted folders. app-apms alone also = user.
+  - model: authentik_core.group
+    identifiers: {name: apms-role-admin}
+    attrs: {name: apms-role-admin}
+  - model: authentik_core.group
+    identifiers: {name: apms-role-user}
+    attrs: {name: apms-role-user}
   # --- roles (mapped to in-app role by libs/auth) ---
   - model: authentik_core.group
     identifiers: {name: role-admin}

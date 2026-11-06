@@ -35,6 +35,8 @@ APP_CATALOG = [
     {"key": "accounting", "name": "Accounting & Tax System", "desc": "Billing, invoicing & financials", "group": "app-accounting", "icon": "💰", "internal": False, "url": "https://aats.axustechnologies.com"},
     {"key": "esign", "name": "eSign", "desc": "E-signatures, agreements & quotes", "group": "app-aesign", "icon": "✍️", "internal": False, "url": "https://aesign.axustechnologies.com"},
     {"key": "subcontractors", "name": "Subcontractors", "desc": "Vendor onboarding & compliance", "group": "app-subcontractors", "icon": "🤝", "internal": False, "host": "subcontractors.hub.axustechnologies.com", "staff_path": "/staff"},
+    {"key": "atrs", "name": "Time Reporting", "desc": "Contractor time entry & approval", "group": "app-atrs", "icon": "⏱️", "internal": False, "url": "https://atrs.axustechnologies.com", "health": "https://atrs.axustechnologies.com/api/health"},
+    {"key": "apms", "name": "Password Management", "desc": "Zero-knowledge team password vault", "group": "app-apms", "icon": "🔐", "internal": False, "url": "https://apms.axustechnologies.com", "health": "https://apms.axustechnologies.com/api/health"},
     {"key": "order", "name": "Readiness Order", "desc": "HCN IT hardware ordering & budgetary quotes", "group": "app-order", "icon": "🛒", "internal": False, "url": "https://rorder.axustechnologies.com/admin", "health": "https://rorder.axustechnologies.com/api/health"},
     {"key": "acas", "name": "Communications Analytics", "desc": "PBX call analytics — wallboards, dashboards & reports", "group": "app-acas", "icon": "📈", "internal": False, "url": "https://acas.axustechnologies.com", "health": "https://acas.axustechnologies.com/api/health"},
     # On-Call: launcher tile + live health only. It keeps its OWN login/auth —

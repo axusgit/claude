@@ -409,6 +409,31 @@ services:
       traefik.http.services.atrs.loadbalancer.server.port: "8000"
     networks: [axus]
 
+  # Axus Password Management System (APMS) — zero-knowledge team password vault.
+  # Node backend serves the built SPA; all crypto happens in the browser and the
+  # server stores only ciphertext (no master key, no SMTP). Fully SSO-gated via the
+  # app-apms / apms-role-* groups (strict, like AATS — no platform-admin fallback).
+  # DB-only, no file storage, so no volume.
+  apms:
+    build:
+      context: ..
+      dockerfile: axus-hub/apms/backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/apms
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN}
+      PUBLIC_BASE_URL: https://apms.axustechnologies.com
+    depends_on:
+      postgres: {condition: service_healthy}
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.apms.rule: Host(`apms.axustechnologies.com`)
+      traefik.http.routers.apms.entrypoints: websecure
+      traefik.http.routers.apms.tls.certresolver: letsencrypt
+      traefik.http.routers.apms.middlewares: geogate@file,authentik@file
+      traefik.http.services.apms.loadbalancer.server.port: "8000"
+    networks: [axus]
+
   # Headless LibreOffice for Word->PDF conversion (internal only).
   gotenberg:
     image: gotenberg/gotenberg:8
