@@ -15,7 +15,8 @@ interface Props {
 
 export function ItemEditor({ folders, defaultFolderId, initial, onClose }: Props) {
   const { saveItem } = useVault();
-  const writable = folders.filter((f) => f.canWrite);
+  // A locked confidential folder has no key this session, so it can't receive items.
+  const writable = folders.filter((f) => f.canWrite && !!f.fk);
   const [folderId, setFolderId] = useState(initial?.folderId ?? defaultFolderId ?? writable[0]?.id ?? "");
   const [f, setF] = useState<SecretFields>(
     initial?.fields ?? { title: "", username: "", password: "", url: "", notes: "", custom: [] },

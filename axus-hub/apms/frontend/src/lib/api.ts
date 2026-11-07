@@ -34,6 +34,24 @@ export interface FolderRow {
   wrapped_fk: string;
   sort: number;
   can_write: boolean;
+  restricted: boolean;
+  sealed: boolean;
+}
+
+export interface SealMaterial {
+  kdf: string;
+  kdf_salt: string;
+  wrapped_ck: string;
+  verifier: string;
+}
+
+export interface SealInit {
+  kdf: string;
+  kdf_salt: string;
+  wrapped_ck: string;
+  verifier: string;
+  recovery_pubkey: string;
+  recovery_wrapped_ck: string;
 }
 
 export interface ItemRow {
@@ -85,12 +103,19 @@ export const api = {
   listFolders: () => req<{ folders: FolderRow[]; isAdmin: boolean }>("GET", "/api/folders"),
   createFolder: (b: { parent_id: string | null; name_enc: string; wrapped_fk: string; sort?: number }) =>
     req<{ id: string }>("POST", "/api/folders", b),
+  createSealedFolder: (b: { name_enc: string; wrapped_fk: string; seal: SealInit; owners: string[] }) =>
+    req<{ id: string }>("POST", "/api/folders/sealed", b),
   updateFolder: (id: string, b: { name_enc?: string; sort?: number; parent_id?: string | null }) =>
     req<{ ok: true }>("PATCH", `/api/folders/${id}`, b),
   deleteFolder: (id: string) => req<{ ok: true }>("DELETE", `/api/folders/${id}`),
   getFolderAccess: (id: string) => req<{ grants: AccessGrant[] }>("GET", `/api/folders/${id}/access`),
   setFolderAccess: (id: string, grants: AccessGrant[]) =>
     req<{ ok: true }>("PUT", `/api/folders/${id}/access`, { grants }),
+  getFolderSeal: (id: string) => req<SealMaterial>("GET", `/api/folders/${id}/seal`),
+  rekeyFolderSeal: (id: string, b: { kdf: string; kdf_salt: string; wrapped_ck: string; reason?: string }) =>
+    req<{ ok: true }>("POST", `/api/folders/${id}/seal/rekey`, b),
+  folderSealRecovery: (id: string) =>
+    req<{ recovery_wrapped_ck: string; recovery_pubkey: string }>("GET", `/api/folders/${id}/seal/recovery`),
 
   listItems: () => req<{ items: ItemRow[] }>("GET", "/api/items"),
   createItem: (b: { folder_id: string; data_enc: string }) => req<{ id: string }>("POST", "/api/items", b),

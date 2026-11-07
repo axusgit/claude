@@ -44,13 +44,44 @@ in. Add the technical staff who need it (including `acarr`) to the groups below.
 | Role | Group(s) | Can |
 |------|----------|-----|
 | **User** | `app-apms` or `apms-role-user` | Read/write items in folders they're granted. |
-| **Vault admin** | `apms-role-admin` | All folders; manage folders, per-folder access, KeePass import, change passphrase, run recovery, view the access log. |
+| **Vault admin** | `apms-role-admin` | All **non-confidential** folders; manage folders, per-folder access, KeePass import, change passphrase, run recovery, view the access log. |
 
 **Per-folder access** (server-enforced): a folder can be granted to Authentik groups
-or individual emails, and the grant is inherited by the whole subtree. A folder with
-no grants is admin-only. Because the vault uses a single shared passphrase, the folder
-boundary is enforced by the server (not cryptographically); the per-folder `FK` layer
-leaves a clean upgrade path to make it cryptographic (per-user keys) later.
+or individual emails, and the grant is inherited by the whole subtree. An ordinary
+folder with no grants is admin-only. Because the vault uses a single shared passphrase,
+the boundary for ordinary folders is enforced by the server (not cryptographically).
+
+## Confidential folders (a second, cryptographic wall)
+
+For owner / C-level secrets, a folder can be created **confidential** (restricted +
+sealed). Two independent guards apply:
+
+1. **Invisible to everyone but its named owners** — a confidential folder is *exempt*
+   from the admins-see-everything rule. It is returned only to principals with an
+   explicit grant on it, so another vault admin never sees the folder, its name, or
+   its key material. (`folder.restricted`, enforced in `access.ts`.)
+2. **Sealed under a second passphrase** — its contents are **not** wrapped under the
+   shared vault key. They use a separate **Confidential Key (CK)** derived from a
+   second passphrase known only to the owners:
+
+   ```
+   confidential passphrase ─Argon2id─▶ CPK
+   CK = random 256-bit key  (root of trust for this folder)
+   wrapped_ck          = AES-256-GCM(CPK, CK)          ← unlock path
+   recovery_wrapped_ck = RSA-OAEP(folderRecoveryPub, CK) ← break-glass, own key
+   folder:  wrapped_fk = AES-GCM(CK, FK)   (items decrypt via CK, never VK)
+   ```
+
+   So even someone holding VK (every unlocked user) — or a raw database/backup dump —
+   cannot read a confidential folder without its passphrase. The folder *name* is
+   wrapped under VK so owners can see it listed and choose to unlock; the *contents*
+   are sealed under CK. Each confidential folder has its **own** offline recovery key,
+   shown once at creation, separate from the vault recovery key.
+
+Owners manage it from the **Vault** tab: `🛡 New confidential folder` (set name,
+owners, and the confidential passphrase), then click the folder to **unlock** it for
+the session (auto-locks with the vault), **lock** it on demand, change its passphrase,
+or recover it with its recovery key. CK lives only in memory, per session, like VK.
 
 ## Import from KeePass (CSV)
 
@@ -65,7 +96,9 @@ All bodies are ciphertext or non-secret metadata.
 
 - `GET  /api/me` — identity, role, `vaultInitialized`.
 - `GET  /api/vault` · `POST /api/vault/init` · `POST /api/vault/rekey` · `GET /api/vault/recovery` — key material (never plaintext).
-- `GET/POST /api/folders`, `PATCH/DELETE /api/folders/:id`, `GET/PUT /api/folders/:id/access` — folder tree + access (admin for access).
+- `GET/POST /api/folders`, `PATCH/DELETE /api/folders/:id`, `GET/PUT /api/folders/:id/access` — folder tree + access (admin for ordinary folders; **owners only** for confidential ones).
+- `POST /api/folders/sealed` — create a confidential folder (row + seal material + owner grants, atomic).
+- `GET /api/folders/:id/seal` · `POST /api/folders/:id/seal/rekey` · `GET /api/folders/:id/seal/recovery` — confidential-folder key material / passphrase change / break-glass (**owners only**).
 - `GET/POST /api/items`, `PATCH/DELETE /api/items/:id`, `POST /api/items/import` — encrypted items.
 - `POST /api/audit` (client events: unlock/reveal/copy) · `GET /api/audit` (admin: access log).
 - `GET  /api/health`.

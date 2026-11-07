@@ -183,13 +183,94 @@ export async function rewrapForNewPassphrase(
   return { kdf: JSON.stringify(KDF), kdf_salt: saltB64, wrapped_vk: await aesEncrypt(pk, vk) };
 }
 
-// --- folder keys
-export async function newFolderKey(vk: Uint8Array): Promise<{ fk: Uint8Array; wrapped_fk: string }> {
+// --- folder keys. The wrapping key is VK for normal folders, or a folder's
+// Confidential Key (CK) for a sealed/confidential folder — the maths is identical,
+// which is why these take the wrapping key as a parameter.
+export async function newFolderKey(wrappingKey: Uint8Array): Promise<{ fk: Uint8Array; wrapped_fk: string }> {
   const fk = randomBytes(32);
-  return { fk, wrapped_fk: await aesEncrypt(vk, fk) };
+  return { fk, wrapped_fk: await aesEncrypt(wrappingKey, fk) };
 }
-export async function unwrapFolderKey(vk: Uint8Array, wrappedFkB64: string): Promise<Uint8Array> {
-  return aesDecrypt(vk, wrappedFkB64);
+export async function unwrapFolderKey(wrappingKey: Uint8Array, wrappedFkB64: string): Promise<Uint8Array> {
+  return aesDecrypt(wrappingKey, wrappedFkB64);
+}
+
+// ---------------------------------------------------------------- confidential seal
+// A sealed folder has its own Confidential Key (CK), the root of trust for that
+// folder, protected by a SECOND passphrase independent of the vault passphrase.
+// Structurally identical to the vault's VK, scoped to one folder:
+//   confidential passphrase --Argon2id--> CPK
+//   wrapped_ck          = AES-GCM(CPK, CK)            (unlock path)
+//   recovery_wrapped_ck = RSA-OAEP(recoveryPub, CK)   (break-glass path)
+//   the folder's wrapped_fk = AES-GCM(CK, FK)         (items decrypt via CK, never VK)
+const SEAL_CANARY = "axus-apms-seal-v1";
+
+export interface NewSealMaterial {
+  kdf: string;
+  kdf_salt: string;
+  wrapped_ck: string;
+  verifier: string;
+  recovery_pubkey: string;
+  recovery_wrapped_ck: string;
+  // Returned to the UI only (never persisted): the owners save this offline.
+  recoveryPrivateKeyB64: string;
+}
+// Build fresh seal material from a chosen confidential passphrase.
+export async function createSealMaterial(
+  passphrase: string,
+): Promise<{ material: NewSealMaterial; ck: Uint8Array }> {
+  const ck = randomBytes(32);
+  const salt = randomBytes(16);
+  const saltB64 = b64encode(salt);
+  const cpk = derivePassphraseKey(passphrase, saltB64, KDF);
+  const wrapped_ck = await aesEncrypt(cpk, ck);
+  const verifier = await encryptString(ck, SEAL_CANARY);
+  const rec = await generateRecoveryKeypair();
+  const recovery_wrapped_ck = await rsaWrap(rec.publicKeyB64, ck);
+  return {
+    ck,
+    material: {
+      kdf: JSON.stringify(KDF),
+      kdf_salt: saltB64,
+      wrapped_ck,
+      verifier,
+      recovery_pubkey: rec.publicKeyB64,
+      recovery_wrapped_ck,
+      recoveryPrivateKeyB64: rec.privateKeyB64,
+    },
+  };
+}
+
+// Recover CK from the stored seal material + confidential passphrase.
+export async function unlockSeal(
+  passphrase: string,
+  s: { kdf: string; kdf_salt: string; wrapped_ck: string; verifier: string },
+): Promise<Uint8Array> {
+  const kdf = JSON.parse(s.kdf) as KdfParams;
+  const cpk = derivePassphraseKey(passphrase, s.kdf_salt, kdf);
+  let ck: Uint8Array;
+  try {
+    ck = await aesDecrypt(cpk, s.wrapped_ck);
+  } catch {
+    throw new Error("Incorrect confidential passphrase");
+  }
+  try {
+    const canary = await decryptString(ck, s.verifier);
+    if (canary !== SEAL_CANARY) throw new Error();
+  } catch {
+    throw new Error("Incorrect confidential passphrase");
+  }
+  return ck;
+}
+
+// Re-wrap the SAME CK under a new confidential passphrase.
+export async function rewrapSealForNewPassphrase(
+  ck: Uint8Array,
+  newPassphrase: string,
+): Promise<{ kdf: string; kdf_salt: string; wrapped_ck: string }> {
+  const salt = randomBytes(16);
+  const saltB64 = b64encode(salt);
+  const cpk = derivePassphraseKey(newPassphrase, saltB64, KDF);
+  return { kdf: JSON.stringify(KDF), kdf_salt: saltB64, wrapped_ck: await aesEncrypt(cpk, ck) };
 }
 
 // ---------------------------------------------------------------- TOTP (RFC 6238)

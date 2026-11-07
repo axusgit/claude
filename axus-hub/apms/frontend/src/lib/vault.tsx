@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from "react";
 import { api, type SecretFields } from "./api";
 import {
+  createSealMaterial,
   createVaultMaterial,
   decryptJson,
   decryptString,
@@ -13,7 +14,9 @@ import {
   encryptString,
   newFolderKey,
   rewrapForNewPassphrase,
+  rewrapSealForNewPassphrase,
   rsaUnwrap,
+  unlockSeal as unlockSealCrypto,
   unlockVault,
   unwrapFolderKey,
 } from "./crypto";
@@ -24,7 +27,14 @@ export interface DecFolder {
   name: string;
   sort: number;
   canWrite: boolean;
-  fk: Uint8Array;
+  // The folder key. Absent for a confidential folder that is sealed but not yet
+  // unlocked this session (no items can be read or written until it's unlocked).
+  fk?: Uint8Array;
+  // Confidential-folder state. `restricted` + `sealed` come from the server;
+  // `unlocked` means its CK is held in this session (so `fk` is present).
+  restricted: boolean;
+  sealed: boolean;
+  unlocked: boolean;
 }
 export interface DecItem {
   id: string;
@@ -53,6 +63,12 @@ interface VaultCtx {
   createFolder: (parentId: string | null, name: string) => Promise<string>;
   renameFolder: (id: string, name: string) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
+  // confidential (sealed) folders — second passphrase, independent of the vault
+  createSealedFolder: (name: string, confPassphrase: string, owners: string[]) => Promise<{ id: string; recoveryKey: string }>; // recovery key shown once
+  unlockSealedFolder: (id: string, confPassphrase: string) => Promise<void>;
+  lockSealedFolder: (id: string) => void;
+  changeSealedPassphrase: (id: string, next: string) => Promise<void>;
+  recoverSealedFolder: (id: string, recoveryPrivateKeyB64: string, nextConfPassphrase: string) => Promise<void>;
   // items
   saveItem: (folderId: string, fields: SecretFields, id?: string) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
@@ -72,21 +88,31 @@ const AUTO_LOCK_MS = 15 * 60 * 1000;
 
 export function VaultProvider({ isAdmin, children }: { isAdmin: boolean; children: ReactNode }) {
   const vk = useRef<Uint8Array | null>(null);
+  // Confidential Keys for sealed folders unlocked this session, keyed by folder id.
+  // Held in memory only, wiped on lock — exactly like VK.
+  const sealKeys = useRef<Map<string, Uint8Array>>(new Map());
   const [status, setStatus] = useState<Status>("locked");
   const [folders, setFolders] = useState<DecFolder[]>([]);
   const [items, setItems] = useState<DecItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const lockTimer = useRef<number | null>(null);
 
+  const wipeSealKeys = useCallback(() => {
+    for (const ck of sealKeys.current.values()) ck.fill(0);
+    sealKeys.current.clear();
+  }, []);
+
   const lock = useCallback(() => {
     if (vk.current) vk.current.fill(0);
     vk.current = null;
+    wipeSealKeys();
     setFolders([]);
     setItems([]);
     setStatus("locked");
-  }, []);
+  }, [wipeSealKeys]);
 
-  // Decrypt all accessible folders + items with the current VK.
+  // Decrypt all accessible folders + items. Normal folders unwrap with VK; a
+  // sealed confidential folder unwraps only if its CK is held this session.
   const loadAll = useCallback(async () => {
     const key = vk.current;
     if (!key) return;
@@ -94,19 +120,50 @@ export function VaultProvider({ isAdmin, children }: { isAdmin: boolean; childre
     const decF: DecFolder[] = [];
     const fkById = new Map<string, Uint8Array>();
     for (const f of frows) {
+      // The folder NAME is always wrapped under VK, so owners see a sealed folder
+      // listed (and can choose to unlock it) without the confidential passphrase.
+      let name: string;
       try {
-        const fk = await unwrapFolderKey(key, f.wrapped_fk);
-        const name = await decryptString(key, f.name_enc);
-        fkById.set(f.id, fk);
-        decF.push({ id: f.id, parentId: f.parent_id, name, sort: f.sort, canWrite: f.can_write, fk });
+        name = await decryptString(key, f.name_enc);
       } catch {
-        /* skip a folder we somehow can't decrypt */
+        continue; // can't even read the name — skip
+      }
+      const base = {
+        id: f.id,
+        parentId: f.parent_id,
+        name,
+        sort: f.sort,
+        canWrite: f.can_write,
+        restricted: f.restricted,
+        sealed: f.sealed,
+      };
+      if (f.restricted && f.sealed) {
+        const ck = sealKeys.current.get(f.id);
+        if (!ck) {
+          decF.push({ ...base, unlocked: false }); // locked: no fk, items stay hidden
+          continue;
+        }
+        try {
+          const fk = await unwrapFolderKey(ck, f.wrapped_fk);
+          fkById.set(f.id, fk);
+          decF.push({ ...base, unlocked: true, fk });
+        } catch {
+          decF.push({ ...base, unlocked: false }); // stale CK — treat as locked
+        }
+      } else {
+        try {
+          const fk = await unwrapFolderKey(key, f.wrapped_fk);
+          fkById.set(f.id, fk);
+          decF.push({ ...base, unlocked: true, fk });
+        } catch {
+          /* skip a folder we somehow can't decrypt */
+        }
       }
     }
     const decI: DecItem[] = [];
     for (const it of irows) {
       const fk = fkById.get(it.folder_id);
-      if (!fk) continue;
+      if (!fk) continue; // locked sealed folder, or undecryptable
       try {
         const fields = await decryptJson<SecretFields>(fk, it.data_enc);
         decI.push({ id: it.id, folderId: it.folder_id, fields, updatedAt: it.updated_at, updatedBy: it.updated_by });
@@ -208,11 +265,74 @@ export function VaultProvider({ isAdmin, children }: { isAdmin: boolean; childre
     await loadAll();
   }, [loadAll]);
 
+  // --- confidential (sealed) folder ops -------------------------------------
+  const createSealedFolder = useCallback(
+    async (name: string, confPassphrase: string, owners: string[]) => {
+      const key = vk.current;
+      if (!key) throw new Error("Vault is locked");
+      const { material, ck } = await createSealMaterial(confPassphrase);
+      const { wrapped_fk } = await newFolderKey(ck); // folder key wrapped under CK, not VK
+      const name_enc = await encryptString(key, name); // name under VK so owners see it listed
+      const { recoveryPrivateKeyB64, ...seal } = material;
+      const { id } = await api.createSealedFolder({ name_enc, wrapped_fk, seal, owners });
+      sealKeys.current.set(id, ck); // created unlocked for this session
+      await loadAll();
+      void api.logEvent("seal_create", id);
+      return { id, recoveryKey: recoveryPrivateKeyB64 };
+    },
+    [loadAll],
+  );
+
+  const unlockSealedFolder = useCallback(
+    async (id: string, confPassphrase: string) => {
+      const material = await api.getFolderSeal(id);
+      const ck = await unlockSealCrypto(confPassphrase, material);
+      sealKeys.current.set(id, ck);
+      await loadAll();
+    },
+    [loadAll],
+  );
+
+  const lockSealedFolder = useCallback(
+    (id: string) => {
+      const ck = sealKeys.current.get(id);
+      if (ck) ck.fill(0);
+      sealKeys.current.delete(id);
+      void loadAll();
+    },
+    [loadAll],
+  );
+
+  const changeSealedPassphrase = useCallback(async (id: string, next: string) => {
+    const ck = sealKeys.current.get(id);
+    if (!ck) throw new Error("Unlock the confidential folder first");
+    const body = await rewrapSealForNewPassphrase(ck, next);
+    await api.rekeyFolderSeal(id, { ...body, reason: "confidential passphrase change" });
+  }, []);
+
+  const recoverSealedFolder = useCallback(
+    async (id: string, recoveryPrivateKeyB64: string, nextConfPassphrase: string) => {
+      const { recovery_wrapped_ck } = await api.folderSealRecovery(id);
+      let ck: Uint8Array;
+      try {
+        ck = await rsaUnwrap(recoveryPrivateKeyB64.trim(), recovery_wrapped_ck);
+      } catch {
+        throw new Error("That recovery key could not unwrap this confidential folder.");
+      }
+      const body = await rewrapSealForNewPassphrase(ck, nextConfPassphrase);
+      await api.rekeyFolderSeal(id, { ...body, reason: "confidential recovery" });
+      sealKeys.current.set(id, ck);
+      await loadAll();
+    },
+    [loadAll],
+  );
+
   // --- item ops -------------------------------------------------------------
   const saveItem = useCallback(
     async (folderId: string, fields: SecretFields, id?: string) => {
       const f = folders.find((x) => x.id === folderId);
       if (!f) throw new Error("Folder not found");
+      if (!f.fk) throw new Error("This confidential folder is locked — unlock it first.");
       const data_enc = await encryptJson(f.fk, fields);
       if (id) await api.updateItem(id, { data_enc });
       else await api.createItem({ folder_id: folderId, data_enc });
@@ -231,6 +351,7 @@ export function VaultProvider({ isAdmin, children }: { isAdmin: boolean; childre
       const it = items.find((x) => x.id === id);
       const f = folders.find((x) => x.id === folderId);
       if (!it || !f) throw new Error("Not found");
+      if (!f.fk) throw new Error("This confidential folder is locked — unlock it first.");
       // Re-encrypt under the destination folder's key.
       const data_enc = await encryptJson(f.fk, it.fields);
       await api.updateItem(id, { data_enc, folder_id: folderId });
@@ -345,6 +466,11 @@ export function VaultProvider({ isAdmin, children }: { isAdmin: boolean; childre
     createFolder,
     renameFolder,
     deleteFolder,
+    createSealedFolder,
+    unlockSealedFolder,
+    lockSealedFolder,
+    changeSealedPassphrase,
+    recoverSealedFolder,
     saveItem,
     deleteItem,
     moveItem,

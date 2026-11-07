@@ -77,8 +77,10 @@ function FolderAccess() {
         <h2 className="text-base font-semibold">Folder access</h2>
       </div>
       <p className="mb-4 text-sm text-muted">
-        Grant a group or person access to a folder. Access is inherited by every subfolder. Admins always have full
-        access. A folder with no grants is visible only to admins.
+        Grant a group or person access to a folder. Access is inherited by every subfolder. Admins have full access to
+        ordinary folders; a folder with no grants is visible only to admins. <strong>Confidential folders are the
+        exception</strong> — they are visible only to their named owners (even other admins can't see them), and are
+        created and unlocked from the Vault tab with their own passphrase.
       </p>
 
       {folders.length === 0 ? (

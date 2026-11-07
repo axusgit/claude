@@ -432,7 +432,48 @@ const Staff = (() => {
   const showReports = () => { hideViews(); $("reports-view").classList.remove("hidden"); loadReports(repPeriod); };
 
   /* ---------- Reports ---------- */
-  let repPeriod = "month", repChart = null, ttaChart = null, ttcChart = null, companyChart = null;
+  let repPeriod = "month", repChart = null, ttaChart = null, ttcChart = null, companyChart = null, hourChart = null, weekdayChart = null;
+  let repCompany = "";             // "" = all companies; else a company label
+  let repCompaniesLoaded = false;  // populate the filter dropdown only once
+
+  // Small title drawn on every report chart naming the active scope (the selected
+  // business, or "All companies") so each graph shows what it's filtered to.
+  function repTitlePlugin(textCol) {
+    return {
+      display: true,
+      text: repCompany || "All companies",
+      color: textCol,
+      align: "start",
+      font: { size: 13, weight: "600" },
+      padding: { bottom: 8 },
+    };
+  }
+
+  // Shared query-string for every report endpoint: current period + company filter.
+  function repQS(period) {
+    let qs = "period=" + encodeURIComponent(period || repPeriod);
+    if (repCompany) qs += "&company=" + encodeURIComponent(repCompany);
+    return qs;
+  }
+
+  // Fill the company filter dropdown from the businesses that have ticket activity.
+  async function loadCompanyOptions() {
+    if (repCompaniesLoaded) return;
+    let data;
+    try { data = await api("/api/reports/companies"); }
+    catch (e) { return; }   // non-fatal: leave "All companies" only
+    const sel = $("rep-company");
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">All companies</option>';
+    (data.companies || []).forEach(name => {
+      const o = document.createElement("option");
+      o.value = name; o.textContent = name;
+      sel.appendChild(o);
+    });
+    sel.value = keep;                       // preserve any current selection
+    if (sel.value !== keep) { sel.value = ""; repCompany = ""; }
+    repCompaniesLoaded = true;
+  }
   let chartHome = null;   // { wrap, parent, next } while a chart is maximized
 
   // Maximize any report chart into a large centered overlay. Generic over every
@@ -486,16 +527,96 @@ const Staff = (() => {
   function loadReports(period) {
     repPeriod = period;
     document.querySelectorAll("#rep-period button").forEach(b => b.classList.toggle("active", b.dataset.p === period));
+    loadCompanyOptions();
     loadTrends(period);
     loadDuration("time-to-assign", "tta", "Time to assign");
     loadDuration("time-to-close", "ttc", "Time to resolution");
     loadCompany(period);
+    loadHourly(period);
+    loadWeekday(period);
+  }
+
+  // Ticket OPENS by day of week (US Eastern), Mon–Sun, opens only.
+  async function loadWeekday(period) {
+    let data;
+    try { data = await api("/api/reports/opened-by-weekday?" + repQS(period)); }
+    catch (e) { toast("Couldn't load Tickets by day of week: " + e.message); return; }
+    const days = data.days || [];
+    const labels = days.map(d => d.label);
+    const counts = days.map(d => d.count);
+    const per = period === "week" ? "12 weeks" : period === "month" ? "12 months" : "all time";
+    $("weekday-summary").textContent = data.total
+      ? `${data.total} opened · busiest ${data.peak_label} (${per})` : "no data yet";
+
+    const css = getComputedStyle(document.documentElement);
+    const textCol = css.getPropertyValue("--text").trim() || "#e9f0fb";
+    const gridCol = css.getPropertyValue("--border").trim() || "rgba(255,255,255,.1)";
+    const peak = data.peak_day;
+    const bars = counts.map((_, i) => i === peak ? "#f26722" : "#2f7fd6");
+    const cfg = {
+      type: "bar",
+      data: { labels, datasets: [{ label: "Opened", data: counts, backgroundColor: bars, borderRadius: 4 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          title: repTitlePlugin(textCol),
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => ctx.parsed.y + " opened" } },
+        },
+        scales: {
+          x: { ticks: { color: textCol }, grid: { color: gridCol } },
+          y: { beginAtZero: true, ticks: { color: textCol, precision: 0 }, grid: { color: gridCol } },
+        },
+      },
+    };
+    if (weekdayChart) { weekdayChart.data = cfg.data; weekdayChart.options = cfg.options; weekdayChart.update(); }
+    else if (window.Chart) { weekdayChart = new Chart($("weekday-chart"), cfg); }
+  }
+
+  // Ticket OPENS by hour of day (US Eastern), opens only — the intake pattern.
+  async function loadHourly(period) {
+    let data;
+    try { data = await api("/api/reports/opened-by-hour?" + repQS(period)); }
+    catch (e) { toast("Couldn't load Tickets by time of day: " + e.message); return; }
+    const hours = data.hours || [];
+    const labels = hours.map(h => h.label);
+    const counts = hours.map(h => h.count);
+    const per = period === "week" ? "12 weeks" : period === "month" ? "12 months" : "all time";
+    $("hour-summary").textContent = data.total
+      ? `${data.total} opened · busiest ${data.peak_label} ET (${per})` : "no data yet";
+
+    const css = getComputedStyle(document.documentElement);
+    const textCol = css.getPropertyValue("--text").trim() || "#e9f0fb";
+    const gridCol = css.getPropertyValue("--border").trim() || "rgba(255,255,255,.1)";
+    const peak = data.peak_hour;
+    const bars = counts.map((_, i) => i === peak ? "#f26722" : "#2f7fd6");
+    const cfg = {
+      type: "bar",
+      data: { labels, datasets: [{ label: "Opened", data: counts, backgroundColor: bars, borderRadius: 4 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          title: repTitlePlugin(textCol),
+          legend: { display: false },
+          tooltip: { callbacks: { title: (items) => {
+            const h = hours[items[0].dataIndex];
+            return h ? h.label + ":00 ET" : "";
+          }, label: (ctx) => ctx.parsed.y + " opened" } },
+        },
+        scales: {
+          x: { ticks: { color: textCol, autoSkip: false, maxRotation: 0 }, grid: { color: gridCol } },
+          y: { beginAtZero: true, ticks: { color: textCol, precision: 0 }, grid: { color: gridCol } },
+        },
+      },
+    };
+    if (hourChart) { hourChart.data = cfg.data; hourChart.options = cfg.options; hourChart.update(); }
+    else if (window.Chart) { hourChart = new Chart($("hour-chart"), cfg); }
   }
 
   // Open vs. closed tickets per company (top 11 + Others), stacked horizontal bars.
   async function loadCompany(period) {
     let data;
-    try { data = await api("/api/reports/tickets-by-company?period=" + period); }
+    try { data = await api("/api/reports/tickets-by-company?" + repQS(period)); }
     catch (e) { toast("Couldn't load Tickets by company: " + e.message); return; }
     const rows = data.companies || [];
     const labels = rows.map(r => r.label);
@@ -517,7 +638,7 @@ const Staff = (() => {
       ] },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: textCol } }, tooltip: { mode: "index", intersect: false } },
+        plugins: { title: repTitlePlugin(textCol), legend: { labels: { color: textCol } }, tooltip: { mode: "index", intersect: false } },
         scales: {
           x: { ticks: { color: textCol, autoSkip: false, maxRotation: 60, minRotation: 45 }, grid: { color: gridCol } },
           y: { beginAtZero: true, ticks: { color: textCol, precision: 0 }, grid: { color: gridCol } },
@@ -531,7 +652,7 @@ const Staff = (() => {
   // Shared renderer for the two duration reports (median bars, avg in tooltip).
   async function loadDuration(endpoint, key, title) {
     let data;
-    try { data = await api("/api/reports/" + endpoint + "?period=" + repPeriod); }
+    try { data = await api("/api/reports/" + endpoint + "?" + repQS(repPeriod)); }
     catch (e) { toast("Couldn't load " + title + ": " + e.message); return; }
     const labels = data.buckets.map(b => b.label);
     // Chart median in days when any value is large, else hours — keep one unit per view.
@@ -555,6 +676,7 @@ const Staff = (() => {
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
+          title: repTitlePlugin(textCol),
           legend: { labels: { color: textCol } },
           tooltip: { callbacks: { label: (ctx) => {
             const b = data.buckets[ctx.dataIndex];
@@ -579,7 +701,7 @@ const Staff = (() => {
     repPeriod = period;
     document.querySelectorAll("#rep-period button").forEach(b => b.classList.toggle("active", b.dataset.p === period));
     let data;
-    try { data = await api("/api/reports/ticket-trends?period=" + period); }
+    try { data = await api("/api/reports/ticket-trends?" + repQS(period)); }
     catch (e) { toast("Couldn't load report: " + e.message); return; }
     const labels = data.buckets.map(b => b.label);
     const opened = data.buckets.map(b => b.opened);
@@ -598,7 +720,7 @@ const Staff = (() => {
       ] },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: textCol } }, tooltip: { mode: "index", intersect: false } },
+        plugins: { title: repTitlePlugin(textCol), legend: { labels: { color: textCol } }, tooltip: { mode: "index", intersect: false } },
         scales: {
           x: { ticks: { color: textCol }, grid: { color: gridCol } },
           y: { beginAtZero: true, ticks: { color: textCol, precision: 0 }, grid: { color: gridCol } },
@@ -2413,6 +2535,7 @@ const Staff = (() => {
       showReports();
     };
     document.querySelectorAll("#rep-period button").forEach(b => b.onclick = () => loadReports(b.dataset.p));
+    $("rep-company").onchange = (e) => { repCompany = e.target.value; loadReports(repPeriod); };
     setupChartMaximize();   // add the maximize icon to each report chart card
     $("nav-canned").onclick = () => openCannedModal();   // review/edit outside a ticket
     $("gl-new-btn").onclick = () => openGlossaryModal(null);

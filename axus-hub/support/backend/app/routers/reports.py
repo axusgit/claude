@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func as safunc
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 from app.database import get_db
 from app.models.ticket import Ticket, TicketActivity, TicketStatus
@@ -18,6 +19,37 @@ from app.models.client import Client
 from app.auth import require_staff
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+
+# Axus operates on US Eastern time; ticket timestamps are stored UTC, so the
+# "time of day" / "day of week" reports convert to Eastern before bucketing.
+_ET = ZoneInfo("America/New_York")
+# Monday..Sunday to match Python's datetime.weekday() (Mon=0 .. Sun=6).
+_WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def _company_filter(db, company):
+    """Build (native_ok, xcitium_ok) predicates for an optional company-name
+    filter. company falsy/blank -> include everything. Matching is by the same
+    display label the 'tickets by company' report uses, so a native client and
+    the Xcitium mirror's organization of the same name are filtered together."""
+    if not company or not company.strip():
+        return (lambda t: True), (lambda xt: True)
+    target = company.strip()
+    client_names = dict(db.query(Client.id, Client.company_name).all())
+    canon = {}
+    for name in client_names.values():
+        if name:
+            canon.setdefault(name.strip().lower(), name)
+
+    def native_ok(t):
+        return (client_names.get(t.client_id) or f"#{t.client_id}") == target
+
+    def xcitium_ok(xt):
+        org = (xt.organization_name or "").strip()
+        label = canon.get(org.lower(), org) if org else "(Unknown)"
+        return label == target
+
+    return native_ok, xcitium_ok
 
 
 def _aware(dt):
@@ -77,11 +109,13 @@ def _window_start(period, now):
 
 
 @router.get("/ticket-trends")
-def ticket_trends(period: str = "month", db: Session = Depends(get_db),
+def ticket_trends(period: str = "month", company: str | None = None,
+                  db: Session = Depends(get_db),
                   _: User = Depends(require_staff)):
     if period not in ("week", "month", "year"):
         period = "month"
     now = datetime.now(timezone.utc)
+    native_ok, xcitium_ok = _company_filter(db, company)
     opened, closed = {}, {}
 
     def add(bucket, dt):
@@ -92,12 +126,16 @@ def ticket_trends(period: str = "month", db: Session = Depends(get_db),
         bucket[k] = bucket.get(k, 0) + 1
 
     for t in db.query(Ticket).all():
+        if not native_ok(t):
+            continue
         add(opened, t.created_at)
         status = str(getattr(t.status, "value", t.status))
         if status == "closed" and t.closed_at:
             add(closed, t.closed_at)
 
     for xt in db.query(XcitiumTicket).all():
+        if not xcitium_ok(xt):
+            continue
         add(opened, xt.create_date)
         if (xt.status or "") == "closed":
             add(closed, xt.update_date or xt.create_date)
@@ -174,13 +212,15 @@ def _duration_report(period, now, samples):
 
 
 @router.get("/time-to-assign")
-def time_to_assign(period: str = "month", db: Session = Depends(get_db),
+def time_to_assign(period: str = "month", company: str | None = None,
+                   db: Session = Depends(get_db),
                    _: User = Depends(require_staff)):
     """How long a client-opened ticket stays open before it is first assigned
     to an Axus user. Bucketed by the date the ticket was first assigned."""
     if period not in ("week", "month", "year"):
         period = "month"
     now = datetime.now(timezone.utc)
+    native_ok, _xok = _company_filter(db, company)
 
     # First time each ticket's assignee was set (the initial null -> user change
     # logs an 'assigned_to_id_changed' activity; the earliest one is the first
@@ -195,6 +235,8 @@ def time_to_assign(period: str = "month", db: Session = Depends(get_db),
     samples = []
     unassigned_open = 0
     for t in db.query(Ticket).all():
+        if not native_ok(t):
+            continue
         origin = t.origin or "client_portal"   # pre-origin rows: treat as client
         if origin not in _CLIENT_ORIGINS:
             continue
@@ -215,13 +257,15 @@ def time_to_assign(period: str = "month", db: Session = Depends(get_db),
 
 
 @router.get("/time-to-close")
-def time_to_close(period: str = "month", db: Session = Depends(get_db),
+def time_to_close(period: str = "month", company: str | None = None,
+                  db: Session = Depends(get_db),
                   _: User = Depends(require_staff)):
     """How long a ticket takes from opening to closing. Bucketed by close date.
     Includes the read-only Xcitium mirror history (create_date -> update_date)."""
     if period not in ("week", "month", "year"):
         period = "month"
     now = datetime.now(timezone.utc)
+    native_ok, xcitium_ok = _company_filter(db, company)
 
     # Exclude tickets that took longer than 30 days to resolve: these long-tail
     # cases (stale/parked tickets, projects) badly skew the average and median and
@@ -230,6 +274,8 @@ def time_to_close(period: str = "month", db: Session = Depends(get_db),
 
     samples = []
     for t in db.query(Ticket).all():
+        if not native_ok(t):
+            continue
         # Skip rows imported from Xcitium: their created_at/closed_at are import
         # timestamps, not real open/close times. The authentic history comes from
         # the Xcitium mirror below (real create_date/update_date).
@@ -244,6 +290,8 @@ def time_to_close(period: str = "month", db: Session = Depends(get_db),
                 samples.append((closed, hours))
 
     for xt in db.query(XcitiumTicket).all():
+        if not xcitium_ok(xt):
+            continue
         if (xt.status or "") != "closed":
             continue
         created, closed = _aware(xt.create_date), _aware(xt.update_date or xt.create_date)
@@ -256,7 +304,8 @@ def time_to_close(period: str = "month", db: Session = Depends(get_db),
 
 
 @router.get("/tickets-by-company")
-def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
+def tickets_by_company(period: str = "month", company: str | None = None,
+                       db: Session = Depends(get_db),
                        _: User = Depends(require_staff)):
     """Opened vs. closed ticket counts per company (Business) during the period,
     ranked by total activity: the top 11 companies plus an aggregated 'Others'
@@ -279,12 +328,15 @@ def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
             canon.setdefault(name.strip().lower(), name)
 
     counts = {}   # company label -> [opened, closed]
+    target = company.strip() if company and company.strip() else None
 
     def in_window(dt):
         dt = _aware(dt)
         return dt is not None and (start is None or dt >= start)
 
     def add(label, idx):
+        if target is not None and label != target:
+            return
         counts.setdefault(label, [0, 0])[idx] += 1
 
     # Native tickets (all origins; origin=="xcitium" rows are distinct from the
@@ -330,3 +382,119 @@ def tickets_by_company(period: str = "month", db: Session = Depends(get_db),
             "total": others_opened + others_closed,
         })
     return {"period": period, "companies": top}
+
+
+def _hour_label(h):
+    """0..23 -> '12a', '1a', ... '12p', '1p', ... '11p'."""
+    suffix = "a" if h < 12 else "p"
+    hour12 = h % 12 or 12
+    return f"{hour12}{suffix}"
+
+
+@router.get("/opened-by-hour")
+def opened_by_hour(period: str = "month", company: str | None = None,
+                   db: Session = Depends(get_db),
+                   _: User = Depends(require_staff)):
+    """When (hour of day, US Eastern) tickets get OPENED — the intake pattern.
+    Opens only; closes are deliberately excluded. Counts native tickets created
+    in the window, bucketed into 24 hours of the day in Eastern time.
+
+    Rows imported from Xcitium (origin == 'xcitium') are excluded: their
+    created_at is the import timestamp, not the real open time. The live Xcitium
+    mirror is also excluded here because its timestamps are of uncertain timezone
+    and (being ~35x the native volume) would swamp the real intake signal. This
+    report therefore reflects the current native intake (portal / email / phone).
+    Window matches the other reports (last 12 weeks / 12 months; 'year' = all)."""
+    if period not in ("week", "month", "year"):
+        period = "month"
+    now = datetime.now(timezone.utc)
+    start = _window_start(period, now)
+    native_ok, _xok = _company_filter(db, company)
+
+    counts = [0] * 24
+    total = 0
+    for t in db.query(Ticket).all():
+        if not native_ok(t):
+            continue
+        if (t.origin or "") == "xcitium":
+            continue
+        dt = _aware(t.created_at)
+        if dt is None or (start is not None and dt < start):
+            continue
+        counts[dt.astimezone(_ET).hour] += 1
+        total += 1
+
+    peak = max(range(24), key=lambda h: counts[h]) if total else None
+    hours = [{"hour": h, "label": _hour_label(h), "count": counts[h]}
+             for h in range(24)]
+    return {
+        "period": period,
+        "total": total,
+        "peak_hour": peak,
+        "peak_label": _hour_label(peak) if peak is not None else None,
+        "hours": hours,
+    }
+
+
+@router.get("/opened-by-weekday")
+def opened_by_weekday(period: str = "month", company: str | None = None,
+                      db: Session = Depends(get_db),
+                      _: User = Depends(require_staff)):
+    """When (day of week, US Eastern) tickets get OPENED — the weekly intake
+    pattern, Monday..Sunday. Opens only; same scope as opened-by-hour: native
+    intake, Xcitium-origin/import rows excluded, UTC->Eastern, honoring the
+    period window and the optional company filter."""
+    if period not in ("week", "month", "year"):
+        period = "month"
+    now = datetime.now(timezone.utc)
+    start = _window_start(period, now)
+    native_ok, _xok = _company_filter(db, company)
+
+    counts = [0] * 7
+    total = 0
+    for t in db.query(Ticket).all():
+        if not native_ok(t):
+            continue
+        if (t.origin or "") == "xcitium":
+            continue
+        dt = _aware(t.created_at)
+        if dt is None or (start is not None and dt < start):
+            continue
+        counts[dt.astimezone(_ET).weekday()] += 1
+        total += 1
+
+    peak = max(range(7), key=lambda d: counts[d]) if total else None
+    days = [{"day": d, "label": _WEEKDAYS[d], "count": counts[d]} for d in range(7)]
+    return {
+        "period": period,
+        "total": total,
+        "peak_day": peak,
+        "peak_label": _WEEKDAYS[peak] if peak is not None else None,
+        "days": days,
+    }
+
+
+@router.get("/companies")
+def report_companies(db: Session = Depends(get_db),
+                     _: User = Depends(require_staff)):
+    """Distinct companies (Businesses) that have any ticket activity — native or
+    Xcitium mirror — for the Reports company filter. Sorted A->Z; the UI prepends
+    an 'All companies' option. Each label is passed back verbatim as the
+    ?company= filter on the other report endpoints. '(Unknown)' legacy rows are
+    omitted (not a real business; they still count under 'All companies')."""
+    client_names = dict(db.query(Client.id, Client.company_name).all())
+    canon = {}
+    for name in client_names.values():
+        if name:
+            canon.setdefault(name.strip().lower(), name)
+
+    labels = set()
+    for (cid,) in db.query(Ticket.client_id).distinct():
+        labels.add(client_names.get(cid) or f"#{cid}")
+    for (org,) in db.query(XcitiumTicket.organization_name).distinct():
+        o = (org or "").strip()
+        if o:
+            labels.add(canon.get(o.lower(), o))
+    labels.discard("(Unknown)")
+
+    return {"companies": sorted(labels, key=lambda s: s.lower())}
