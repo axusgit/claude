@@ -457,6 +457,15 @@ def update_ticket(ticket_id: int, data: TicketUpdate, background: BackgroundTask
             detail="A scheduled date is required before a ticket can be set to Scheduled.",
         )
 
+    # A ticket must be assigned to a user before it can be closed. The assignee may be
+    # set in this same request, so check the resulting value, not just the stored one.
+    result_assignee = changes.get("assigned_to_id", ticket.assigned_to_id)
+    if result_status == "closed" and old_status != "closed" and not result_assignee:
+        raise HTTPException(
+            status_code=400,
+            detail="A ticket must be assigned to a user before it can be closed.",
+        )
+
     for key, value in changes.items():
         setattr(ticket, key, value)
 
@@ -614,6 +623,12 @@ def add_comment(
 
     closed = False
     if data.close and ticket.status != TicketStatus.closed:
+        # A ticket must be assigned to a user before it can be closed.
+        if not ticket.assigned_to_id:
+            raise HTTPException(
+                status_code=400,
+                detail="A ticket must be assigned to a user before it can be closed.",
+            )
         ticket.status = TicketStatus.closed
         if not ticket.closed_at:
             ticket.closed_at = datetime.utcnow()

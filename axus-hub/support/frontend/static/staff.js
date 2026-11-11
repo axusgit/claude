@@ -2615,9 +2615,18 @@ const Staff = (() => {
         if (el.showPicker) { try { el.showPicker(); } catch (_) {} }
         toast("Enter the scheduled date to confirm (optionally add a time)");
         // intentionally NOT patched yet — commit happens when the date is set
+      } else if (v === "closed" && !current.assigned_to_id) {
+        // A ticket must be assigned to someone before it can be closed.
+        toast("Assign this ticket to a user before closing it.");
+        $("d-status").value = current.status;
+        toggleScheduled(current.status);
       } else {
         toggleScheduled(v);
-        patch("status", v).catch(err => toast(err.message));
+        patch("status", v).catch(err => {
+          toast(err.message);
+          $("d-status").value = current.status;   // server rejected it — revert the picker
+          toggleScheduled(current.status);
+        });
       }
     };
     function revertSchedule() {
@@ -2776,6 +2785,10 @@ const Staff = (() => {
       const b = $("reply-body").value.trim();
       const close = $("reply-close").checked;
       if (!b && !close) { toast("Please enter your message before posting."); return; }
+      if (close && !current.assigned_to_id) {
+        toast("Assign this ticket to a user before closing it.");
+        return;
+      }
       const internal = $("reply-internal").checked;
       const withSig = $("reply-signature").checked;
       const files = Array.from($("reply-files").files || []);
