@@ -9,8 +9,28 @@ class TicketStatus(str, enum.Enum):
     open = "open"
     in_progress = "in_progress"
     waiting = "waiting"
+    on_hold = "on_hold"
     scheduled = "scheduled"
     closed = "closed"
+
+
+# Human labels for status, used where a value is shown to clients (e.g. the
+# status-change line in notification emails) so they read "On hold", not "on_hold".
+STATUS_LABELS = {
+    "open": "Open",
+    "in_progress": "In progress",
+    "waiting": "Waiting on client",
+    "on_hold": "On hold",
+    "scheduled": "Scheduled",
+    "closed": "Closed",
+}
+
+
+def status_label(s) -> str:
+    """Human label for a status value/enum (e.g. on_hold -> 'On hold')."""
+    v = s.value if hasattr(s, "value") else (s or "")
+    v = str(v).lower()
+    return STATUS_LABELS.get(v, v.replace("_", " ").capitalize())
 
 
 class TicketPriority(str, enum.Enum):

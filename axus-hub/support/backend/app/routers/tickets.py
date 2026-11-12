@@ -9,7 +9,7 @@ import random
 from app.database import get_db
 from app.models.ticket import (
     Ticket, TimeEntry, TicketComment, TicketActivity, TicketStatus, TicketType,
-    TICKET_ORIGINS, priority_label,
+    TICKET_ORIGINS, priority_label, status_label,
 )
 from app.models.ticket_watcher import TicketWatcher
 from app.models.attachment import Attachment
@@ -513,7 +513,8 @@ def update_ticket(ticket_id: int, data: TicketUpdate, background: BackgroundTask
             if f in changes and changes[f] != old.get(f):
                 if f == "status" and str(_fmt(changes[f])) == "scheduled":
                     continue  # announced below, together with the scheduled date+time
-                summary.append(f"{label} changed to {_fmt(changes[f])}.")
+                val = status_label(changes[f]) if f == "status" else _fmt(changes[f])
+                summary.append(f"{label} changed to {val}.")
         # When the ticket is Scheduled, tell the client the date+time — both when it's
         # first scheduled and when an existing schedule is moved to a new time.
         now_status = str(getattr(ticket.status, "value", ticket.status))

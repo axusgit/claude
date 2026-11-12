@@ -371,7 +371,7 @@ const Staff = (() => {
   }
   function renderReplyFiles() { renderStagedFiles("reply-files", "reply-file-list", renderReplyFiles); }
   function renderNtFiles() { renderStagedFiles("nt-files", "nt-file-list", renderNtFiles); }
-  const ACTIVE = ["open", "in_progress", "waiting", "scheduled"];
+  const ACTIVE = ["open", "in_progress", "waiting", "on_hold", "scheduled"];
 
   /* ---------- Views ---------- */
   const showLogin = async () => {
@@ -941,6 +941,7 @@ const Staff = (() => {
       case "mine": return ACTIVE.includes(t.status) && t.assigned_to_id === me.id;
       case "waiting": return t.status === "waiting";
       case "in_progress": return t.status === "in_progress";
+      case "on_hold": return t.status === "on_hold";
       case "closed": return t.status === "closed";
       default: return true; // all
     }
@@ -982,7 +983,7 @@ const Staff = (() => {
   const statCard = (n, label, cls) => `<div class="stat-card ${cls}"><div class="stat-num">${n}</div><div class="stat-label">${label}</div></div>`;
 
   const _PRIO_RANK = { urgent: 4, high: 3, normal: 2, low: 1 };
-  const _STATUS_RANK = { open: 1, in_progress: 2, waiting: 3, resolved: 4, closed: 5 };
+  const _STATUS_RANK = { open: 1, in_progress: 2, waiting: 3, on_hold: 4, scheduled: 5, resolved: 6, closed: 7 };
   function queueVal(t, key) {
     switch (key) {
       case "ref": return t.reference || "";

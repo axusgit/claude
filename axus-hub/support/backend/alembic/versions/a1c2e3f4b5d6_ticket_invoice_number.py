@@ -1,14 +1,14 @@
 """ticket invoice number (staff-recorded, shown on Closed queue)
 
 Revision ID: a1c2e3f4b5d6
-Revises: f2b3c4d5e6a7
+Revises: d5e6f7a8b9c0
 Create Date: 2026-11-03
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "a1c2e3f4b5d6"
-down_revision = "f2b3c4d5e6a7"
+down_revision = "d5e6f7a8b9c0"
 branch_labels = None
 depends_on = None
 

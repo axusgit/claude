@@ -1,0 +1,10 @@
+# Node deps
+node_modules/
+
+# WhatsApp session = your linked-device login. NEVER commit this.
+.wwebjs_auth/
+.wwebjs_cache/
+
+# QR login image (temporary, sensitive)
+qr.png
+qr-server.png
