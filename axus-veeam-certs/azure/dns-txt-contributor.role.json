@@ -1,0 +1,15 @@
+{
+  "Name": "DNS TXT Contributor (Axus ACME)",
+  "IsCustom": true,
+  "Description": "Read DNS zones and create/delete TXT records only. Used by the Veeam VM managed identities for Let's Encrypt DNS-01 (Posh-ACME Azure plugin). Template: {{SUBSCRIPTION_ID}} is filled in at run time and never committed.",
+  "Actions": [
+    "Microsoft.Network/dnsZones/read",
+    "Microsoft.Network/dnsZones/TXT/*"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/{{SUBSCRIPTION_ID}}/resourceGroups/useast2rg01"
+  ]
+}

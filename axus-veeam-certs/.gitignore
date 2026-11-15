@@ -1,0 +1,11 @@
+# Logs and run output
+logs/
+*.log
+
+# Key material - never commit
+*.pfx
+*.key
+*.pem
+
+# Generated run-command payloads (rebuild with tools/New-RunCommandPayload.ps1)
+payloads/
