@@ -60,3 +60,7 @@ Internal notes (do not send):
   method. Will escalate to senior internal resources if reproduced. "This will take some time." Waiting on Veeam.
 - 2026-11-15: Veeam status update only. Lab server built, patching; next they install VSPC 9.3.0.35057 and try to
   reproduce, then discuss internally. No answer yet. Waiting on Veeam.
+- 2026-11-15 evening: Veeam could NOT reproduce in a fresh 9.3.0.35057 lab; posted internally for review. Our evidence
+  stands: Server.log 14:34:39.9120 "All previous JW tokens were invalidated due certificate change" + 401s at 14:35
+  and 14:37:57 (new session). Drafted a reply with our exact repro steps; user chose NOT to send it and to wait for the internal review.
+  If Veeam says it works as documented, send those steps (see chat 2026-11-15) before accepting.
