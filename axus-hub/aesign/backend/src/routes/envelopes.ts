@@ -63,6 +63,8 @@ export async function envelopeRoutes(app: FastifyInstance) {
     const { rows } = await pool.query(
       `select e.id, e.title, e.status, e.created_by, e.created_at, e.sent_at, e.completed_at,
               e.pdf_file, e.doc_type, e.company, e.archived, e.archived_at, e.deleted, e.deleted_at,
+              e.contract_expires_on::text as contract_expires_on, e.contract_reminder_weeks,
+              e.contract_reminder_sent_at, e.invoice_number,
               coalesce((
                 select json_agg(json_build_object('name', r.name, 'status', r.status) order by r.sign_order)
                 from recipient r where r.envelope_id = e.id
@@ -196,7 +198,25 @@ export async function envelopeRoutes(app: FastifyInstance) {
       reminder_dom?: number;
       contract_expires_on?: string | null;
       contract_reminder_weeks?: number | null;
+      invoice_number?: string | null;
     };
+    // Invoice # — only for a Completed document (enforced here, not just in the UI).
+    if (body.invoice_number !== undefined) {
+      const st = await pool.query(`select status, title, invoice_number from envelope where id = $1`, [envId]);
+      if (!st.rowCount) return reply.code(404).send({ error: "Not found" });
+      if (st.rows[0].status !== "completed") {
+        return reply.code(409).send({ error: "An invoice number can only be entered on a Completed document." });
+      }
+      const inv = (body.invoice_number ?? "").toString().trim().slice(0, 60) || null;
+      if (inv !== (st.rows[0].invoice_number ?? null)) {
+        await pool.query(`update envelope set invoice_number = $1 where id = $2`, [inv, envId]);
+        await pool.query(
+          `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'invoice_set', $3)`,
+          [envId, id.email, inv ? `Invoice # ${inv}` : "Invoice # cleared"],
+        );
+        logActivity(id.email, inv ? `Set invoice # ${inv}` : "Cleared invoice #", st.rows[0].title, envId);
+      }
+    }
     // Contract Expiration Reminder. Changing either value re-arms the reminder.
     if (body.contract_expires_on !== undefined || body.contract_reminder_weeks !== undefined) {
       const cur = await pool.query(

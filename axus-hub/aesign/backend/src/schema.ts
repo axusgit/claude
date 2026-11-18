@@ -44,6 +44,7 @@ alter table envelope add column if not exists offline_record boolean not null de
 alter table envelope add column if not exists contract_expires_on date;
 alter table envelope add column if not exists contract_reminder_weeks int;
 alter table envelope add column if not exists contract_reminder_sent_at timestamptz;
+alter table envelope add column if not exists invoice_number text;  -- Axus invoice # (Completed documents only)
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),

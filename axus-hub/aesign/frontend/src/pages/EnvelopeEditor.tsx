@@ -63,6 +63,7 @@ const EVENT_LABELS: Record<string, string> = {
   expired: "Expired",
   expiration_set: "Contract expiration updated",
   expiration_reminder: "Contract expiration reminder sent",
+  invoice_set: "Invoice number updated",
   voided: "Voided",
   copy_sent: "Copy emailed",
 };

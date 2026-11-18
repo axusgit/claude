@@ -6,7 +6,83 @@ import { Button, Card, Input, SortHeader, StatusBadge } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
 import { dirCmp, useSort } from "@/lib/sort";
 
-type DocSortKey = "title" | "type" | "company" | "status" | "created";
+type DocSortKey = "title" | "type" | "company" | "status" | "created" | "expires" | "invoice";
+
+// Contract expiration (set on the document page): date + reminder lead time.
+function ExpirationCell({ e }: { e: Envelope }) {
+  const d = e.contract_expires_on ? String(e.contract_expires_on).slice(0, 10) : "";
+  if (!d) return <span className="text-muted">N/A</span>;
+  const [y, m, day] = d.split("-").map(Number);
+  const date = new Date(y, m - 1, day);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expired = date < today;
+  const w = e.contract_reminder_weeks;
+  return (
+    <div className="leading-tight">
+      <div className={expired ? "font-medium text-red-600" : "text-ink"}>
+        {date.toLocaleDateString([], { month: "numeric", day: "numeric", year: "numeric" })}
+        {expired ? " (expired)" : ""}
+      </div>
+      <div className="text-[11px] text-muted">
+        {e.contract_reminder_sent_at
+          ? "Reminder sent"
+          : w
+            ? `Remind ${w} wk${w === 1 ? "" : "s"} before`
+            : "No reminder"}
+      </div>
+    </div>
+  );
+}
+
+// Invoice # — editable inline, but only once the document is Completed.
+function InvoiceCell({
+  e,
+  onSaved,
+  onError,
+}: {
+  e: Envelope;
+  onSaved: (inv: string | null) => void;
+  onError: (msg: string) => void;
+}) {
+  const [val, setVal] = useState(e.invoice_number ?? "");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setVal(e.invoice_number ?? ""), [e.invoice_number]);
+  const enabled = e.status === "completed";
+  async function commit() {
+    const next = val.trim();
+    if (next === (e.invoice_number ?? "")) return;
+    setSaving(true);
+    try {
+      const r = await api.updateEnvelope(e.id, { invoice_number: next || null });
+      onSaved(r.invoice_number ?? null);
+    } catch (err) {
+      setVal(e.invoice_number ?? "");
+      onError(err instanceof Error ? err.message : "Could not save the invoice number");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <input
+      value={val}
+      disabled={!enabled || saving}
+      placeholder={enabled ? "Add #" : "—"}
+      title={enabled ? "Invoice number (press Enter to save)" : "Available once the document is Completed"}
+      onChange={(ev) => setVal(ev.target.value)}
+      onBlur={() => void commit()}
+      onKeyDown={(ev) => {
+        if (ev.key === "Enter") (ev.target as HTMLInputElement).blur();
+        if (ev.key === "Escape") {
+          setVal(e.invoice_number ?? "");
+          (ev.target as HTMLInputElement).blur();
+        }
+      }}
+      maxLength={60}
+      className="w-28 rounded-md border border-line bg-surface px-2 py-1 text-sm outline-none focus:border-brand disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-muted"
+    />
+  );
+}
 
 const DOC_TYPES = ["SOW", "MSA", "SOW & MSA", "BAA", "SLA", "Certificate of Completion", "Quote"];
 // Types that open a pre-filled template on creation (deferred until Save). BAA is a
@@ -123,7 +199,7 @@ export function EnvelopeList() {
     if (filterStatus !== "all" && e.status !== filterStatus) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      if (!`${e.title} ${e.company ?? ""}`.toLowerCase().includes(q)) return false;
+      if (!`${e.title} ${e.company ?? ""} ${e.invoice_number ?? ""}`.toLowerCase().includes(q)) return false;
     }
     return true;
   });
@@ -134,6 +210,9 @@ export function EnvelopeList() {
       company: e.company ?? "",
       status: e.status,
       created: Date.parse(e.created_at) || 0,
+      // No expiration sorts after every dated one (ascending).
+      expires: e.contract_expires_on ? String(e.contract_expires_on).slice(0, 10) : "9999-99-99",
+      invoice: e.invoice_number ?? "",
     })[sort];
   const sorted = [...filtered].sort(
     (a, b) => dirCmp(sortVal(a), sortVal(b), dir) || a.title.localeCompare(b.title),
@@ -512,7 +591,7 @@ export function EnvelopeList() {
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="search"
-            placeholder="Search title or company…"
+            placeholder="Search title, company or invoice #…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-64 max-w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
@@ -566,6 +645,8 @@ export function EnvelopeList() {
                 <SortHeader label="Company" active={sort === "company"} dir={dir} onClick={() => toggle("company")} />
                 <SortHeader label="Status" active={sort === "status"} dir={dir} onClick={() => toggle("status")} />
                 <SortHeader label="Created" active={sort === "created"} dir={dir} onClick={() => toggle("created")} />
+                <SortHeader label="Expiration" active={sort === "expires"} dir={dir} onClick={() => toggle("expires")} />
+                <SortHeader label="Invoice #" active={sort === "invoice"} dir={dir} onClick={() => toggle("invoice")} />
                 <th className="px-4 py-3 text-right">
                   <button
                     onClick={openArchive}
@@ -580,7 +661,7 @@ export function EnvelopeList() {
             <tbody>
               {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted">
                     No documents match your search.
                   </td>
                 </tr>
@@ -634,6 +715,22 @@ export function EnvelopeList() {
                       hour: "numeric",
                       minute: "2-digit",
                     })}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <ExpirationCell e={e} />
+                  </td>
+                  <td
+                    className="px-4 py-3"
+                    // Only the editable (Completed) cell swallows the row click.
+                    onClick={(ev) => e.status === "completed" && ev.stopPropagation()}
+                  >
+                    <InvoiceCell
+                      e={e}
+                      onSaved={(inv) =>
+                        setEnvelopes((list) => list.map((x) => (x.id === e.id ? { ...x, invoice_number: inv } : x)))
+                      }
+                      onError={setError}
+                    />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">
