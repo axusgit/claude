@@ -6,6 +6,25 @@ import { Button, Card, Input, SortHeader, StatusBadge } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
 import { dirCmp, useSort } from "@/lib/sort";
 
+// Company / Status filters are remembered in this browser until set back to
+// "All" (best-effort: storage may be unavailable, e.g. private windows).
+const FILTER_KEY = "aesign.documents.filters";
+function loadFilters(): { company?: string; status?: string } {
+  try {
+    return JSON.parse(localStorage.getItem(FILTER_KEY) ?? "{}") ?? {};
+  } catch {
+    return {};
+  }
+}
+function saveFilters(f: { company: string; status: string }) {
+  try {
+    if (f.company === "all" && f.status === "all") localStorage.removeItem(FILTER_KEY);
+    else localStorage.setItem(FILTER_KEY, JSON.stringify(f));
+  } catch {
+    /* ignore */
+  }
+}
+
 type DocSortKey = "title" | "type" | "company" | "status" | "created" | "expires" | "invoice";
 
 // Contract expiration (set on the document page): date + reminder lead time.
@@ -190,13 +209,19 @@ export function EnvelopeList() {
   const [editCompany, setEditCompany] = useState("");
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState(() => loadFilters().status ?? "all");
+  const [filterCompany, setFilterCompany] = useState(() => loadFilters().company ?? "all");
+  useEffect(() => saveFilters({ company: filterCompany, status: filterStatus }), [filterCompany, filterStatus]);
+  const companyOptions = Array.from(
+    new Set(envelopes.map((e) => (e.company ?? "").trim()).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b));
   const { key: sort, dir, toggle } = useSort<DocSortKey>("created", "desc");
   const nav = useNavigate();
 
   const filtered = envelopes.filter((e) => {
     if (filterType !== "all" && (e.doc_type ?? "") !== filterType) return false;
     if (filterStatus !== "all" && e.status !== filterStatus) return false;
+    if (filterCompany !== "all" && (e.company ?? "").trim() !== filterCompany) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       if (!`${e.title} ${e.company ?? ""} ${e.invoice_number ?? ""}`.toLowerCase().includes(q)) return false;
@@ -609,9 +634,32 @@ export function EnvelopeList() {
             ))}
           </select>
           <select
+            value={filterCompany}
+            onChange={(e) => setFilterCompany(e.target.value)}
+            title="Company filter (remembered until set back to All companies)"
+            className={
+              "max-w-[16rem] rounded-lg border bg-surface px-2 py-2 text-sm outline-none focus:border-brand " +
+              (filterCompany !== "all" ? "border-brand text-brand" : "border-line")
+            }
+          >
+            <option value="all">All companies</option>
+            {/* Keep a remembered company selectable even if it has no docs right now. */}
+            {[...new Set([...companyOptions, ...(filterCompany !== "all" ? [filterCompany] : [])])]
+              .sort((a, b) => a.localeCompare(b))
+              .map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+          </select>
+          <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="rounded-lg border border-line bg-surface px-2 py-2 text-sm outline-none focus:border-brand"
+            title="Status filter (remembered until set back to All statuses)"
+            className={
+              "rounded-lg border bg-surface px-2 py-2 text-sm outline-none focus:border-brand " +
+              (filterStatus !== "all" ? "border-brand text-brand" : "border-line")
+            }
           >
             <option value="all">All statuses</option>
             <option value="draft">Draft</option>
@@ -622,6 +670,18 @@ export function EnvelopeList() {
             <option value="expired">Expired</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          {(filterCompany !== "all" || filterStatus !== "all") && (
+            <button
+              type="button"
+              onClick={() => {
+                setFilterCompany("all");
+                setFilterStatus("all");
+              }}
+              className="text-xs text-muted underline-offset-2 hover:text-brand hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       )}
 
