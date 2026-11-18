@@ -194,7 +194,43 @@ export async function envelopeRoutes(app: FastifyInstance) {
       reminder_time?: string;
       reminder_dow?: number;
       reminder_dom?: number;
+      contract_expires_on?: string | null;
+      contract_reminder_weeks?: number | null;
     };
+    // Contract Expiration Reminder. Changing either value re-arms the reminder.
+    if (body.contract_expires_on !== undefined || body.contract_reminder_weeks !== undefined) {
+      const cur = await pool.query(
+        `select contract_expires_on::text as d, contract_reminder_weeks as w from envelope where id = $1`,
+        [envId],
+      );
+      if (!cur.rowCount) return reply.code(404).send({ error: "Not found" });
+      let d: string | null = cur.rows[0].d;
+      let w: number | null = cur.rows[0].w;
+      if (body.contract_expires_on !== undefined) {
+        const v = (body.contract_expires_on ?? "").trim();
+        if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+          return reply.code(400).send({ error: "Expiration date must be YYYY-MM-DD." });
+        }
+        d = v || null;
+      }
+      if (body.contract_reminder_weeks !== undefined) {
+        const n = body.contract_reminder_weeks;
+        if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 8)) {
+          return reply.code(400).send({ error: "Reminder must be 1 to 8 weeks before expiration." });
+        }
+        w = n;
+      }
+      await pool.query(
+        `update envelope set contract_expires_on = $1, contract_reminder_weeks = $2,
+           contract_reminder_sent_at = null where id = $3`,
+        [d, w, envId],
+      );
+      const label = !d && !w ? "Not applicable" : `${d ?? "no date"}${w ? `, remind ${w} week(s) before` : ", no reminder"}`;
+      await pool.query(
+        `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'expiration_set', $3)`,
+        [envId, id.email, `Contract expiration: ${label}`],
+      );
+    }
     if (body.reminder_interval !== undefined) {
       await pool.query(`update envelope set reminder_interval = $1 where id = $2`, [
         body.reminder_interval?.trim() || null,

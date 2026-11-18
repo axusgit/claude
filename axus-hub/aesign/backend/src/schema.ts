@@ -38,6 +38,12 @@ alter table envelope add column if not exists callback_url text;   -- external p
 -- Record of a copy signed OUTSIDE eSign (customer wanted an emailed PDF): created
 -- from the customer's returned copy, then Axus signs in-app. Nobody is emailed.
 alter table envelope add column if not exists offline_record boolean not null default false;
+-- Contract Expiration Reminder: expiration date + how many weeks before it to
+-- email the Axus team (info@). weeks null = Not Applicable. sent_at marks the
+-- reminder as delivered (reset whenever the date or lead time changes).
+alter table envelope add column if not exists contract_expires_on date;
+alter table envelope add column if not exists contract_reminder_weeks int;
+alter table envelope add column if not exists contract_reminder_sent_at timestamptz;
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),

@@ -38,6 +38,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { recipientColor } from "@/lib/utils";
 import { PdfCanvas } from "@/features/PdfCanvas";
 import { AxusSignModal } from "@/features/AxusSignModal";
+import { ContractExpirationCard } from "@/features/ContractExpirationCard";
 import { BAA_LAYOUT, COC_LAYOUT, SLA_LAYOUT } from "@/lib/layouts";
 
 const TOOLS: { type: FieldType; label: string; icon: typeof PenLine }[] = [
@@ -60,6 +61,8 @@ const EVENT_LABELS: Record<string, string> = {
   completed: "Completed",
   declined: "Declined",
   expired: "Expired",
+  expiration_set: "Contract expiration updated",
+  expiration_reminder: "Contract expiration reminder sent",
   voided: "Voided",
   copy_sent: "Copy emailed",
 };
@@ -106,6 +109,7 @@ const EMAIL_KIND_LABELS: Record<string, string> = {
   progress: "Progress update",
   declined: "Declined notice",
   copy: "PDF copy",
+  expiration: "Contract expiration reminder",
 };
 
 // Outbound email delivery log — shows, per attempt, whether the mail server
@@ -706,6 +710,17 @@ export function EnvelopeEditor() {
               onRemind={remind}
               remindingId={remindingId}
             />
+            {!isNew && (
+              <ContractExpirationCard
+                envelope={detail.envelope}
+                onSaved={(msg, err, updated) => {
+                  if (err) return setError(err);
+                  setNotice(msg);
+                  // Patch locally (a full reload would drop unsaved draft edits).
+                  if (updated) setDetail((d) => (d ? { ...d, envelope: { ...d.envelope, ...updated } } : d));
+                }}
+              />
+            )}
             <CcPanel
               recipients={ccRecipients}
               editable={detail.envelope.status === "draft"}

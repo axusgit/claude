@@ -5,7 +5,7 @@
 // interpreted in Eastern Time. Fires once per scheduled day, after the time.
 import { pool } from "./db.js";
 import { config } from "./config.js";
-import { sendPendingReminder } from "./mail.js";
+import { sendContractExpiryReminder, sendPendingReminder } from "./mail.js";
 
 const TZ = "America/New_York";
 const RECYCLE_DAYS = 90; // Recycle Bin retention: after this long, deleted docs auto-move to the Archive
@@ -142,6 +142,53 @@ export async function runReminders(): Promise<number> {
       if (res.success) sent++;
     }
     await pool.query(`update envelope set last_reminded_at = now() where id = $1`, [env.id]);
+  }
+  sent += await runContractExpiryReminders(et);
+  return sent;
+}
+
+// Contract Expiration Reminder: once the ET date reaches (expiration − N weeks),
+// from 8:00 AM ET, email the Axus team inbox (info@) ONCE per setting. Covers
+// any status and archived docs (contracts expire after they're archived), not
+// Recycle Bin ones. A reminder set late (date already inside the window) goes
+// out on the next run, as long as the contract hasn't expired yet.
+async function runContractExpiryReminders(et: ReturnType<typeof etParts>): Promise<number> {
+  if (et.hour < 8) return 0;
+  const to = config.mail.notifyTo;
+  if (!to) return 0;
+  const due = await pool.query(
+    `select id, title, company, doc_type, contract_reminder_weeks as weeks,
+            to_char(contract_expires_on, 'FMMonth FMDD, YYYY') as expires_on
+     from envelope
+     where deleted = false and contract_reminder_sent_at is null
+       and contract_expires_on is not null and contract_reminder_weeks is not null
+       and $1::date >= contract_expires_on - (contract_reminder_weeks * 7)
+       and $1::date <= contract_expires_on`,
+    [et.dateKey],
+  );
+  let sent = 0;
+  for (const e of due.rows) {
+    const res = await sendContractExpiryReminder({
+      to,
+      title: e.title,
+      company: e.company,
+      docType: e.doc_type,
+      expiresOn: e.expires_on,
+      weeks: Number(e.weeks),
+      url: `${config.publicBaseUrl}/envelopes/${e.id}`,
+      envelopeId: e.id,
+    });
+    if (!res.success) continue; // retried on the next run
+    sent++;
+    await pool.query(`update envelope set contract_reminder_sent_at = now() where id = $1`, [e.id]);
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, 'system', 'expiration_reminder', $2)`,
+      [e.id, `Contract expiration reminder emailed to ${to} (expires ${e.expires_on})`],
+    );
+    await pool.query(
+      `insert into activity (actor, action, detail, envelope_id) values ('system', 'Contract expiration reminder sent', $1, $2)`,
+      [e.title, e.id],
+    );
   }
   return sent;
 }

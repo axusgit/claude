@@ -37,6 +37,9 @@ export interface Envelope {
   archived?: boolean;
   archived_at?: string | null;
   offline_record?: boolean;
+  contract_expires_on?: string | null; // YYYY-MM-DD
+  contract_reminder_weeks?: number | null; // 1-8; null = Not Applicable
+  contract_reminder_sent_at?: string | null;
   deleted?: boolean;
   deleted_at?: string | null;
 }
@@ -203,6 +206,8 @@ export const api = {
       reminder_time?: string;
       reminder_dow?: number;
       reminder_dom?: number;
+      contract_expires_on?: string | null;
+      contract_reminder_weeks?: number | null;
     },
   ) =>
     req<{ envelope: Envelope }>(`/envelopes/${id}`, {

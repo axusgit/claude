@@ -395,3 +395,52 @@ export async function sendPendingReminder(opts: {
     { kind: "reminder", envelopeId: opts.envelopeId, recipientId: opts.recipientId },
   );
 }
+
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Contract Expiration Reminder → the Axus team inbox (info@), N weeks before a
+// document's contract expiration date. Internal only; no customer is emailed.
+export async function sendContractExpiryReminder(opts: {
+  to: string;
+  title: string;
+  company?: string | null;
+  docType?: string | null;
+  expiresOn: string; // e.g. "December 31, 2026"
+  weeks: number;
+  url: string;
+  envelopeId?: string;
+}): Promise<SendResult> {
+  const lead = `${opts.weeks} week${opts.weeks === 1 ? "" : "s"}`;
+  const row = (k: string, v: string) =>
+    '<tr><td style="padding:3px 14px 3px 0;font-size:14px;color:#6b7280;">' + k +
+    '</td><td style="padding:3px 0;font-size:14px;color:#111827;font-weight:600;">' + esc(v) + "</td></tr>";
+  const html = shell(
+    "Contract expiration reminder",
+    '<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#374151;">This contract expires in <strong>' +
+      lead + "</strong>.</p>" +
+      '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">' +
+      row("Document", opts.title) +
+      (opts.company ? row("Company", opts.company) : "") +
+      (opts.docType ? row("Type", opts.docType) : "") +
+      row("Expires on", opts.expiresOn) +
+      "</table>" +
+      '<p style="margin:0 0 8px;">' + button(opts.url, "Open in Axus eSign") + "</p>",
+  );
+  const text =
+    `Contract expiration reminder\n\n"${opts.title}"${opts.company ? ` (${opts.company})` : ""} expires on ${opts.expiresOn}, in ${lead}.\n${opts.url}\n\nAxus eSign`;
+  return runSend(
+    opts.to,
+    {
+      from: config.mail.from,
+      envelope: { from: config.mail.sender, to: opts.to },
+      to: opts.to,
+      subject: `Contract expires ${opts.expiresOn}: ${opts.title}`,
+      text,
+      html,
+      attachments: withLogo(),
+    },
+    { kind: "expiration", envelopeId: opts.envelopeId },
+  );
+}
