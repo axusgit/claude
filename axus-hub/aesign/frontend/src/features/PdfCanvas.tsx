@@ -4,233 +4,13 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { X } from "lucide-react";
 import type { Field, FieldType, Recipient, SignField, SignSlot } from "@/lib/api";
+import { FIELD_DEFAULTS, assembleSlots, computeRuns, detectFields, detectRules, type Run } from "@/lib/sigdetect";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const TARGET_WIDTH = 820;
 
-// Fallback size (normalized) when a click lands somewhere with no text line.
-export const FIELD_DEFAULTS: Record<FieldType, { w: number; h: number; label: string }> = {
-  signature: { w: 0.24, h: 0.03, label: "Signature" },
-  name: { w: 0.24, h: 0.026, label: "Name" },
-  title: { w: 0.16, h: 0.026, label: "Title" },
-  initials: { w: 0.1, h: 0.03, label: "Initials" },
-  date: { w: 0.16, h: 0.026, label: "Date" },
-  text: { w: 0.22, h: 0.026, label: "Text" },
-  checkbox: { w: 0.02, h: 0.016, label: "Check" },
-  select: { w: 0.22, h: 0.026, label: "Select" },
-};
-
-// A text run from the PDF (a label like "Signature: ______", normalized coords).
-interface Run {
-  x0: number;
-  x1: number;
-  baseline: number;
-  height: number;
-  str: string;
-}
-
-// A drawn horizontal rule (the blank "line" you sign on), normalized coords.
-// Many templates draw the fill-in line as a graphic (not text underscores), so
-// we read the page's vector ops to find them and snap fields onto them.
-interface Rule {
-  y: number;
-  x0: number;
-  x1: number;
-}
-
-// Extract horizontal rule lines from a page's drawing operators, tracking the
-// CTM through save/restore/transform so path coordinates map to device space.
-async function detectRules(
-  page: { getOperatorList: () => Promise<{ fnArray: number[]; argsArray: unknown[] }> },
-  viewport: { transform: number[]; width: number; height: number; scale: number },
-): Promise<Rule[]> {
-  const W = viewport.width;
-  const H = viewport.height;
-  let ops: { fnArray: number[]; argsArray: unknown[] };
-  try {
-    ops = await page.getOperatorList();
-  } catch {
-    return [];
-  }
-  let ctm = viewport.transform.slice();
-  const stack: number[][] = [];
-  const segs: Rule[] = [];
-  const dev = (x: number, y: number) => pdfjsLib.Util.applyTransform([x, y], ctm);
-  const OPS = pdfjsLib.OPS;
-  for (let i = 0; i < ops.fnArray.length; i++) {
-    const fn = ops.fnArray[i];
-    if (fn === OPS.save) stack.push(ctm.slice());
-    else if (fn === OPS.restore) ctm = stack.pop() ?? ctm;
-    else if (fn === OPS.transform) ctm = pdfjsLib.Util.transform(ctm, ops.argsArray[i] as number[]);
-    else if (fn === OPS.constructPath) {
-      const a = ops.argsArray[i] as [number[], number[]];
-      const pathOps = a[0];
-      const co = a[1];
-      let cx = 0;
-      let cy = 0;
-      let k = 0;
-      for (const op of pathOps) {
-        if (op === OPS.moveTo) {
-          cx = co[k++];
-          cy = co[k++];
-        } else if (op === OPS.lineTo) {
-          const nx = co[k++];
-          const ny = co[k++];
-          if (Math.abs(ny - cy) < 1.5 && Math.abs(nx - cx) > 15) {
-            const p0 = dev(cx, cy);
-            const p1 = dev(nx, ny);
-            segs.push({ y: p0[1] / H, x0: Math.min(p0[0], p1[0]) / W, x1: Math.max(p0[0], p1[0]) / W });
-          }
-          cx = nx;
-          cy = ny;
-        } else if (op === OPS.rectangle) {
-          const rx = co[k++];
-          const ry = co[k++];
-          const rw = co[k++];
-          const rh = co[k++];
-          if (Math.abs(rh) < 2 && Math.abs(rw) > 15) {
-            const p = dev(rx, ry);
-            segs.push({ y: p[1] / H, x0: p[0] / W, x1: (p[0] + rw * viewport.scale) / W });
-          }
-        } else {
-          k += 2;
-        }
-      }
-    }
-  }
-  // Merge collinear segments (dashed / split rules) into contiguous lines.
-  segs.sort((a, b) => a.y - b.y || a.x0 - b.x0);
-  const rules: Rule[] = [];
-  for (const s of segs) {
-    const r = rules.find(
-      (r) => Math.abs(r.y - s.y) < 0.004 && s.x0 <= r.x1 + 0.02 && s.x1 >= r.x0 - 0.02,
-    );
-    if (r) {
-      r.x0 = Math.min(r.x0, s.x0);
-      r.x1 = Math.max(r.x1, s.x1);
-    } else {
-      rules.push({ y: s.y, x0: s.x0, x1: s.x1 });
-    }
-  }
-  return rules;
-}
-
-function computeRuns(
-  tc: { items: unknown[] },
-  viewport: { transform: number[]; width: number; height: number; scale: number },
-): Run[] {
-  const W = viewport.width;
-  const H = viewport.height;
-  const runs: Run[] = [];
-  for (const raw of tc.items) {
-    const it = raw as { str?: string; transform?: number[]; width?: number; height?: number };
-    if (!it.str || !it.str.trim() || !it.transform) continue;
-    const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
-    const h = Math.hypot(t[2], t[3]) || (it.height ?? 0) * viewport.scale;
-    runs.push({
-      x0: t[4] / W,
-      x1: (t[4] + (it.width ?? 0) * viewport.scale) / W,
-      baseline: t[5] / H,
-      height: h / H,
-      str: it.str,
-    });
-  }
-  return runs;
-}
-
-// Detect signature-block fields on one page from its text runs — the same
-// blank-after-label logic as click-to-place, applied to standard labels
-// (Signature / Date / Printed Name / Title). Used to AUTO-PLACE on uploads.
-function detectFields(runs: Run[], rules: Rule[], pageNumber: number): SignField[] {
-  const out: SignField[] = [];
-  const mk = (type: SignField["type"], startFrac: number, endFrac: number, r: Run): SignField => {
-    const runW = r.x1 - r.x0;
-    const x = Math.min(r.x0 + runW * startFrac + 0.004, r.x1 - 0.03);
-    // Use the blank width if the underscores share the label's run; otherwise
-    // (label-only run, blanks in a separate run) fall back to a sensible width.
-    const wRaw = r.x0 + runW * endFrac - x;
-    const w = Math.min(Math.max(wRaw, FIELD_DEFAULTS[type].w), 1 - x - 0.01);
-    const h = Math.min(r.height * 1.7, 0.06);
-    const y = Math.min(Math.max(r.baseline - h, 0), 1 - h);
-    return { type, page: pageNumber, x, y, w, h };
-  };
-  // Preferred: snap the field onto the drawn underline rule that sits at the
-  // label's baseline and extends to its right (label + separate-graphic line —
-  // the common Word/PDF signature block). Returns null when no rule fits, so
-  // templates whose blanks are text underscores fall back to mk().
-  const onRule = (type: SignField["type"], r: Run): SignField | null => {
-    let best: Rule | null = null;
-    let bd = Infinity;
-    for (const rl of rules) {
-      const dy = rl.y - r.baseline; // rule at (just below) the label baseline
-      if (dy < -0.006 || dy > 0.02) continue;
-      if (rl.x1 < r.x1 + 0.01) continue; // must extend right of the label
-      const d = Math.abs(dy) + Math.max(0, rl.x0 - r.x1) * 0.1;
-      if (d < bd) {
-        bd = d;
-        best = rl;
-      }
-    }
-    if (!best) return null;
-    const x = Math.max(r.x1 + 0.008, best.x0);
-    const w = Math.max(best.x1 - x, 0.05);
-    const h = Math.min(r.height * 1.5, 0.03);
-    const y = Math.min(Math.max(best.y - h, 0), 1 - h);
-    return { type, page: pageNumber, x, y, w, h };
-  };
-  const place = (type: SignField["type"], startFrac: number, endFrac: number, r: Run) =>
-    onRule(type, r) ?? mk(type, startFrac, endFrac, r);
-  for (const r of runs) {
-    const s = r.str;
-    const len = s.length || 1;
-    const low = s.toLowerCase();
-    const sig = low.match(/signature\s*:/);
-    const date = low.match(/date\s*:/);
-    const name = low.match(/print(?:ed)?\s*name\s*:/);
-    const title = low.match(/title\s*:/);
-    if (sig) {
-      const start = (sig.index ?? 0) + sig[0].length;
-      const end = date && (date.index ?? 0) > (sig.index ?? 0) ? (date.index ?? len) : len;
-      out.push(place("signature", start / len, end / len, r));
-    }
-    if (date) out.push(place("date", ((date.index ?? 0) + date[0].length) / len, 1, r));
-    if (name) out.push(place("name", ((name.index ?? 0) + name[0].length) / len, 1, r));
-    if (title) out.push(place("title", ((title.index ?? 0) + title[0].length) / len, 1, r));
-  }
-  return out;
-}
-
-// Group detected fields into signer slots — one per "Signature:". Each
-// date/name/title is assigned to the signature it belongs to by COLUMN (nearest
-// in x) preferring the signature above it, so side-by-side two-signer blocks
-// (Customer | Axus) group correctly instead of the earlier vertical-only scan
-// that lumped a whole second column onto one signer. Slots are ordered
-// left-to-right so signer 1 = leftmost block.
-function assembleSlots(all: SignField[]): SignSlot[] {
-  const sigs = all
-    .filter((f) => f.type === "signature")
-    .sort((a, b) => a.page - b.page || a.x - b.x || a.y - b.y);
-  if (!sigs.length) return [];
-  const slots = sigs.map((s) => ({ sig: s, fields: [s] as SignField[] }));
-  for (const f of all) {
-    if (f.type === "signature") continue;
-    let best: (typeof slots)[number] | null = null;
-    let bd = Infinity;
-    for (const slot of slots) {
-      if (slot.sig.page !== f.page) continue;
-      const colDist = Math.abs(slot.sig.x - f.x);
-      const above = f.y >= slot.sig.y - 0.005; // signature sits above the field
-      const d = colDist + (above ? f.y - slot.sig.y : 5);
-      if (d < bd) {
-        bd = d;
-        best = slot;
-      }
-    }
-    (best ?? slots[0]).fields.push(f);
-  }
-  return slots.map((s, i) => ({ role: `Signer ${i + 1}`, fields: s.fields }));
-}
+export { FIELD_DEFAULTS } from "@/lib/sigdetect";
 
 interface PdfCanvasProps {
   url: string;
@@ -244,21 +24,28 @@ interface PdfCanvasProps {
   onUpdateField: (index: number, patch: Partial<Field>) => void;
   onDeleteField: (index: number) => void;
   onDetectLayout?: (slots: SignSlot[]) => void;
+  // Fired once, after EVERY page has been scanned for signature blocks.
+  onDetectDone?: (slots: SignSlot[], numPages: number) => void;
   // When true, field boxes are shown but locked (no place / move / resize /
   // delete) — used once a document has been sent and can no longer be edited.
   readOnly?: boolean;
 }
 
 export function PdfCanvas(props: PdfCanvasProps) {
-  const { url, onDetectLayout } = props;
+  const { url, onDetectLayout, onDetectDone } = props;
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const pageDet = useRef<Record<number, SignField[]>>({});
 
   function handlePageDetected(page: number, detected: SignField[]) {
+    const first = !(page in pageDet.current);
     pageDet.current[page] = detected;
-    onDetectLayout?.(assembleSlots(Object.values(pageDet.current).flat()));
+    const slots = assembleSlots(Object.values(pageDet.current).flat());
+    onDetectLayout?.(slots);
+    if (first && numPages > 0 && Object.keys(pageDet.current).length === numPages) {
+      onDetectDone?.(slots, numPages);
+    }
   }
 
   useEffect(() => {
@@ -348,6 +135,7 @@ function PdfPage({
         if (!cancelled) onPageDetected(pageNumber, detectFields(rs, rules, pageNumber));
       } catch {
         /* no text layer */
+        if (!cancelled) onPageDetected(pageNumber, []);
       }
     })();
     return () => {

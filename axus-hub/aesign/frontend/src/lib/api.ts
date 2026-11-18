@@ -5,10 +5,12 @@ export interface SignField {
   y: number;
   w: number;
   h: number;
+  axus?: boolean; // detection only: this signature sits under an Axus heading
 }
 export interface SignSlot {
   role: string;
   fields: SignField[];
+  axus?: boolean; // detection only: Axus's signature block
 }
 
 export interface Envelope {

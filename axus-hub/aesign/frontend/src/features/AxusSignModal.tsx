@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { ArrowLeft, Check, PenLine, X } from "lucide-react";
-import { api, type Field, type FieldType, type Recipient } from "@/lib/api";
+import { api, type Field, type FieldType, type Recipient, type SignField, type SignSlot } from "@/lib/api";
+import { axusSlotFields } from "@/lib/sigdetect";
+import { templateLayout } from "@/lib/layouts";
 import { Button } from "@/components/ui";
 import { PdfCanvas } from "@/features/PdfCanvas";
 import { FieldFiller, applyFieldValue } from "@/features/FieldFiller";
@@ -30,10 +32,12 @@ const TOOLS: { type: FieldType; label: string }[] = [
 
 export function AxusSignModal({
   envelopeId,
+  docType,
   onClose,
   onDone,
 }: {
   envelopeId: string;
+  docType?: string | null;
   onClose: () => void;
   onDone: (msg: string) => void;
 }) {
@@ -45,6 +49,45 @@ export function AxusSignModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const seq = useRef(0);
+  // Auto-placement of Axus's Signature / Name / Title / Date onto the document's
+  // Axus signature block (found by its "Axus …" heading), done once on open.
+  const autoDone = useRef(false);
+  const [autoMsg, setAutoMsg] = useState<string | null>(null);
+
+  function onDetectDone(slots: SignSlot[], numPages: number) {
+    if (autoDone.current) return;
+    autoDone.current = true;
+    let found: SignField[] = axusSlotFields(slots);
+    let how = "Placed on the Axus signature block";
+    if (!found.length) {
+      // No text to read (e.g. a scanned copy): an Axus-generated template has
+      // a fixed Axus block — use it when the page exists.
+      const axus = templateLayout(docType)?.find((s) => s.role === "Axus Technologies");
+      if (axus && axus.fields.every((f) => f.page <= numPages)) {
+        found = axus.fields;
+        how = `Placed on the standard ${docType} Axus block (check the position on this copy)`;
+      }
+    }
+    setFields((prev) => {
+      if (prev.length || !found.length) return prev;
+      return found.map((f) => ({
+        id: `axf-${++seq.current}`,
+        recipient_id: AXUS_ID,
+        type: f.type,
+        page: f.page,
+        x: f.x,
+        y: f.y,
+        w: f.w,
+        h: f.h,
+        required: true,
+      }));
+    });
+    setAutoMsg(
+      found.length
+        ? `${how}: ${found.map((f) => f.type).join(", ")}. Drag to adjust, or add more.`
+        : "No Axus signature block was found on this copy (for example a scan). Click on the document to place the fields.",
+    );
+  }
 
   // Synthetic recipient — only drives the placement box color/label; the real
   // Axus signer is created server-side, attributed to the logged-in staff.
@@ -155,6 +198,7 @@ export function AxusSignModal({
               onAddField={addField}
               onUpdateField={updateField}
               onDeleteField={deleteField}
+              onDetectDone={onDetectDone}
             />
           ) : (
             <FieldFiller
@@ -197,6 +241,9 @@ export function AxusSignModal({
                   </Button>
                 ))}
               </div>
+              {autoMsg && (
+                <div className="rounded-lg bg-brand/10 p-2 text-xs text-ink">{autoMsg}</div>
+              )}
               <p className="text-xs text-muted">
                 {fields.length} field{fields.length === 1 ? "" : "s"} placed
                 {hasSignature ? "" : " · add a Signature to continue"}. Drag to move, hover to resize
