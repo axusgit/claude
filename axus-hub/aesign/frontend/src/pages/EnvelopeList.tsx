@@ -79,7 +79,7 @@ function InvoiceCell({
         }
       }}
       maxLength={60}
-      className="w-28 rounded-md border border-line bg-surface px-2 py-1 text-sm outline-none focus:border-brand disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-muted"
+      className="w-24 rounded-md border border-line bg-surface px-2 py-1 text-sm outline-none focus:border-brand disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-muted"
     />
   );
 }
@@ -637,17 +637,18 @@ export function EnvelopeList() {
             <p className="text-sm text-muted">Create your first document to get started.</p>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <SortHeader label="Title" active={sort === "title"} dir={dir} onClick={() => toggle("title")} />
-                <SortHeader label="Type" active={sort === "type"} dir={dir} onClick={() => toggle("type")} />
-                <SortHeader label="Company" active={sort === "company"} dir={dir} onClick={() => toggle("company")} />
-                <SortHeader label="Status" active={sort === "status"} dir={dir} onClick={() => toggle("status")} />
-                <SortHeader label="Created" active={sort === "created"} dir={dir} onClick={() => toggle("created")} />
-                <SortHeader label="Expiration" active={sort === "expires"} dir={dir} onClick={() => toggle("expires")} />
-                <SortHeader label="Invoice #" active={sort === "invoice"} dir={dir} onClick={() => toggle("invoice")} />
-                <th className="px-4 py-3 text-right">
+                <SortHeader className="px-2.5" label="Title" active={sort === "title"} dir={dir} onClick={() => toggle("title")} />
+                <SortHeader className="px-2.5" label="Type" active={sort === "type"} dir={dir} onClick={() => toggle("type")} />
+                <SortHeader className="px-2.5" label="Company" active={sort === "company"} dir={dir} onClick={() => toggle("company")} />
+                <SortHeader className="px-2.5" label="Status" active={sort === "status"} dir={dir} onClick={() => toggle("status")} />
+                <SortHeader className="px-2.5" label="Created" active={sort === "created"} dir={dir} onClick={() => toggle("created")} />
+                <SortHeader className="px-2.5" label="Expiration" active={sort === "expires"} dir={dir} onClick={() => toggle("expires")} />
+                <SortHeader className="px-2.5" label="Invoice #" active={sort === "invoice"} dir={dir} onClick={() => toggle("invoice")} />
+                <th className="px-2.5 py-3 text-right">
                   <button
                     onClick={openArchive}
                     className="text-muted hover:text-brand"
@@ -672,8 +673,8 @@ export function EnvelopeList() {
                   className="cursor-pointer border-b border-line last:border-0 hover:bg-canvas"
                   onClick={() => nav(`/envelopes/${e.id}`)}
                 >
-                  <td className="px-4 py-3 font-medium">{e.title}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-2.5 py-3 font-medium">{e.title}</td>
+                  <td className="px-2.5 py-3">
                     {e.doc_type ? (
                       <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
                         {e.doc_type}
@@ -682,8 +683,8 @@ export function EnvelopeList() {
                       <span className="text-muted">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-muted">{e.company ?? "—"}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-2.5 py-3 text-muted">{e.company ?? "—"}</td>
+                  <td className="px-2.5 py-3">
                     <span className="group relative inline-block">
                       <StatusBadge status={e.status} />
                       {e.recipients && e.recipients.length > 0 && (
@@ -707,20 +708,23 @@ export function EnvelopeList() {
                       )}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted">
-                    {new Date(e.created_at).toLocaleString([], {
-                      month: "numeric",
-                      day: "numeric",
-                      year: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+                  <td className="whitespace-nowrap px-2.5 py-3 leading-tight text-muted">
+                    <div>
+                      {new Date(e.created_at).toLocaleDateString([], {
+                        month: "numeric",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </div>
+                    <div className="text-[11px]">
+                      {new Date(e.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </div>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3">
+                  <td className="whitespace-nowrap px-2.5 py-3">
                     <ExpirationCell e={e} />
                   </td>
                   <td
-                    className="px-4 py-3"
+                    className="px-2.5 py-3"
                     // Only the editable (Completed) cell swallows the row click.
                     onClick={(ev) => e.status === "completed" && ev.stopPropagation()}
                   >
@@ -732,8 +736,8 @@ export function EnvelopeList() {
                       onError={setError}
                     />
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-3">
+                  <td className="px-2.5 py-3">
+                    <div className="flex items-center justify-end gap-2.5 whitespace-nowrap">
                       {e.doc_type === "Quote" && e.status === "draft" && (
                         <button
                           onClick={(ev) => {
@@ -810,6 +814,7 @@ export function EnvelopeList() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 
