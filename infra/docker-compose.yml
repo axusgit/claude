@@ -173,6 +173,7 @@ services:
       # (the Comodo backend fails often). Reuses the platform O365 SMTP relay
       # (the AUTHENTIK_EMAIL__* creds) so no new secrets are needed.
       XCITIUM_ALERT_EMAIL: ${XCITIUM_ALERT_EMAIL:-acarr@axustechnologies.com}
+      XCITIUM_HEALTH_ENABLED: ${XCITIUM_HEALTH_ENABLED:-1}
       # Staff ticket notifications (from support@). Audience is the whole active
       # staff team by default (NOTIFY_ONLY empty); set NOTIFY_ONLY=<addr> in .env to
       # redirect them all to one address. NOTIFY_ENABLED=0 holds ALL sending off.
