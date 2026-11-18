@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Archive, Check, Circle, Copy, Download, FilePen, FileSignature, HardDrive, Pencil, Plus, Send, Trash2 } from "lucide-react";
-import { api, companiesApi, type Company, type Envelope } from "@/lib/api";
+import { api, companiesApi, contactsApi, type Company, type Contact, type Envelope } from "@/lib/api";
 import { Button, Card, Input, SortHeader, StatusBadge } from "@/components/ui";
 import { confirmDialog } from "@/lib/confirm";
 import { dirCmp, useSort } from "@/lib/sort";
@@ -96,6 +96,17 @@ export function EnvelopeList() {
   // BAA can use the Axus-generated template (default) or an uploaded document.
   const [baaMode, setBaaMode] = useState<"template" | "upload">("template");
   const isCoc = docType === "Certificate of Completion";
+  // "Customer already signed": the document was exchanged by email outside eSign
+  // and came back signed. Create the record from that copy (any type), then Axus
+  // signs it in-app. Nobody is notified.
+  const [source, setSource] = useState<"esign" | "signed">("esign");
+  const isSigned = source === "signed";
+  const [custFile, setCustFile] = useState<File | null>(null);
+  const [custTitle, setCustTitle] = useState("");
+  const [signerName, setSignerName] = useState("");
+  const [signerEmail, setSignerEmail] = useState("");
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [uploadingCust, setUploadingCust] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [editDoc, setEditDoc] = useState<Envelope | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -143,7 +154,31 @@ export function EnvelopeList() {
   useEffect(() => {
     void load();
     companiesApi.list().then(setCompanies).catch(() => {});
+    contactsApi.list().then(setContacts).catch(() => {});
   }, []);
+
+  async function createFromSigned() {
+    if (!custFile || !company.trim() || !signerName.trim()) return;
+    if (isCoc && !docNumber.trim()) return;
+    setUploadingCust(true);
+    setError(null);
+    try {
+      const env = await api.createFromSignedCopy(custFile, {
+        doc_type: docType,
+        company: company.trim(),
+        title: custTitle.trim() || undefined,
+        doc_number: docNumber.trim() || undefined,
+        signer_name: signerName.trim(),
+        signer_email: signerEmail.trim() || undefined,
+      });
+      // Straight into the in-app Axus signature.
+      nav(`/envelopes/${env.id}?axussign=1`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploadingCust(false);
+    }
+  }
 
   async function create() {
     if (!company.trim()) return;
@@ -254,7 +289,9 @@ export function EnvelopeList() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Document</label>
               <p className="pt-2 text-sm text-muted">
-                {docType === "Quote"
+                {isSigned
+                  ? "Upload the copy the customer signed and returned; you'll sign as Axus next."
+                  : docType === "Quote"
                   ? "You'll build the quote on the next step."
                   : docType === "BAA"
                     ? baaMode === "upload"
@@ -280,7 +317,107 @@ export function EnvelopeList() {
               </select>
             </div>
           </div>
-          {docType === "BAA" && (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">How is it being signed?</label>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["esign", "Send for e-signature"],
+                  ["signed", "Customer already signed (upload their copy)"],
+                ] as ["esign" | "signed", string][]
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setSource(mode)}
+                  className={
+                    "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors " +
+                    (source === mode ? "border-brand bg-brand/10 text-brand" : "border-line hover:bg-canvas")
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {isSigned && (
+              <p className="text-xs text-muted">
+                For a document sent to the customer by email and returned signed. The record is created from
+                their copy, then you sign as Axus. Nobody is notified.
+              </p>
+            )}
+          </div>
+          {isSigned && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Customer-signed PDF <span className="text-brand">*</span>
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setCustFile(f);
+                    if (f) setCustTitle(f.name.replace(/\.[^.]+$/, ""));
+                  }}
+                  className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Document name</label>
+                <Input
+                  placeholder="Defaults to the file name"
+                  value={custTitle}
+                  onChange={(e) => setCustTitle(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Signed by (customer) <span className="text-brand">*</span>
+                </label>
+                {contacts.length > 0 && (
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const c = contacts.find((x) => x.id === e.target.value);
+                      if (c) {
+                        setSignerName(c.name);
+                        setSignerEmail(c.email);
+                        if (!company.trim() && c.company) setCompany(c.company);
+                      }
+                    }}
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+                  >
+                    <option value="">Pick from your contacts…</option>
+                    {[...contacts]
+                      .sort(
+                        (a, b) =>
+                          Number((b.company ?? "").toLowerCase() === company.trim().toLowerCase()) -
+                            Number((a.company ?? "").toLowerCase() === company.trim().toLowerCase()) ||
+                          a.name.localeCompare(b.name),
+                      )
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.email}){c.company ? ` · ${c.company}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                )}
+                <Input placeholder="Name" value={signerName} onChange={(e) => setSignerName(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Customer email <span className="font-normal text-muted">(optional, record only)</span>
+                </label>
+                <Input
+                  placeholder="name@company.com"
+                  value={signerEmail}
+                  onChange={(e) => setSignerEmail(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          {docType === "BAA" && !isSigned && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">BAA source</label>
               <div className="flex flex-wrap gap-2">
@@ -330,13 +467,29 @@ export function EnvelopeList() {
                 onChange={(e) => setCompany(e.target.value)}
               />
             </div>
-            <Button
-              className="w-fit"
-              onClick={() => void create()}
-              disabled={!company.trim() || (isCoc && !docNumber.trim())}
-            >
-              {docType === "Quote" || TEMPLATE_TYPES.includes(docType) ? "Continue" : "Create & open"}
-            </Button>
+            {isSigned ? (
+              <Button
+                className="w-fit"
+                onClick={() => void createFromSigned()}
+                disabled={
+                  uploadingCust ||
+                  !custFile ||
+                  !company.trim() ||
+                  !signerName.trim() ||
+                  (isCoc && !docNumber.trim())
+                }
+              >
+                {uploadingCust ? "Uploading…" : "Upload & sign as Axus"}
+              </Button>
+            ) : (
+              <Button
+                className="w-fit"
+                onClick={() => void create()}
+                disabled={!company.trim() || (isCoc && !docNumber.trim())}
+              >
+                {docType === "Quote" || TEMPLATE_TYPES.includes(docType) ? "Continue" : "Create & open"}
+              </Button>
+            )}
           </div>
           {isCoc && (
             <div className="space-y-1.5">

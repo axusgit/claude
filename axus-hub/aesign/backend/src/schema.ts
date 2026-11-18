@@ -35,6 +35,9 @@ alter table envelope add column if not exists archived_at timestamptz;
 alter table envelope add column if not exists deleted boolean not null default false;   -- soft-deleted → Recycle Bin (auto-moved to Archive after 90 days, never destroyed)
 alter table envelope add column if not exists deleted_at timestamptz;
 alter table envelope add column if not exists callback_url text;   -- external product to POST on completion (e.g. Subcontractors)
+-- Record of a copy signed OUTSIDE eSign (customer wanted an emailed PDF): created
+-- from the customer's returned copy, then Axus signs in-app. Nobody is emailed.
+alter table envelope add column if not exists offline_record boolean not null default false;
 
 create table if not exists recipient (
   id          uuid primary key default gen_random_uuid(),

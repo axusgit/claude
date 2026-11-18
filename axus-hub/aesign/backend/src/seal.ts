@@ -108,7 +108,7 @@ export async function sealPdf(
     const inAppStaff = !offline && (inApp?.has(email) ?? false);
     if (offline) anyOffline = true;
     if (inAppStaff) anyInApp = true;
-    line(`• ${r.name} <${r.email}>`, { bold: true });
+    line(r.email ? `• ${r.name} <${r.email}>` : `• ${r.name}`, { bold: true });
     if (offline) {
       line(`    Signed on paper (offline), uploaded: ${r.signed_at ?? "—"}`);
     } else if (inAppStaff) {

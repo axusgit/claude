@@ -34,6 +34,7 @@ export interface Envelope {
   field_layout?: SignSlot[] | null;
   archived?: boolean;
   archived_at?: string | null;
+  offline_record?: boolean;
   deleted?: boolean;
   deleted_at?: string | null;
 }
@@ -118,6 +119,31 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }).then((r) => r.envelope),
+  // Create a document from a copy the CUSTOMER already signed outside eSign
+  // (exchanged by email). Nobody is notified; Axus then signs it in-app.
+  createFromSignedCopy: (
+    file: File,
+    data: {
+      doc_type: string;
+      company: string;
+      title?: string;
+      doc_number?: string;
+      signer_name: string;
+      signer_email?: string;
+    },
+  ) => {
+    const fd = new FormData();
+    // Text fields BEFORE the file so the server sees them with the file part.
+    for (const [k, v] of Object.entries(data)) if (v) fd.append(k, v);
+    fd.append("file", file);
+    return fetch("/api/envelopes/offline-signed", { method: "POST", body: fd }).then(async (res) => {
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || `Upload failed (${res.status})`);
+      }
+      return ((await res.json()) as { envelope: Envelope }).envelope;
+    });
+  },
   getEnvelope: (id: string) => req<EnvelopeDetail>(`/envelopes/${id}`),
   uploadDocument: (id: string, file: File) => {
     const fd = new FormData();
@@ -209,7 +235,7 @@ export const api = {
       fields: { type: FieldType; page: number; x: number; y: number; w: number; h: number; value?: string }[];
     },
   ) =>
-    req<{ ok: boolean; completed: boolean; sha256: string }>(`/envelopes/${id}/axus-selfsign`, {
+    req<{ ok: boolean; completed: boolean; sha256: string; emailed?: boolean }>(`/envelopes/${id}/axus-selfsign`, {
       method: "POST",
       body: JSON.stringify(data),
     }),

@@ -109,7 +109,7 @@ export function AxusSignModal({
     setBusy(true);
     setErr(null);
     try {
-      await api.axusSelfSign(envelopeId, {
+      const res = await api.axusSelfSign(envelopeId, {
         consent: true,
         fields: fields.map((f) => ({
           type: f.type,
@@ -122,7 +122,9 @@ export function AxusSignModal({
         })),
       });
       onDone(
-        "Signed as Axus — the document is sealed and marked Completed. The Axus team and you were emailed the finished copy.",
+        res.emailed === false
+          ? "Signed as Axus — the document is sealed and marked Completed. No one was notified."
+          : "Signed as Axus — the document is sealed and marked Completed. The Axus team and you were emailed the finished copy.",
       );
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not sign this document.");

@@ -493,6 +493,15 @@ export function EnvelopeEditor() {
   // customer copy with no Axus block): opens the place-signature-and-draw modal;
   // the backend composites it onto the working PDF and re-seals.
   const [showAxusSign, setShowAxusSign] = useState(false);
+  // Arriving from "Customer already signed" → open the Axus signature right away
+  // (once the document has loaded), then drop the flag from the URL.
+  const wantAxusSign = sp.get("axussign") === "1";
+  useEffect(() => {
+    if (wantAxusSign && detail?.envelope.pdf_file && detail.envelope.status !== "completed") {
+      setShowAxusSign(true);
+      nav(`/envelopes/${id}`, { replace: true });
+    }
+  }, [wantAxusSign, detail, id, nav]);
   async function send() {
     if (
       !(await confirmDialog({
@@ -651,6 +660,7 @@ export function EnvelopeEditor() {
           {(detail.envelope.status === "draft" ||
             detail.envelope.status === "sent" ||
             detail.envelope.status === "partially_completed") &&
+            !detail.envelope.offline_record &&
             !!detail.envelope.pdf_file && (
               <>
                 <input

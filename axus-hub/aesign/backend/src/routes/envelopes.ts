@@ -102,6 +102,84 @@ export async function envelopeRoutes(app: FastifyInstance) {
     return reply.code(201).send({ envelope: rows[0] });
   });
 
+  // Create a document FROM A CUSTOMER-SIGNED COPY that was exchanged outside
+  // eSign (e.g. the customer asked for a PDF by email, signed it and sent it
+  // back). Works for every document type. The returned PDF becomes the working
+  // document; the customer is recorded as an offline signer; the document sits
+  // at 'partially_completed' until Axus signs it in-app (Sign as Axus), which
+  // then completes it. offline_record = true ⇒ NO email is sent at any step
+  // (no invites, no reminders, no completion notices). No sent_at, so the
+  // expiry cron never touches it.
+  app.post("/offline-signed", async (req, reply) => {
+    const id = requireStaff(req, reply);
+    if (!id) return;
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "No file uploaded" });
+    const fv = (k: string): string => {
+      const f = (file.fields as Record<string, unknown>)[k] as { value?: unknown } | undefined;
+      return f && typeof f.value === "string" ? f.value.trim() : "";
+    };
+    const ext = (file.filename.split(".").pop() ?? "").toLowerCase();
+    if (ext !== "pdf") {
+      file.file.resume();
+      return reply.code(415).send({ error: "Please upload a PDF of the customer-signed document." });
+    }
+    const docType = fv("doc_type") || null;
+    const company = fv("company") || null;
+    const docNumber = fv("doc_number") || null;
+    const signerName = fv("signer_name").slice(0, 200);
+    const signerEmail = fv("signer_email").slice(0, 200);
+    if (!company) {
+      file.file.resume();
+      return reply.code(400).send({ error: "Company is required." });
+    }
+    if (!signerName) {
+      file.file.resume();
+      return reply.code(400).send({ error: "Enter the name of the customer who signed." });
+    }
+    // Same naming as a normal upload: the file name (sans extension) is the title
+    // unless staff typed one.
+    const title =
+      (fv("title") || file.filename.replace(/\.[^.]+$/, "").trim()).slice(0, 200) || "Untitled document";
+
+    const { rows } = await pool.query(
+      `insert into envelope (title, created_by, doc_type, company, doc_number, status, offline_record)
+       values ($1, $2, $3, $4, $5, 'partially_completed', true) returning id`,
+      [title, id.email, docType, company, docNumber],
+    );
+    const envId = rows[0].id as string;
+    const stored = `${envId}-signed.pdf`;
+    try {
+      await pipeline(file.file, createWriteStream(join(config.storageDir, stored)));
+    } catch (err) {
+      await pool.query(`delete from envelope where id = $1`, [envId]);
+      throw err;
+    }
+    await pool.query(`update envelope set source_file = $1, pdf_file = $1 where id = $2`, [stored, envId]);
+    // The customer: signed on paper (no electronic consent ⇒ the certificate
+    // marks them as an offline signer).
+    await pool.query(
+      `insert into recipient (envelope_id, name, email, role, sign_order, status, signed_at)
+       values ($1, $2, $3, 'signer', 1, 'signed', now())`,
+      [envId, signerName, signerEmail],
+    );
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'created', $3)`,
+      [envId, id.email, `${title} (from customer-signed copy, no notifications)`],
+    );
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'uploaded', $3)`,
+      [envId, id.email, `Customer-signed copy uploaded: ${file.filename}`],
+    );
+    await pool.query(
+      `insert into event (envelope_id, actor, type, detail) values ($1, $2, 'signed', $3)`,
+      [envId, signerEmail || signerName, `${signerName} — signed offline (copy exchanged outside eSign)`],
+    );
+    logActivity(id.email, "Created document from customer-signed copy", title, envId);
+    const env = await pool.query(`select * from envelope where id = $1`, [envId]);
+    return reply.code(201).send({ envelope: env.rows[0] });
+  });
+
   // Update envelope settings (currently: sequential signing order).
   app.patch("/:id", async (req, reply) => {
     const id = requireStaff(req, reply);
@@ -375,11 +453,17 @@ export async function envelopeRoutes(app: FastifyInstance) {
     if (!id) return;
     const envId = (req.params as { id: string }).id;
     const env = await pool.query(
-      `select id, title, status, created_by, doc_type, company, quote_data, callback_url from envelope where id = $1`,
+      `select id, title, status, created_by, doc_type, company, quote_data, callback_url, offline_record
+       from envelope where id = $1`,
       [envId],
     );
     if (!env.rowCount) return reply.code(404).send({ error: "Not found" });
     const e = env.rows[0];
+    if (e.offline_record) {
+      return reply
+        .code(409)
+        .send({ error: "This document was created from a customer-signed copy. Use Sign as Axus to complete it." });
+    }
     if (e.status === "completed") {
       return reply.code(409).send({ error: "This document is already completed." });
     }
@@ -1228,7 +1312,8 @@ export async function envelopeRoutes(app: FastifyInstance) {
     }
 
     const env = await pool.query(
-      `select id, title, status, pdf_file, source_file, sealed_file, doc_type, company, quote_data, callback_url
+      `select id, title, status, pdf_file, source_file, sealed_file, doc_type, company, quote_data, callback_url,
+              offline_record
        from envelope where id = $1`,
       [envId],
     );
@@ -1336,6 +1421,10 @@ export async function envelopeRoutes(app: FastifyInstance) {
       [envId, id.email, `Axus-signed in app by ${id.name}. SHA-256 ${sha256}`],
     );
     logActivity(id.email, "Signed as Axus (in app)", e.title, envId);
+
+    // A record created from a customer-signed copy exchanged outside eSign:
+    // nobody is notified.
+    if (e.offline_record) return { ok: true, completed: true, sha256, emailed: false };
 
     // Notify the Axus team inbox (info@) + the staff member who signed — only.
     // The other parties are intentionally NOT emailed; staff send the countersigned
