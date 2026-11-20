@@ -2006,7 +2006,11 @@ const Staff = (() => {
         <td class="cell-muted col-phone">${esc(c.phone || "—")}${c.ext ? " x" + esc(c.ext) : ""}</td>
         <td class="cell-muted col-website">${esc(c.website || "—")}</td>
         <td class="col-tickets">${tcount}</td>
-        <td class="cell-muted col-added">${c.created_at ? fmtDate(c.created_at) : "—"}</td>`;
+        <td class="cell-muted col-added">${c.created_at ? fmtDate(c.created_at) : "—"}</td>
+        <td class="user-actions col-actions">${me && me.role === "admin"
+          ? `<button class="btn btn-ghost btn-xs btn-danger" data-del-biz="${c.id}">Delete</button>` : ""}</td>`;
+      const delBiz = tr.querySelector("[data-del-biz]");
+      if (delBiz) delBiz.onclick = (e) => { e.stopPropagation(); deleteBusiness(c); };
       tbody.appendChild(tr);
     }
     applyBizCols();
@@ -2249,8 +2253,45 @@ const Staff = (() => {
     applyUsrCols();
   }
 
+  // Delete a business. If it still has tickets / users / invoices the server
+  // answers 409 and we ask which business should receive them (like users).
+  async function deleteBusiness(c) {
+    if (!await axusConfirm(`Delete the business "${c.company_name}"?
+
+This can't be undone.`)) return;
+    try {
+      await api(`/api/clients/${c.id}`, { method: "DELETE" });
+      toast("Business deleted");
+      await afterBusinessDeleted(c.id);
+    } catch (err) {
+      if (err.status === 409) openBizXferModal(c, err.message);
+      else toast(err.message);
+    }
+  }
+  async function afterBusinessDeleted(id) {
+    await refreshClients();
+    if (currentCustomer && currentCustomer.id === id) { currentCustomer = null; showCustomers(); }
+    renderCustomers();
+    try { await loadTickets(); } catch (e) {}
+  }
+  let xferBizId = null;
+  function openBizXferModal(c, msg) {
+    xferMode = "business"; xferBizId = c.id;
+    $("xfer-msg").textContent = `${msg} Then "${c.company_name}" is deleted.`;
+    $("xfer-label").textContent = "Move everything to";
+    const opts = clientsData
+      .filter(b => b.is_active && b.id !== c.id)
+      .sort((a, b) => a.company_name.localeCompare(b.company_name))
+      .map(b => `<option value="${b.id}">${esc(b.company_name)}</option>`).join("");
+    $("xfer-select").innerHTML = `<option value="">Choose a business…</option>` + opts;
+    $("xfer-error").textContent = "";
+    $("xfer-modal").classList.remove("hidden");
+  }
+
+  let xferMode = "user";
   let xferUserId = null;
   function openXferModal(userId, userName) {
+    xferMode = "user"; $("xfer-label").textContent = "Transfer ticket history to";
     xferUserId = userId;
     $("xfer-msg").textContent = `${userName} has ticket history. Choose an active user to receive it — then this user is deleted.`;
     const opts = usersData
@@ -2501,6 +2542,19 @@ const Staff = (() => {
     $("xfer-cancel").onclick = () => $("xfer-modal").classList.add("hidden");
     $("xfer-confirm").onclick = async () => {
       const target = $("xfer-select").value;
+      if (xferMode === "business") {
+        if (!target) { $("xfer-error").textContent = "Pick a business to move them to."; return; }
+        try {
+          const r = await api(`/api/clients/${xferBizId}?transfer_to=${target}`, { method: "DELETE" });
+          $("xfer-modal").classList.add("hidden");
+          const m = r.moved || {};
+          const bits = ["tickets", "users", "invoices"].filter(k => m[k]).map(k => `${m[k]} ${m[k] === 1 ? k.slice(0, -1) : k}`);
+          toast(`Moved ${bits.join(", ")} to ${clientMap[target] || "the new business"} and deleted the business`);
+          await afterBusinessDeleted(xferBizId);
+          await refreshUsers();
+        } catch (err) { $("xfer-error").textContent = err.message; }
+        return;
+      }
       if (!target) { $("xfer-error").textContent = "Pick a user to transfer to."; return; }
       try {
         const r = await api(`/api/users/${xferUserId}?transfer_to=${target}`, { method: "DELETE" });
@@ -2573,7 +2627,8 @@ const Staff = (() => {
       btnId: "biz-cols-btn", menuId: "biz-cols-menu",
       columns: [{ key: "name", label: "Business Name" }, { key: "location", label: "Location" },
                 { key: "phone", label: "Phone" }, { key: "website", label: "Website" },
-                { key: "tickets", label: "Tickets" }, { key: "added", label: "Added" }],
+                { key: "tickets", label: "Tickets" }, { key: "added", label: "Added" },
+                { key: "actions", label: "Actions" }],
     });
     applyUsrCols = setupColumnChooser({
       tableSel: "#user-table", storageKey: "axus-usr-cols",

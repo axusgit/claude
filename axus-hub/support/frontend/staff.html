@@ -393,7 +393,7 @@
           </div>
           <div class="table-wrap">
             <table class="ticket-table" id="customer-table">
-              <thead><tr><th class="col-name sortable" data-sort="name">Business Name</th><th class="col-location sortable" data-sort="location">Location</th><th class="col-phone sortable" data-sort="phone">Phone</th><th class="col-website sortable" data-sort="website">Website</th><th class="col-tickets sortable" data-sort="tickets">Tickets</th><th class="col-added sortable" data-sort="added">Added</th></tr></thead>
+              <thead><tr><th class="col-name sortable" data-sort="name">Business Name</th><th class="col-location sortable" data-sort="location">Location</th><th class="col-phone sortable" data-sort="phone">Phone</th><th class="col-website sortable" data-sort="website">Website</th><th class="col-tickets sortable" data-sort="tickets">Tickets</th><th class="col-added sortable" data-sort="added">Added</th><th class="col-actions"></th></tr></thead>
               <tbody id="customer-rows"></tbody>
             </table>
             <div id="customers-empty" class="empty hidden"><div class="empty-emoji">🏢</div><h3>No businesses</h3><p class="muted">Add your first business to get started.</p></div>
@@ -570,7 +570,7 @@
     <div class="modal">
       <div class="modal-head"><h2>Transfer &amp; delete</h2><button class="modal-x" id="xfer-close">×</button></div>
       <p class="muted" id="xfer-msg" style="margin:-6px 0 14px"></p>
-      <label>Transfer ticket history to<select id="xfer-select"></select></label>
+      <label><span id="xfer-label">Transfer ticket history to</span><select id="xfer-select"></select></label>
       <div id="xfer-error" class="form-error"></div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" id="xfer-cancel">Cancel</button><button type="button" class="btn btn-primary" id="xfer-confirm">Transfer &amp; delete</button></div>
     </div>

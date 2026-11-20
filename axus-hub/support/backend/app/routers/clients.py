@@ -6,6 +6,8 @@ from app.database import get_db
 from app.models.client import Client
 from app.models.contact import Contact
 from app.models.user import User, UserRole
+from app.models.ticket import Ticket
+from app.models.invoice import Invoice
 from app.auth import get_current_user, hash_password, require_admin, require_staff
 from pydantic import BaseModel, EmailStr
 
@@ -80,6 +82,55 @@ def update_client(client_id: int, data: ClientIn, db: Session = Depends(get_db),
     db.commit()
     db.refresh(client)
     return client
+
+
+# Businesses the system itself relies on (hidden-user holding business, the
+# email-intake catch-all). Deleting them would just get them re-created.
+PROTECTED_BUSINESSES = {"Dummy Business", "Unmatched Senders"}
+
+
+def _business_refs(db: Session, cid: int) -> dict:
+    return {
+        "tickets": db.query(Ticket).filter(Ticket.client_id == cid).count(),
+        "users": db.query(User).filter(User.client_id == cid).count(),
+        "invoices": db.query(Invoice).filter(Invoice.client_id == cid).count(),
+    }
+
+
+@router.delete("/{client_id}")
+def delete_client(client_id: int, transfer_to: Optional[int] = None,
+                  db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Delete a business. A business with tickets, users or invoices can only be
+    deleted once they are moved to another active business (pass
+    ?transfer_to=<id>); we return 409 to prompt for a target when one is needed.
+    Contacts move with it when transferring, otherwise they are deleted."""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Business not found")
+    if client.company_name in PROTECTED_BUSINESSES:
+        raise HTTPException(status_code=400, detail=f"\"{client.company_name}\" is a system business and can't be deleted.")
+
+    refs = _business_refs(db, client.id)
+    moved = sum(refs.values())
+    target = None
+    if moved:
+        if not transfer_to:
+            parts = [f"{n} {k[:-1] if n == 1 else k}" for k, n in refs.items() if n]
+            raise HTTPException(status_code=409, detail=f"{client.company_name} has {', '.join(parts)}. "
+                                "Choose another business to move them to.")
+        target = db.query(Client).filter(Client.id == transfer_to, Client.is_active == True).first()  # noqa: E712
+        if not target or target.id == client.id:
+            raise HTTPException(status_code=400, detail="Pick a valid active business to move them to.")
+        for model in (Ticket, User, Invoice, Contact):
+            db.query(model).filter(model.client_id == client.id).update(
+                {model.client_id: target.id}, synchronize_session=False)
+    else:
+        db.query(Contact).filter(Contact.client_id == client.id).delete(synchronize_session=False)
+
+    db.delete(client)
+    db.commit()
+    return {"status": "deleted", "id": client_id, "moved": refs if moved else {},
+            "transferred_to": target.id if target else None}
 
 
 class PortalUserIn(BaseModel):
