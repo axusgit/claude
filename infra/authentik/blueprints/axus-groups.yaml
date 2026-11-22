@@ -50,9 +50,9 @@ entries:
   - model: authentik_core.group
     identifiers: {name: app-tools}
     attrs: {name: app-tools}
-  # Gates the ACAS (Communications Analytics) OIDC app AND marks Axus staff for it:
-  # while onboarding, ACAS only admits staff, and membership here (or "authentik
-  # Admins") is what the app treats as staff/admin. Tile visibility too.
+  # Gates ACCESS to the ACAS (Communications Analytics) OIDC app + Hub tile. Client
+  # users get it too (with acas:tenant:<slug>, via infra/admin/acas-add-user.sh), so
+  # it does NOT imply staff; ACAS staff = "authentik Admins" only.
   - model: authentik_core.group
     identifiers: {name: app-acas}
     attrs: {name: app-acas}
