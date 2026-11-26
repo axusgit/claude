@@ -142,8 +142,8 @@ const INTENTS = [
 const FALLBACK = [
   "😊",
   "❤️",
-  "Ok 😊",
-  "Aquí estoy",
+  "🥰",
+  "😍",
   "😘",
 ];
 
